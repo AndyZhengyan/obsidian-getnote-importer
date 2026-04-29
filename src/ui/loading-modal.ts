@@ -1,7 +1,7 @@
-import { Modal } from 'obsidian';
+import { App, Modal } from 'obsidian';
 
 export class LoadingModal extends Modal {
-  private messageEl: HTMLElement;
+  private messageEl!: HTMLElement;
 
   constructor(app: App) {
     super(app);

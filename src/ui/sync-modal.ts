@@ -1,10 +1,10 @@
-import { Modal } from 'obsidian';
+import { App, Modal } from 'obsidian';
 import type { SyncResult } from '../types';
 
 export class SyncModal extends Modal {
-  private statusEl: HTMLElement;
-  private progressEl: HTMLElement;
-  private countEl: HTMLElement;
+  private statusEl!: HTMLElement;
+  private progressEl!: HTMLElement;
+  private countEl!: HTMLElement;
 
   constructor(app: App) {
     super(app);

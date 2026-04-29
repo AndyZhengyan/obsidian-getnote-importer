@@ -1,6 +1,5 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { App, PluginSettingTab, Setting, ButtonComponent } from 'obsidian';
-import type { GetNoteSyncPlugin } from './main';
 
 export class GetNoteSettingsTab extends PluginSettingTab {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

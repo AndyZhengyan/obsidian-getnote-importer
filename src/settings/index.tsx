@@ -9,6 +9,7 @@ interface SettingsComponentProps {
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   startSync: () => void;
   isSyncing: boolean;
+  openNotePicker: () => void;
 }
 
 export function SettingsComponent({
@@ -16,6 +17,7 @@ export function SettingsComponent({
   updateSetting,
   startSync,
   isSyncing,
+  openNotePicker,
 }: SettingsComponentProps) {
   const [apiToken, setApiToken] = useState(settings.apiToken);
   const [clientId, setClientId] = useState(settings.clientId);
@@ -66,7 +68,24 @@ export function SettingsComponent({
     [updateSetting]
   );
 
+  const handleScheduledEnabled = (checked: boolean) => {
+    updateSetting('scheduledSync', { ...settings.scheduledSync, enabled: checked });
+  };
+
+  const handleScheduledInterval = (value: string) => {
+    const n = parseInt(value, 10);
+    updateSetting('scheduledSync', {
+      ...settings.scheduledSync,
+      intervalMinutes: isNaN(n) || n < 5 ? 5 : n,
+    });
+  };
+
+  const handleScheduledOnStart = (checked: boolean) => {
+    updateSetting('scheduledSync', { ...settings.scheduledSync, syncOnStart: checked });
+  };
+
   const hasCredentials = Boolean(apiToken.trim() && clientId.trim());
+  const { scheduledSync } = settings;
 
   return (
     <div className="getnote-settings-react">
@@ -144,6 +163,39 @@ export function SettingsComponent({
         />
       </SettingItem>
 
+      {/* 定时同步设置 */}
+      <SettingItem name="定时同步" description="开启后自动定时同步笔记">
+        <div className="getnote-scheduled-row">
+          <span>启用定时同步</span>
+          <input
+            type="checkbox"
+            checked={scheduledSync.enabled}
+            onChange={(e) => handleScheduledEnabled((e.target as HTMLInputElement).checked)}
+          />
+        </div>
+        {scheduledSync.enabled && (
+          <>
+            <div className="getnote-scheduled-row">
+              <span>同步间隔（分钟）</span>
+              <input
+                type="number"
+                min="5"
+                value={scheduledSync.intervalMinutes}
+                onInput={(e) => handleScheduledInterval((e.target as HTMLInputElement).value)}
+              />
+            </div>
+            <div className="getnote-scheduled-row">
+              <span>启动时同步</span>
+              <input
+                type="checkbox"
+                checked={scheduledSync.syncOnStart}
+                onChange={(e) => handleScheduledOnStart((e.target as HTMLInputElement).checked)}
+              />
+            </div>
+          </>
+        )}
+      </SettingItem>
+
       <div className="getnote-settings-divider" />
 
       <SettingItem name="同步" description="点击后将 Get笔记笔记同步到 vault">
@@ -152,6 +204,12 @@ export function SettingsComponent({
           isSyncing={isSyncing}
           onClick={startSync}
         />
+      </SettingItem>
+
+      <SettingItem name="选择性同步" description="先选择笔记，再同步">
+        <button className="mod-secondary" onClick={openNotePicker}>
+          📋 选择性同步
+        </button>
       </SettingItem>
     </div>
   );

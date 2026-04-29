@@ -26,6 +26,7 @@ export class GetNoteSettingsTab extends PluginSettingTab {
         updateSetting={this.updateSetting}
         startSync={() => this.plugin.startSync()}
         isSyncing={this.plugin.isSyncing}
+        openNotePicker={() => this.plugin.openNotePicker()}
       />,
       this.containerEl
     );

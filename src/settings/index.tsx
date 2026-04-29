@@ -11,6 +11,7 @@ interface SettingsComponentProps {
   openNotePicker: () => void;
   startAutoSync: () => void;
   stopAutoSync: () => void;
+  vaultFolders: string[];
 }
 
 export function SettingsComponent({
@@ -21,11 +22,13 @@ export function SettingsComponent({
   openNotePicker,
   startAutoSync,
   stopAutoSync,
+  vaultFolders,
 }: SettingsComponentProps) {
   const [apiToken, setApiToken] = useState(settings.apiToken);
   const [clientId, setClientId] = useState(settings.clientId);
   const [folderName, setFolderName] = useState(settings.folderName);
   const [maxDays, setMaxDays] = useState(String(settings.maxDays));
+  const [filenamePrefix, setFilenamePrefix] = useState(settings.filenamePrefix);
 
   const handleApiTokenChange = useCallback(
     (value: string) => {
@@ -57,6 +60,14 @@ export function SettingsComponent({
       setMaxDays(value);
       const n = parseInt(value, 10);
       updateSetting('maxDays', isNaN(n) || n < 0 ? 0 : n);
+    },
+    [updateSetting]
+  );
+
+  const handleFilenamePrefixChange = useCallback(
+    (value: string) => {
+      setFilenamePrefix(value);
+      updateSetting('filenamePrefix', value);
     },
     [updateSetting]
   );
@@ -124,13 +135,21 @@ export function SettingsComponent({
         name="目标文件夹"
         description="笔记同步到 vault 内的子目录名（默认：Get笔记）"
       >
-        <input
-          type="text"
-          className="getnote-input"
-          placeholder="Get笔记"
-          value={folderName}
-          onInput={(e) => handleFolderChange((e.target as HTMLInputElement).value)}
-        />
+        <div className="getnote-folder-input-wrapper">
+          <input
+            type="text"
+            className="getnote-input"
+            placeholder="Get笔记"
+            value={folderName}
+            list="getnote-folder-list"
+            onInput={(e) => handleFolderChange((e.target as HTMLInputElement).value)}
+          />
+          <datalist id="getnote-folder-list">
+            {vaultFolders.map(name => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        </div>
       </SettingItem>
 
       <SettingItem
@@ -144,6 +163,19 @@ export function SettingsComponent({
           value={maxDays}
           min="0"
           onInput={(e) => handleMaxDaysChange((e.target as HTMLInputElement).value)}
+        />
+      </SettingItem>
+
+      <SettingItem
+        name="文件名前缀（时间戳）"
+        description="格式如 YYYY-MM-DD 或 YYYYMMDD_HHmm，留空则不加前缀"
+      >
+        <input
+          type="text"
+          className="getnote-input"
+          placeholder="如 YYYY-MM-DD 或 YYYYMMDD_HHmm，留空不加前缀"
+          value={filenamePrefix}
+          onInput={(e) => handleFilenamePrefixChange((e.target as HTMLInputElement).value)}
         />
       </SettingItem>
 

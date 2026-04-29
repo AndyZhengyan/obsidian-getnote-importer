@@ -1,4 +1,3 @@
-import { h } from 'preact';
 import type { ComponentChildren } from 'preact';
 
 interface SettingItemProps {

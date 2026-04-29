@@ -1,4 +1,3 @@
-import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import type { GetNoteNote } from '../types';
 import { fetchNotes } from '../api';
@@ -73,7 +72,11 @@ export function NotePickerModal({ token, clientId, onConfirm, onCancel }: NotePi
   const handleCheck = (noteId: string, checked: boolean) => {
     setSelected(prev => {
       const next = new Set(prev);
-      checked ? next.add(noteId) : next.delete(noteId);
+      if (checked) {
+        next.add(noteId);
+      } else {
+        next.delete(noteId);
+      }
       return next;
     });
   };

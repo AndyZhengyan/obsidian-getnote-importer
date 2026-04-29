@@ -1,5 +1,5 @@
 import { App, debounce, PluginSettingTab } from 'obsidian';
-// @ts-ignore - ReactDOM available via Preact compat layer
+// @ts-expect-error - ReactDOM available via Preact compat layer
 import ReactDOM from 'react-dom';
 import { SettingsComponent } from './settings/index';
 import type { Settings } from './types';

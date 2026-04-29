@@ -1,4 +1,3 @@
-import { h } from 'preact';
 import { useState, useCallback } from 'preact/hooks';
 import { SettingItem } from './setting-item';
 import { SyncButton } from './sync-button';

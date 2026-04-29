@@ -5,20 +5,31 @@
   "main": "main.js",
   "scripts": {
     "build": "node esbuild.config.mjs",
-    "dev": "node esbuild.config.mjs --dev"
+    "dev": "node esbuild.config.mjs --dev",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run"
   },
-  "keywords": ["obsidian", "plugin", "getnote"],
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "getnote"
+  ],
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^20.19.39",
     "@types/react": "^18.3.0",
     "esbuild": "^0.20.0",
+    "eslint": "^9.0.0",
+    "happy-dom": "^20.9.0",
     "obsidian": "^1.5.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "preact": "^10.24.0",
-    "react-dom": "npm:@preact/compat",
-    "react": "npm:@preact/compat"
+    "react": "npm:@preact/compat",
+    "react-dom": "npm:@preact/compat"
   }
 }

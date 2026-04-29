@@ -1,5 +1,5 @@
 import { App, Modal, Plugin } from 'obsidian';
-// @ts-ignore - ReactDOM available via Preact compat layer
+// @ts-expect-error - ReactDOM available via Preact compat layer
 import ReactDOM from 'react-dom';
 import { DEFAULT_SETTINGS, type Settings } from './settings';
 import { GetNoteSettingsTab } from './settings-tab';

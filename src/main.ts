@@ -8,23 +8,23 @@ import { showError, showSuccess } from './ui/notice';
 
 export default class GetNoteSyncPlugin extends Plugin {
   settings!: Settings;
+  isSyncing = false;
+
+  private settingsTab?: GetNoteSettingsTab;
 
   async onload(): Promise<void> {
-    // 加载设置
     const loaded = await this.loadData();
     this.settings = { ...DEFAULT_SETTINGS, ...loaded };
 
-    // 注册设置面板
-    this.addSettingTab(new GetNoteSettingsTab(this.app, this));
+    this.settingsTab = new GetNoteSettingsTab(this.app, this);
+    this.addSettingTab(this.settingsTab);
 
-    // 注册命令
     this.addCommand({
       id: 'sync-notes',
       name: '同步笔记',
       callback: () => this.startSync(),
     });
 
-    // 注册 Ribbon 图标（使用文字图标，兼容所有平台）
     this.addRibbonIcon('book-lock', '同步 Get笔记', () => this.startSync());
 
     console.log('[Get笔记 Importer] 插件已加载');
@@ -34,12 +34,22 @@ export default class GetNoteSyncPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
+  private refreshSettingsTab(): void {
+    if (this.settingsTab) {
+      this.settingsTab.display();
+    }
+  }
+
   async startSync(): Promise<void> {
-    // 验证配置
+    if (this.isSyncing) return;
+
     if (!this.settings.apiToken || !this.settings.clientId) {
       showError('请先在设置中填写 API Token 和 Client ID');
       return;
     }
+
+    this.isSyncing = true;
+    this.refreshSettingsTab();
 
     const loading = new LoadingModal(this.app);
     loading.open();
@@ -62,6 +72,9 @@ export default class GetNoteSyncPlugin extends Plugin {
       const msg = err instanceof Error ? err.message : String(err);
       showError(`同步失败：${msg}`);
       console.error('[Get笔记 Importer] 同步错误:', err);
+    } finally {
+      this.isSyncing = false;
+      this.refreshSettingsTab();
     }
   }
 }

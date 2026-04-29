@@ -47,6 +47,18 @@ export default class GetNoteSyncPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
+  getVaultFolders(): string[] {
+    const folders = new Set<string>();
+    for (const dir of this.app.vault.getAllFolders()) {
+      const parts = dir.path.split('/');
+      if (parts.length >= 1 && parts[0]) {
+        folders.add(parts[0]);
+      }
+    }
+    folders.delete(this.settings.folderName);
+    return Array.from(folders).sort();
+  }
+
   private refreshSettingsTab(): void {
     if (this.settingsTab) this.settingsTab.display();
   }

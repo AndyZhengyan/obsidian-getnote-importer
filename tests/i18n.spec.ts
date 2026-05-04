@@ -271,7 +271,7 @@ describe('t() - New settings keys', () => {
     expect(i18n.t('settings.testConnection')).toBe('Test Connection');
     expect(i18n.t('settings.connectionSuccess')).toBe('Connection successful');
     expect(i18n.t('settings.maxDays.hint')).toBe('0 = no limit');
-    expect(i18n.t('settings.interval.hint')).toBe('min 5 minutes');
+    expect(i18n.t('settings.interval.hint')).toBe('Minimum 5 minutes');
     expect(i18n.t('settings.lastSync.never')).toBe('Never synced');
     expect(i18n.t('settings.onboarding')).toBe('👋 Welcome! Please choose an auth method to get credentials, then click sync.');
   });

@@ -51,7 +51,11 @@ describe('t() - Chinese translations', () => {
   });
 
   it('returns Chinese for sync.start', () => {
-    expect(i18n.t('sync.start')).toBe('立即同步');
+    expect(i18n.t('sync.start')).toBe('按时间同步');
+  });
+
+  it('returns Chinese for manualSync.title', () => {
+    expect(i18n.t('manualSync.title')).toBe('按时间同步');
   });
 
   it('returns Chinese for sync.syncing', () => {
@@ -89,7 +93,11 @@ describe('t() - English translations', () => {
   });
 
   it('returns English for sync.start', () => {
-    expect(i18n.t('sync.start')).toBe('Sync Now');
+    expect(i18n.t('sync.start')).toBe('Sync by Time');
+  });
+
+  it('returns English for manualSync.title', () => {
+    expect(i18n.t('manualSync.title')).toBe('Sync by Time');
   });
 
   it('returns English for sync.syncing', () => {
@@ -271,7 +279,7 @@ describe('t() - New settings keys', () => {
     expect(i18n.t('settings.testConnection')).toBe('Test Connection');
     expect(i18n.t('settings.connectionSuccess')).toBe('Connection successful');
     expect(i18n.t('settings.maxDays.hint')).toBe('0 = no limit');
-    expect(i18n.t('settings.interval.hint')).toBe('min 5 minutes');
+    expect(i18n.t('settings.interval.hint')).toBe('Minimum 5 minutes');
     expect(i18n.t('settings.lastSync.never')).toBe('Never synced');
     expect(i18n.t('settings.onboarding')).toBe('👋 Welcome! Please choose an auth method to get credentials, then click sync.');
   });

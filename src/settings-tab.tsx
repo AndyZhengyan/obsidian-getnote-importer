@@ -23,12 +23,7 @@ export class GetNoteSettingsTab extends PluginSettingTab {
       <SettingsComponent
         settings={this.plugin.settings}
         updateSetting={this.updateSetting}
-        updateCredentials={(apiToken, clientId) => {
-          this.plugin.settings.apiToken = apiToken;
-          this.plugin.settings.clientId = clientId;
-          void this.plugin.saveSettings();
-        }}
-        startSync={() => this.plugin.startSync()}
+        startSync={() => this.plugin.openManualSyncModal()}
         isSyncing={this.plugin.isSyncing}
         syncProgress={this.plugin.syncProgress}
         openNotePicker={() => this.plugin.openNotePicker()}
@@ -36,6 +31,8 @@ export class GetNoteSettingsTab extends PluginSettingTab {
         stopAutoSync={() => this.plugin.stopAutoSync()}
         cancelSync={() => this.plugin.cancelSync()}
         app={this.app}
+        lastSyncTime={this.plugin.lastSyncResult?.timestamp}
+        syncHistory={this.plugin.syncHistory}
       />,
       this.containerEl
     );

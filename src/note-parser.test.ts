@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderNote, getNoteTitle, generateDisplayTitle, formatTimestampPrefix } from './note-parser';
+import { renderNote, getNoteTitle } from './note-parser';
 import { getCategoryDir } from './types';
 import type { GetNoteNote } from './types';
 

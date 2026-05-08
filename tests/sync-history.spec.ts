@@ -9,43 +9,73 @@ function recordSyncHistory(
   history: SyncHistoryEntry[],
   result: SyncResult,
   type: 'full' | 'selective' | 'auto',
+  status: SyncHistoryEntry['status'] = 'success',
   maxEntries = 20
 ): SyncHistoryEntry[] {
-  const entry: SyncHistoryEntry = { timestamp: Date.now(), result, type };
+  const startedAt = Date.now();
+  const finishedAt = startedAt + 1250;
+  const entry: SyncHistoryEntry = {
+    id: `${startedAt}-${type}`,
+    startedAt,
+    finishedAt,
+    durationMs: finishedAt - startedAt,
+    timestamp: finishedAt,
+    result,
+    type,
+    status,
+  };
   history.push(entry);
   return history.slice(-maxEntries);
+}
+
+function makeEntry(overrides: Partial<SyncHistoryEntry> = {}): SyncHistoryEntry {
+  return {
+    id: 'entry-1',
+    startedAt: 1714500000000,
+    finishedAt: 1714500001000,
+    durationMs: 1000,
+    timestamp: 1714500001000,
+    result: makeResult(),
+    type: 'full',
+    status: 'success',
+    ...overrides,
+  };
 }
 
 describe('SyncHistoryEntry', () => {
   it('records sync result with timestamp and type', () => {
     const result = makeResult({ created: 3, updated: 1, total: 4 });
     const entry: SyncHistoryEntry = {
+      id: 'entry-1',
+      startedAt: 1714499999000,
+      finishedAt: 1714500000000,
+      durationMs: 1000,
       timestamp: 1714500000000,
       result,
       type: 'full',
+      status: 'success',
     };
 
     expect(entry.type).toBe('full');
+    expect(entry.status).toBe('success');
     expect(entry.result.created).toBe(3);
     expect(entry.timestamp).toBe(1714500000000);
   });
 
   it('records selective sync type', () => {
-    const entry: SyncHistoryEntry = {
-      timestamp: 1714500000000,
-      result: makeResult({ created: 1 }),
-      type: 'selective',
-    };
+    const entry = makeEntry({ result: makeResult({ created: 1 }), type: 'selective' });
     expect(entry.type).toBe('selective');
   });
 
   it('records auto sync type', () => {
-    const entry: SyncHistoryEntry = {
-      timestamp: 1714500000000,
-      result: makeResult(),
-      type: 'auto',
-    };
+    const entry = makeEntry({ type: 'auto' });
     expect(entry.type).toBe('auto');
+  });
+
+  it('records failed sync error', () => {
+    const entry = makeEntry({ status: 'failed', error: 'network error' });
+    expect(entry.status).toBe('failed');
+    expect(entry.error).toBe('network error');
   });
 });
 
@@ -65,7 +95,14 @@ describe('recordSyncHistory', () => {
   it('caps history at maxEntries (default 20)', () => {
     const history: SyncHistoryEntry[] = [];
     for (let i = 0; i < 25; i++) {
-      history.push({ timestamp: i, result: makeResult({ created: i }), type: 'full' });
+      history.push(makeEntry({
+        id: `entry-${i}`,
+        startedAt: i,
+        finishedAt: i,
+        durationMs: 0,
+        timestamp: i,
+        result: makeResult({ created: i }),
+      }));
     }
 
     const updated = recordSyncHistory(history, makeResult({ created: 99 }), 'full');

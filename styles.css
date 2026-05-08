@@ -3,6 +3,43 @@
 /* === Settings Panel === */
 .getnote-settings-react {
   padding: 0;
+  --getnote-primary-input-width: 360px;
+  --getnote-primary-input-min-width: 220px;
+  --getnote-secondary-input-width: 180px;
+  --getnote-secondary-input-min-width: 120px;
+  --getnote-nested-setting-gap: 12px;
+}
+
+.setting-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.setting-item-info {
+  min-width: 170px;
+  max-width: 220px;
+  flex-shrink: 0;
+}
+
+.setting-item-name {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.setting-item-description {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.setting-item-control {
+  display: flex;
+  justify-content: flex-end;
+  flex: 1;
+  min-width: 0;
 }
 
 .getnote-settings-header h2 {
@@ -29,8 +66,99 @@
   margin: 12px 0 4px;
 }
 
+.setting-item-control input[type="text"],
+.setting-item-control input[type="password"],
 .getnote-input {
-  width: 280px;
+  width: 100%;
+  max-width: var(--getnote-primary-input-width);
+  min-width: var(--getnote-primary-input-min-width);
+  box-sizing: border-box;
+}
+
+.getnote-date-input,
+.getnote-scheduled-row input[type="number"] {
+  width: var(--getnote-secondary-input-width);
+  max-width: var(--getnote-secondary-input-width);
+  min-width: var(--getnote-secondary-input-min-width);
+  box-sizing: border-box;
+}
+
+.getnote-credentials-control {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  max-width: var(--getnote-primary-input-width);
+}
+
+.getnote-primary-input-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.getnote-input-row {
+  position: relative;
+  width: 100%;
+  max-width: var(--getnote-primary-input-width);
+}
+
+.getnote-input-row .getnote-input {
+  width: 100%;
+  padding-right: 36px;
+  box-sizing: border-box;
+}
+
+.getnote-input-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+  opacity: 0.6;
+  z-index: 1;
+}
+
+.getnote-input-toggle:hover {
+  opacity: 1;
+}
+
+.getnote-credentials-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.getnote-credential-action-button {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.getnote-credentials-message {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.getnote-credentials-message-success {
+  color: var(--color-green);
+}
+
+.getnote-credentials-message-error {
+  color: var(--text-error);
 }
 
 .getnote-input-hint {
@@ -56,20 +184,45 @@
   margin-top: 4px;
 }
 
-.getnote-connection-success {
+.getnote-connection-success,
+.getnote-connection-error {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.getnote-connection-success {
   color: var(--color-green);
 }
 
 .getnote-connection-error {
-  font-size: 12px;
   color: var(--text-error);
+}
+
+.getnote-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.getnote-secondary-button {
+  min-width: 160px;
+}
+
+.getnote-sync-action-button {
+  /* size follows text */
 }
 
 .getnote-sync-status {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   padding: 8px 12px;
   background: var(--background-modifier-hover);
   border-radius: 4px;
@@ -82,16 +235,137 @@
 }
 
 /* === Scheduled Sync === */
+.getnote-scheduled-control {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: var(--getnote-primary-input-width);
+}
+
+.getnote-scheduled-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  width: 100%;
+}
+
 .getnote-scheduled-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 6px 0;
-  gap: 12px;
+  gap: var(--getnote-nested-setting-gap);
+  width: 100%;
+}
+
+.getnote-scheduled-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.getnote-scheduled-rows .getnote-scheduled-row-label {
+  text-align: right;
+}
+
+.getnote-scheduled-row-control {
+  display: flex;
+  flex: 0 0 var(--getnote-secondary-input-width);
+  justify-content: flex-end;
+  align-items: center;
+  min-width: var(--getnote-secondary-input-min-width);
+  text-align: right;
 }
 
 .getnote-scheduled-row input[type="number"] {
-  width: 80px;
+  width: var(--getnote-secondary-input-width);
+}
+
+.getnote-scheduled-date-row .getnote-date-input {
+  width: var(--getnote-secondary-input-width);
+}
+
+.getnote-sync-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: var(--getnote-primary-input-width);
+}
+
+.getnote-sync-history-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.getnote-sync-history-entry {
+  border-left: 3px solid var(--background-modifier-border);
+  padding: 6px 10px;
+  background: var(--background-modifier-hover);
+  border-radius: 4px;
+}
+
+.getnote-sync-history-entry.is-success {
+  border-left-color: var(--text-success);
+}
+
+.getnote-sync-history-entry.is-failed {
+  border-left-color: var(--text-error);
+}
+
+.getnote-sync-history-entry.is-cancelled {
+  border-left-color: var(--text-muted);
+}
+
+.getnote-sync-history-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-normal);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.getnote-sync-history-detail,
+.getnote-sync-history-error {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.getnote-sync-history-error {
+  color: var(--text-error);
+}
+
+@media (max-width: 700px) {
+  .setting-item {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .setting-item-info {
+    max-width: none;
+  }
+
+  .setting-item-control {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .getnote-credentials-control,
+  .getnote-scheduled-control {
+    max-width: none;
+  }
+
+  .getnote-actions-row,
+  .getnote-credentials-actions {
+    justify-content: flex-start;
+  }
 }
 
 /* === Note Picker Modal === */
@@ -129,6 +403,53 @@
   overflow-y: auto;
   min-height: 120px;
   padding: 8px 0;
+}
+
+/* === Manual Sync Modal === */
+.getnote-manual-sync-modal {
+  display: flex;
+  flex-direction: column;
+}
+
+.getnote-manual-sync-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 12px;
+}
+
+.getnote-manual-sync-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.getnote-manual-sync-field > span {
+  flex: 1 1 auto;
+  font-weight: 500;
+  text-align: right;
+}
+
+.getnote-sync-mode-selector {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.getnote-sync-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.getnote-sync-mode-option:has(input:checked) {
+  color: var(--text-normal);
+  font-weight: 500;
 }
 
 /* === Skeleton Loading === */
@@ -295,20 +616,27 @@
 .getnote-oauth-section {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  width: 100%;
+}
+
+.getnote-oauth-section > button {
+  margin-left: auto;
 }
 
 .getnote-oauth-loading {
   padding: 8px 12px;
   background: var(--background-modifier-hover);
   border-radius: 4px;
-  font-size: 13px;
+  box-sizing: border-box;
 }
 
 .getnote-oauth-code-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
 }
 
 .getnote-oauth-code-box {
@@ -341,18 +669,20 @@
 
 .getnote-oauth-actions {
   display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
+  width: 100%;
 }
 
 .getnote-oauth-success {
-  font-size: 13px;
+  justify-content: flex-end;
 }
 
 .getnote-oauth-error {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
 }
 
 /* === Sync Modal === */
@@ -370,4 +700,235 @@
   height: 100%;
   background: var(--interactive-accent);
   transition: width 0.3s ease;
+}
+
+
+.getnote-view-history-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.getnote-history-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.getnote-history-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.getnote-history-page-button {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.getnote-history-page-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.getnote-history-entry {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  overflow: hidden;
+}
+
+.getnote-history-header {
+  font-weight: 500;
+  padding: 12px 14px;
+  cursor: pointer;
+  background: var(--background-secondary);
+}
+
+.getnote-history-entry-body {
+  padding: 12px 14px 14px;
+}
+
+.getnote-history-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.getnote-history-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.getnote-history-meta-item {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--background-secondary);
+}
+
+.getnote-history-meta-label {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.getnote-history-meta-value {
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.getnote-history-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.getnote-history-summary-card {
+  padding: 8px;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 12px;
+  background: var(--background-secondary);
+}
+
+.getnote-history-summary-failed {
+  color: var(--text-error);
+}
+
+.getnote-history-entry-body h3 {
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.getnote-history-item-group {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 8px 0;
+}
+
+.getnote-history-item-summary {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.getnote-history-item-summary.failed {
+  color: var(--text-error);
+}
+
+.getnote-history-item-summary.created {
+  color: var(--text-success);
+}
+
+.getnote-history-item-summary.updated {
+  color: var(--interactive-accent);
+}
+
+.getnote-history-item-summary.synced {
+  color: var(--text-normal);
+}
+
+.getnote-history-item-summary.skipped {
+  color: var(--text-muted);
+}
+
+.getnote-history-synced-details {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 10px 0;
+}
+
+.getnote-history-write-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.getnote-history-write-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--background-secondary);
+}
+
+.getnote-history-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--background-primary);
+}
+
+.getnote-history-status-pill.created {
+  color: var(--text-success);
+}
+
+.getnote-history-status-pill.updated {
+  color: var(--interactive-accent);
+}
+
+.getnote-history-write-body {
+  min-width: 0;
+}
+
+.getnote-history-item-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.getnote-history-note-row {
+  margin: 6px 0;
+}
+
+.getnote-history-note-title {
+  display: block;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.getnote-history-note-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.getnote-history-item-empty {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.getnote-history-error {
+  font-size: 12px;
+  color: var(--text-error);
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.getnote-history-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .getnote-history-meta-grid,
+  .getnote-history-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .getnote-history-pagination {
+    justify-content: space-between;
+  }
 }

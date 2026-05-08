@@ -146,6 +146,62 @@ describe('generateDisplayTitle', () => {
   });
 });
 
+// ---- renderNote — audio note ----
+describe('renderNote — audio note', () => {
+  it('在正文前插入音频链接，并将转写文本追加到正文', () => {
+    const note: GetNoteNote = {
+      id: 1,
+      note_id: 'note_audio_001',
+      title: '我的录音',
+      content: '### 📑 智能总结\n这是AI摘要',
+      note_type: 'recorder_audio',
+      source: 'app',
+      tags: [],
+      created_at: '2026-04-30T12:45:24+08:00',
+      updated_at: '2026-04-30T13:00:07+08:00',
+      attachments: [
+        { type: 'audio', url: 'https://example.com/test.mp3', title: '', duration: 883920 },
+      ],
+      audio: '🟢 说话人1 [00:00:01]\n测试转写内容',
+    };
+
+    const result = renderNote(note);
+
+    // frontmatter 存在
+    expect(result).toMatch(/^---\n/);
+    expect(result).toContain('note_type: recorder_audio');
+
+    // frontmatter 之后、正文之前有音频链接
+    const audioLinkLine = '[🔊 录音](asset/我的录音.mp3)';
+    const summaryLine = '### 📑 智能总结';
+    const audioIdx = result.indexOf(audioLinkLine);
+    const summaryIdx = result.indexOf(summaryLine);
+    expect(audioIdx).toBeGreaterThan(0);
+    expect(audioIdx).toBeLessThan(summaryIdx);
+
+    // 转写文本在正文之后
+    expect(result).toContain('### 原始录音转写');
+    expect(result).toContain('说话人1 [00:00:01]');
+  });
+
+  it('无音频附件时行为不变', () => {
+    const note: GetNoteNote = {
+      id: 1,
+      note_id: 'note_001',
+      title: '普通笔记',
+      content: '正文内容',
+      note_type: 'plain_text',
+      source: 'app',
+      tags: [],
+      created_at: '2026-04-30T12:45:24+08:00',
+      updated_at: '2026-04-30T13:00:07+08:00',
+    };
+    const result = renderNote(note);
+    expect(result).not.toContain('asset/');
+    expect(result).toContain('正文内容');
+  });
+});
+
 // ---- formatTimestampPrefix ----
 describe('formatTimestampPrefix', () => {
   it('YYYY-MM-DD 格式', () => {

@@ -1,3 +1,18 @@
 node_modules/
 main.js
 main.js.map
+
+# Local agent/tooling state
+.superpowers/
+
+# Environment and local overrides
+.env
+.env.*
+!.env.example
+
+# Test/build output
+coverage/
+dist/
+
+# OS/editor noise
+.DS_Store

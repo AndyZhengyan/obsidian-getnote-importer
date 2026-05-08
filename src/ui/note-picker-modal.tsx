@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import type { GetNoteNote } from '../types';
-import { fetchNotes } from '../api';
+import { fetchNotes, GETNOTE_LIST_LIMIT } from '../api';
 import { generateDisplayTitle } from '../note-parser';
 import { t } from '../i18n';
 
@@ -70,7 +70,7 @@ export function NotePickerModal({ token, clientId, onConfirm, onCancel, abortSig
     setNotes([]);
     (async () => {
       try {
-        const result = await fetchNotes({ token, clientId, sinceId: '0', limit: 50, signal: abortSignal });
+        const result = await fetchNotes({ token, clientId, sinceId: '0', limit: GETNOTE_LIST_LIMIT, signal: abortSignal });
         setNotes(result.notes);
         setHasMore(result.hasMore);
         if (result.nextCursor) setCursor(result.nextCursor);
@@ -88,7 +88,7 @@ export function NotePickerModal({ token, clientId, onConfirm, onCancel, abortSig
   const loadNextPage = async () => {
     setLoadingMore(true);
     try {
-      const result = await fetchNotes({ token, clientId, sinceId: cursor, limit: 50, signal: abortSignal });
+      const result = await fetchNotes({ token, clientId, sinceId: cursor, limit: GETNOTE_LIST_LIMIT, signal: abortSignal });
       setNotes(prev => [...prev, ...result.notes]);
       setHasMore(result.hasMore);
       if (result.nextCursor) setCursor(result.nextCursor);
@@ -122,7 +122,6 @@ export function NotePickerModal({ token, clientId, onConfirm, onCancel, abortSig
   return (
     <div className="getnote-picker">
       <div className="getnote-picker-header">
-        <span>{t('picker.title')}</span>
         <div className="getnote-picker-actions">
           <button onClick={handleSelectAll}>{t('picker.selectAll')}</button>
           <button onClick={handleSelectNone}>{t('picker.selectNone')}</button>

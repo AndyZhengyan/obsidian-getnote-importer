@@ -2,18 +2,11 @@ import { useState, useCallback, useRef, useEffect } from 'preact/hooks';
 import { SettingItem } from './setting-item';
 import { SyncButton } from './sync-button';
 import { OAuthButton } from './oauth-button';
-import type { Settings, SyncProgressDetail, SyncResult } from '../types';
+import { openSyncHistoryModal } from '../ui/sync-history-modal';
+import type { Settings, SyncHistoryEntry, SyncProgressDetail } from '../types';
 import { App, AbstractInputSuggest } from 'obsidian';
 import { fetchNotes } from '../api';
 import { t } from '../i18n';
-
-type SyncStatus = 'idle' | 'syncing' | 'done' | 'error';
-
-interface SyncProgress {
-  status: SyncStatus;
-  result?: SyncResult;
-  errorMsg?: string;
-}
 
 const GITHUB_URL = 'https://github.com/AndyZhengyan/obsidian-getnote-importer';
 
@@ -46,7 +39,6 @@ class FolderSuggest extends AbstractInputSuggest<string> {
 interface SettingsComponentProps {
   settings: Settings;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
-  updateCredentials: (apiToken: string, clientId: string) => void;
   startSync: () => void;
   isSyncing: boolean;
   openNotePicker: () => void;
@@ -55,12 +47,13 @@ interface SettingsComponentProps {
   cancelSync: () => void;
   app: App;
   syncProgress?: SyncProgressDetail;
+  lastSyncTime?: number;
+  syncHistory?: SyncHistoryEntry[];
 }
 
 export function SettingsComponent({
   settings,
   updateSetting,
-  updateCredentials,
   startSync,
   isSyncing,
   openNotePicker,
@@ -69,19 +62,20 @@ export function SettingsComponent({
   cancelSync,
   app,
   syncProgress,
+  lastSyncTime,
+  syncHistory = [],
 }: SettingsComponentProps) {
   const [apiToken, setApiToken] = useState(settings.apiToken);
   const [clientId, setClientId] = useState(settings.clientId);
-  const [authMode, setAuthMode] = useState<'oauth' | 'manual'>(
-    settings.apiToken && settings.clientId ? 'manual' : 'oauth'
-  );
+  const [showApiToken, setShowApiToken] = useState(false);
   const [folderName, setFolderName] = useState(settings.folderName);
-  const [maxDays, setMaxDays] = useState(String(settings.maxDays));
   const [filenamePrefix, setFilenamePrefix] = useState(settings.filenamePrefix);
+  const [syncStartDate, setSyncStartDate] = useState(settings.syncStartDate);
   const [scheduledEnabled, setScheduledEnabled] = useState(settings.scheduledSync.enabled);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [connectionErrorMsg, setConnectionErrorMsg] = useState('');
+  const [intervalWarning, setIntervalWarning] = useState(false);
 
   const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -122,19 +116,18 @@ export function SettingsComponent({
     [updateSetting]
   );
 
-  const handleMaxDaysChange = useCallback(
-    (value: string) => {
-      setMaxDays(value);
-      const n = parseInt(value, 10);
-      updateSetting('maxDays', isNaN(n) || n < 0 ? 0 : n);
-    },
-    [updateSetting]
-  );
-
   const handleFilenamePrefixChange = useCallback(
     (value: string) => {
       setFilenamePrefix(value);
       updateSetting('filenamePrefix', value);
+    },
+    [updateSetting]
+  );
+
+  const handleSyncStartDateChange = useCallback(
+    (value: string) => {
+      setSyncStartDate(value);
+      updateSetting('syncStartDate', value);
     },
     [updateSetting]
   );
@@ -151,10 +144,19 @@ export function SettingsComponent({
 
   const handleScheduledInterval = (value: string) => {
     const n = parseInt(value, 10);
-    updateSetting('scheduledSync', {
-      ...settings.scheduledSync,
-      intervalMinutes: isNaN(n) || n < 5 ? 5 : n,
-    });
+    if (isNaN(n) || n < 5) {
+      setIntervalWarning(true);
+      updateSetting('scheduledSync', {
+        ...settings.scheduledSync,
+        intervalMinutes: 5,
+      });
+      setTimeout(() => setIntervalWarning(false), 3000);
+    } else {
+      updateSetting('scheduledSync', {
+        ...settings.scheduledSync,
+        intervalMinutes: n,
+      });
+    }
   };
 
   const handleScheduledOnStart = (checked: boolean) => {
@@ -168,9 +170,14 @@ export function SettingsComponent({
     try {
       await fetchNotes({ token: apiToken.trim(), clientId: clientId.trim(), sinceId: '0', limit: 1 });
       setConnectionStatus('success');
+      setTimeout(() => setConnectionStatus('idle'), 3000);
     } catch (err) {
       setConnectionStatus('error');
       setConnectionErrorMsg(err instanceof Error ? err.message : String(err));
+      setTimeout(() => {
+        setConnectionStatus('idle');
+        setConnectionErrorMsg('');
+      }, 3000);
     } finally {
       setTestingConnection(false);
     }
@@ -178,6 +185,26 @@ export function SettingsComponent({
 
   const hasCredentials = Boolean(apiToken.trim() && clientId.trim());
   const { scheduledSync } = settings;
+  const currentSyncHistory = syncHistory.length > 0 ? syncHistory : settings.syncHistory;
+
+  // Format last sync time
+  const formatLastSync = (timestamp?: number): string => {
+    if (!timestamp) return t('settings.lastSync.never');
+    const diff = Date.now() - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes}分钟前`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}小时前`;
+    return `${Math.floor(hours / 24)}天前`;
+  };
+
+  // Progress bar with # characters
+  const renderProgressBar = (percent: number): string => {
+    const total = 16;
+    const filled = Math.round((percent / 100) * total);
+    return '[' + '#'.repeat(filled) + '░'.repeat(total - filled) + ']';
+  };
 
   return (
     <div className="getnote-settings-react">
@@ -192,28 +219,39 @@ export function SettingsComponent({
         <div className="getnote-onboarding">{t('settings.onboarding')}</div>
       )}
 
-      {/* Client ID — first as per design */}
+      {/* 凭证设置 */}
       <SettingItem
-        name={t('settings.clientId.label')}
-        description={t('settings.clientId.desc')}
+        name={t('settings.credentials.label')}
+        description={t('settings.credentials.tip')}
       >
-        <div className="getnote-auth-section">
-          <div className="getnote-auth-toggle">
-            <button
-              className={authMode === 'oauth' ? 'mod-cta' : 'mod-secondary'}
-              onClick={() => setAuthMode('oauth')}
-            >
-              {t('oauth.label')}
-            </button>
-            <button
-              className={authMode === 'manual' ? 'mod-cta' : 'mod-secondary'}
-              onClick={() => setAuthMode('manual')}
-            >
-              {t('settings.authManual')}
-            </button>
+        <div className="getnote-credentials-control">
+          <div className="getnote-primary-input-stack">
+            <input
+              type="text"
+              className="getnote-input"
+              placeholder={t('settings.clientId.placeholder')}
+              value={clientId}
+              onInput={(e) => handleClientIdChange((e.target as HTMLInputElement).value)}
+            />
+            <div className="getnote-input-row">
+              <input
+                type={showApiToken ? 'text' : 'password'}
+                className="getnote-input"
+                placeholder={t('settings.apiToken.placeholder')}
+                value={apiToken}
+                onInput={(e) => handleApiTokenChange((e.target as HTMLInputElement).value)}
+              />
+              <button
+                type="button"
+                className="getnote-input-toggle"
+                onClick={() => setShowApiToken(!showApiToken)}
+                title={showApiToken ? t('settings.hideToken') : t('settings.showToken')}
+              >
+                {showApiToken ? '🔒' : '👁'}
+              </button>
+            </div>
           </div>
-
-          {authMode === 'oauth' && (
+          <div className="getnote-credentials-actions">
             <OAuthButton
               onAuthorize={(token, cid) => {
                 setApiToken(token);
@@ -221,50 +259,27 @@ export function SettingsComponent({
                 updateSetting('apiToken', token);
                 updateSetting('clientId', cid);
               }}
-              onSwitchToManual={() => setAuthMode('manual')}
             />
+            <button
+              className="mod-secondary getnote-credential-action-button"
+              disabled={testingConnection}
+              onClick={handleTestConnection}
+            >
+              {testingConnection ? t('settings.testingConnection') : t('settings.testConnection')}
+            </button>
+          </div>
+          {connectionStatus === 'success' && (
+            <span className="getnote-connection-success">{t('settings.connectionSuccess')}</span>
           )}
-
-          {authMode === 'manual' && (
-            <div className="getnote-manual-credentials">
-              <input
-                type="text"
-                className="getnote-input"
-                placeholder={t('settings.clientId.placeholder')}
-                value={clientId}
-                onInput={(e) => handleClientIdChange((e.target as HTMLInputElement).value)}
-              />
-              <input
-                type="password"
-                className="getnote-input"
-                placeholder={t('settings.apiToken.placeholder')}
-                value={apiToken}
-                onInput={(e) => handleApiTokenChange((e.target as HTMLInputElement).value)}
-              />
-              {hasCredentials && (
-                <div className="getnote-test-connection">
-                  <button
-                    className="mod-secondary"
-                    disabled={testingConnection}
-                    onClick={handleTestConnection}
-                  >
-                    {testingConnection ? t('settings.testingConnection') : t('settings.testConnection')}
-                  </button>
-                  {connectionStatus === 'success' && (
-                    <span className="getnote-connection-success">{t('settings.connectionSuccess')}</span>
-                  )}
-                  {connectionStatus === 'error' && (
-                    <span className="getnote-connection-error">
-                      {t('settings.connectionError')}{connectionErrorMsg ? `: ${connectionErrorMsg}` : ''}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
+          {connectionStatus === 'error' && (
+            <span className="getnote-connection-error">
+              {t('settings.connectionError')}{connectionErrorMsg ? `: ${connectionErrorMsg}` : ''}
+            </span>
           )}
         </div>
       </SettingItem>
 
+      {/* 目标文件夹 */}
       <SettingItem
         name={t('settings.folder.label')}
         description={t('settings.folder.desc')}
@@ -279,6 +294,7 @@ export function SettingsComponent({
         />
       </SettingItem>
 
+      {/* 文件名前缀 */}
       <SettingItem
         name={t('settings.prefix.label')}
         description={t('settings.prefix.desc')}
@@ -290,74 +306,122 @@ export function SettingsComponent({
           value={filenamePrefix}
           onInput={(e) => handleFilenamePrefixChange((e.target as HTMLInputElement).value)}
         />
-        <div className="getnote-input-hint">{t('settings.prefix.hint')}</div>
       </SettingItem>
 
-      <div className="getnote-section-header">
-        <span>{t('settings.scheduled.section')}</span>
-      </div>
+      <div className="getnote-settings-divider" />
 
       <SettingItem
         name={t('settings.scheduled.label')}
         description={t('settings.scheduled.desc')}
       >
-        <div className="getnote-scheduled-row">
-          <span>{t('settings.scheduled.enabled')}</span>
-          <input
-            type="checkbox"
-            checked={scheduledEnabled}
-            onChange={(e) => handleScheduledEnabled((e.target as HTMLInputElement).checked)}
-          />
-        </div>
-        <div
-          className="getnote-scheduled-rows"
-          style={{ display: scheduledEnabled ? undefined : 'none' }}
-        >
+        <div className="getnote-scheduled-control">
           <div className="getnote-scheduled-row">
-            <span>{t('settings.scheduled.interval')}</span>
-            <input
-              type="number"
-              min="5"
-              value={scheduledSync.intervalMinutes}
-              onInput={(e) => handleScheduledInterval((e.target as HTMLInputElement).value)}
-            />
-            <div className="getnote-input-hint">{t('settings.interval.hint')}</div>
-          </div>
-          <div className="getnote-scheduled-row">
-            <span>{t('settings.scheduled.onStart')}</span>
+            <span>{t('settings.scheduled.enabled')}</span>
             <input
               type="checkbox"
-              checked={scheduledSync.syncOnStart}
-              onChange={(e) => handleScheduledOnStart((e.target as HTMLInputElement).checked)}
+              checked={scheduledEnabled}
+              onChange={(e) => handleScheduledEnabled((e.target as HTMLInputElement).checked)}
             />
+          </div>
+          <div
+            className="getnote-scheduled-rows"
+            style={{ display: scheduledEnabled ? undefined : 'none' }}
+          >
+            <div className="getnote-scheduled-row">
+              <span className="getnote-scheduled-row-label">{t('settings.scheduled.interval')}</span>
+              <span className="getnote-scheduled-row-control">
+                <input
+                  type="number"
+                  min="5"
+                  value={scheduledSync.intervalMinutes}
+                  onInput={(e) => handleScheduledInterval((e.target as HTMLInputElement).value)}
+                />
+              </span>
+            </div>
+            {intervalWarning && (
+              <div className="getnote-input-hint" style={{ color: 'var(--text-error)' }}>
+                {t('settings.interval.minWarning')}
+              </div>
+            )}
+            <div className="getnote-scheduled-row">
+              <span className="getnote-scheduled-row-label">{t('settings.scheduled.onStart')}</span>
+              <span className="getnote-scheduled-row-control">
+                <input
+                  type="checkbox"
+                  checked={scheduledSync.syncOnStart}
+                  onChange={(e) => handleScheduledOnStart((e.target as HTMLInputElement).checked)}
+                />
+              </span>
+            </div>
+                        <div className="getnote-scheduled-row getnote-scheduled-date-row">
+              <span className="getnote-scheduled-row-label">{t('settings.syncStartDate.label')}</span>
+              <span className="getnote-scheduled-row-control">
+                <input
+                  type="date"
+                  className="getnote-input getnote-date-input"
+                  value={syncStartDate}
+                  onChange={(e) => handleSyncStartDateChange((e.target as HTMLInputElement).value)}
+                />
+              </span>
+            </div>
+            <div className="getnote-input-hint">{t('settings.syncStartDate.desc')}</div>
           </div>
         </div>
       </SettingItem>
 
-      <div className="getnote-settings-divider" />
-
-      <div className="getnote-section-header">
-        <span>{t('settings.manualSync.section')}</span>
-      </div>
-
-      <SettingItem name={t('settings.sync.label')} description={t('settings.sync.desc')}>
-        <SyncButton
-          hasCredentials={hasCredentials}
-          isSyncing={isSyncing}
-          onClick={startSync}
-        />
+      <SettingItem name={t('settings.manualSync')}>
+        <div className="getnote-actions-row">
+          <SyncButton
+            hasCredentials={hasCredentials}
+            isSyncing={isSyncing}
+            onClick={startSync}
+          />
+          <button
+            className="mod-secondary getnote-sync-action-button"
+            disabled={!hasCredentials || isSyncing}
+            onClick={openNotePicker}
+          >
+            {t('settings.syncPicker.button')}
+          </button>
+        </div>
       </SettingItem>
 
+      {/* 同步日志 */}
+      <SettingItem name={t('syncHistory.title')}>
+        <div className="getnote-sync-log-section">
+          <div className="getnote-scheduled-row">
+            <span className="getnote-scheduled-row-label">{t('settings.lastSync')}</span>
+            <span className="getnote-scheduled-row-control" style={{ color: 'var(--text-muted)' }}>
+              {formatLastSync(lastSyncTime)}
+            </span>
+          </div>
+          <div className="getnote-scheduled-row">
+            <span className="getnote-scheduled-row-label">{t('settings.syncStatus')}</span>
+            <span className="getnote-scheduled-row-control" style={{ color: isSyncing ? 'var(--interactive-accent)' : 'var(--text-muted)' }}>
+              {isSyncing ? t('syncHistory.status.syncing') : t('syncHistory.status.idle')}
+            </span>
+          </div>
+          <button
+            className="mod-secondary"
+            onClick={() => openSyncHistoryModal(app, currentSyncHistory)}
+          >
+            {t('syncHistory.view')}
+          </button>
+        </div>
+      </SettingItem>
+
+      {/* 同步进度条 */}
       {isSyncing && (
         <div className="getnote-sync-status">
-          <div className="getnote-sync-status-row">
-            <span>{syncProgress?.message || t('sync.syncing')}</span>
-            <button className="mod-warning" onClick={cancelSync}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontFamily: 'monospace' }}>{syncProgress?.message || t('sync.syncing')}</span>
+            <button className="mod-warning" onClick={cancelSync} style={{ fontSize: '12px', padding: '4px 10px' }}>
               {t('modal.cancel')}
             </button>
           </div>
-          <div className="getnote-progress-bar" style={{ height: '4px', margin: '6px 0', background: 'var(--background-modifier-border)', borderRadius: '2px', overflow: 'hidden' }}>
-            <div className="getnote-progress-fill" style={{ width: `${syncProgress?.percent ?? 0}%`, height: '100%', background: 'var(--interactive-accent)', transition: 'width 0.3s ease' }} />
+          <div style={{ fontFamily: 'monospace', fontSize: '14px', letterSpacing: '1px', marginBottom: '6px' }}>
+            <span style={{ color: 'var(--interactive-accent)' }}>{renderProgressBar(syncProgress?.percent ?? 0)}</span>
+            <span style={{ marginLeft: '8px', fontWeight: 'bold' }}>{syncProgress?.percent ?? 0}%</span>
           </div>
           {syncProgress?.count && (
             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{syncProgress.count}</div>
@@ -365,11 +429,6 @@ export function SettingsComponent({
         </div>
       )}
 
-      <SettingItem name={t('settings.syncPicker.label')} description={t('settings.syncPicker.desc')}>
-        <button className="mod-secondary" onClick={openNotePicker}>
-          {t('settings.syncPicker.button')}
-        </button>
-      </SettingItem>
     </div>
   );
 }

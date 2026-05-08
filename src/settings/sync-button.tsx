@@ -1,4 +1,3 @@
-import { useState } from 'preact/hooks';
 import { t } from '../i18n';
 
 interface SyncButtonProps {
@@ -8,11 +7,9 @@ interface SyncButtonProps {
 }
 
 export function SyncButton({ hasCredentials, isSyncing, onClick }: SyncButtonProps) {
-  const [hovered, setHovered] = useState(false);
-
   if (isSyncing) {
     return (
-      <button className="mod-cta" disabled>
+      <button className="mod-secondary getnote-sync-action-button" disabled>
         {t('sync.syncing')}
       </button>
     );
@@ -20,7 +17,7 @@ export function SyncButton({ hasCredentials, isSyncing, onClick }: SyncButtonPro
 
   if (!hasCredentials) {
     return (
-      <button className="mod-warning" disabled>
+      <button className="mod-secondary getnote-sync-action-button" disabled>
         {t('sync.noCredentials')}
       </button>
     );
@@ -28,10 +25,8 @@ export function SyncButton({ hasCredentials, isSyncing, onClick }: SyncButtonPro
 
   return (
     <button
-      className={`mod-cta${hovered ? ' is-hovered' : ''}`}
+      className="mod-secondary getnote-sync-action-button"
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
       {t('sync.start')}
     </button>

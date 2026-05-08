@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { fetchNotes } from '../src/api';
+import { describe, it, expect, vi } from 'vitest';
+import { fetchNotes, fetchNoteDetail, GETNOTE_LIST_LIMIT } from '../src/api';
 import type { ListResponse } from '../src/types';
 
 // Extract the internal safeJsonParse for direct testing
@@ -65,32 +65,85 @@ describe('safeJsonParse', () => {
   });
 });
 
-describe('fetchNotes', () => {
-  it('构建正确的请求 URL 和 headers', async () => {
-    const responses: Response[] = [];
-
-    // Use a fake fetch that captures the request and returns empty data
-    global.fetch = async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      responses.push(
-        new Response(
-          JSON.stringify({
-            data: { notes: [], has_more: false, next_cursor: '' },
-          }),
-          { status: 200 }
-        )
-      );
-      return Promise.resolve(responses[responses.length - 1]);
+describe('fetchNoteDetail', () => {
+  it('返回指定 id 的笔记详情，包含 attachments 字段', async () => {
+    const mockResponse = {
+      success: true,
+      data: {
+        id: '1908723638246504120',
+        note_id: '1908723638246504120',
+        title: '测试录音',
+        content: 'AI 摘要',
+        note_type: 'recorder_audio',
+        source: 'app',
+        tags: [],
+        attachments: [
+          {
+            type: 'audio',
+            url: 'https://mediacdn.umiwi.com/voicenotes%2Ftest.mp3?Expires=1778291785&Signature=abc',
+            title: '',
+            duration: 883920,
+          },
+        ],
+        audio: '🟢 说话人1 [00:00:01]\n测试内容',
+        created_at: '2026-04-30 12:45:24',
+        updated_at: '2026-04-30 13:00:07',
+      },
     };
 
-    await fetchNotes({
-      token: 'test-token',
-      clientId: 'test-client',
-      sinceId: '0',
-      limit: 50,
-    });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: () => Promise.resolve(JSON.stringify(mockResponse)),
+    }) as any;
 
-    // Check that fetch was called
-    expect(responses.length).toBe(1);
+    const result = await fetchNoteDetail('1908723638246504120', 'test-token', 'test-client');
+    expect(result.attachments).toHaveLength(1);
+    expect(result.attachments![0].type).toBe('audio');
+    expect(result.audio).toContain('说话人1');
+  });
+
+  it('笔记不存在时抛出错误', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: () => Promise.resolve(JSON.stringify({ success: false, error: { message: '笔记不存在' } })),
+    }) as any;
+
+    await expect(fetchNoteDetail('not-exist', 'test-token', 'test-client')).rejects.toThrow('笔记不存在');
+  });
+});
+
+describe('fetchNotes limit', () => {
+  function mockListResponse() {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: () => Promise.resolve(JSON.stringify({
+        data: { notes: [], has_more: false, next_cursor: '' },
+      } satisfies ListResponse)),
+    }) as any;
+  }
+
+  it('默认按 GetNote list API 最大 20 条请求', async () => {
+    mockListResponse();
+
+    await fetchNotes({ token: 'test-token', clientId: 'test-client' });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining(`limit=${GETNOTE_LIST_LIMIT}`),
+      expect.any(Object)
+    );
+  });
+
+  it('外部误传超过 20 的 limit 时会压到 20', async () => {
+    mockListResponse();
+
+    await fetchNotes({ token: 'test-token', clientId: 'test-client', limit: 50 });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining(`limit=${GETNOTE_LIST_LIMIT}`),
+      expect.any(Object)
+    );
   });
 });

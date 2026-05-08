@@ -52,6 +52,10 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.scheduledSync.enabled).toBe(false);
   });
 
+  it('syncHistory 默认空数组', () => {
+    expect(DEFAULT_SETTINGS.syncHistory).toEqual([]);
+  });
+
   it('scheduledSync 默认间隔 30 分钟', () => {
     expect(DEFAULT_SETTINGS.scheduledSync.intervalMinutes).toBe(30);
   });

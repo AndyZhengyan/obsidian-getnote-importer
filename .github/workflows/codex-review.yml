@@ -96,7 +96,7 @@ jobs:
         env:
           CODEX_FINAL_MESSAGE: ${{ needs.codex.outputs.final_message }}
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.CODEX_REVIEW_TOKEN || github.token }}
           script: |
             const finalMessage = (process.env.CODEX_FINAL_MESSAGE || '').trim();
             const verdictMatch = finalMessage.match(/^\s*VERDICT:\s*(APPROVE|REQUEST_CHANGES|COMMENT)\b/i);

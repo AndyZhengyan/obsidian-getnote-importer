@@ -1,0 +1,131 @@
+name: Codex AutoMerge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted, dismissed]
+  check_suite:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number to evaluate
+        required: true
+        type: number
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: codex-automerge-${{ github.event.pull_request.number || github.event.check_suite.pull_requests[0].number || inputs.pull_request }}
+  cancel-in-progress: false
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate and merge eligible PRs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.CODEX_MERGE_TOKEN || github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber =
+              context.payload.pull_request?.number ||
+              context.payload.check_suite?.pull_requests?.[0]?.number ||
+              Number('${{ inputs.pull_request || 0 }}');
+
+            if (!prNumber) {
+              core.info('No pull request found for this event.');
+              return;
+            }
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: prNumber,
+            });
+
+            const labels = pr.labels.map((label) => label.name);
+            if (!labels.includes('ai-automerge')) {
+              core.info('Skipping: ai-automerge label is not present.');
+              return;
+            }
+            if (pr.draft) {
+              core.info('Skipping: pull request is draft.');
+              return;
+            }
+            if (pr.state !== 'open') {
+              core.info(`Skipping: pull request is ${pr.state}.`);
+              return;
+            }
+            if (pr.base.ref !== 'main') {
+              core.info(`Skipping: base branch is ${pr.base.ref}.`);
+              return;
+            }
+
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner,
+              repo,
+              pull_number: prNumber,
+              per_page: 100,
+            });
+            const latestReviewByUser = new Map();
+            for (const review of reviews) {
+              latestReviewByUser.set(review.user.login, review);
+            }
+            const latestReviews = [...latestReviewByUser.values()];
+            const hasApproval = latestReviews.some((review) => review.state === 'APPROVED');
+            const hasChangesRequested = latestReviews.some((review) => review.state === 'CHANGES_REQUESTED');
+
+            if (!hasApproval) {
+              core.info('Skipping: no approval found.');
+              return;
+            }
+            if (hasChangesRequested) {
+              core.info('Skipping: changes requested.');
+              return;
+            }
+
+            const { data: combinedStatus } = await github.rest.repos.getCombinedStatusForRef({
+              owner,
+              repo,
+              ref: pr.head.sha,
+            });
+            if (combinedStatus.state !== 'success') {
+              core.info(`Skipping: combined status is ${combinedStatus.state}.`);
+              return;
+            }
+
+            const { data: checkRuns } = await github.rest.checks.listForRef({
+              owner,
+              repo,
+              ref: pr.head.sha,
+              per_page: 100,
+            });
+            const blockingRuns = checkRuns.check_runs.filter((run) => {
+              if (run.name === 'Codex AutoMerge') return false;
+              return run.status !== 'completed' || run.conclusion !== 'success';
+            });
+            if (blockingRuns.length > 0) {
+              core.info(`Skipping: blocking check runs: ${blockingRuns.map((run) => run.name).join(', ')}`);
+              return;
+            }
+
+            try {
+              await github.rest.pulls.merge({
+                owner,
+                repo,
+                pull_number: prNumber,
+                merge_method: 'squash',
+              });
+              core.info(`Merged PR #${prNumber}.`);
+            } catch (error) {
+              core.info(`GitHub refused merge: ${error.message}`);
+            }

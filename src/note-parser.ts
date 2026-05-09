@@ -15,7 +15,7 @@ export function formatDateTime(iso: string): string {
 /**
  * 过滤内容中的非法文件名字符
  */
-function sanitizeTitle(title: string): string {
+function sanitizeTitle(title: string | undefined | null): string {
   if (!title || !title.trim()) return '';
   return title.replace(/[\\/:*?"<>|]/g, '').trim();
 }
@@ -42,7 +42,7 @@ export function generateDisplayTitle(note: GetNoteNote): string {
   if (note.title && note.title.trim()) {
     return sanitizeTitle(note.title);
   }
-  return sanitizeTitle(fallbackTitle(note.content));
+  return sanitizeTitle(fallbackTitle(note.content || ''));
 }
 
 /**
@@ -72,7 +72,7 @@ function buildFrontmatter(note: GetNoteNote): string {
   const tagBlock = tags ? `[${tags}]` : '[]';
 
   const title = sanitizeTitle(note.title) ||
-    note.content.slice(0, 10).replace(/"/g, '\\"').replace(/\n/g, ' ');
+    (note.content || '').slice(0, 10).replace(/"/g, '\\"').replace(/\n/g, ' ');
 
   const lines = [
     '---',
@@ -98,8 +98,8 @@ export function renderNote(note: GetNoteNote): string {
   let body = note.content || '';
 
   if (note.attachments?.some(a => a.type === 'audio') && note.audio) {
-    const filename = generateDisplayTitle(note) + '.mp3';
-    const audioLink = `[🔊 录音](asset/${filename})\n`;
+    const filename = generateDisplayTitle(note);
+    const audioLink = `[🔊 录音](asset/${filename}.mp3)\n[📝 转写](asset/${filename}.md)\n`;
     const transcriptHeader = '\n\n---\n\n### 原始录音转写\n\n';
     body = audioLink + body + transcriptHeader + note.audio;
   }
@@ -114,6 +114,7 @@ export function getNoteTitle(note: GetNoteNote): string {
   if (note.title && note.title.trim()) {
     return note.title.trim();
   }
-  const preview = note.content.slice(0, 10).replace(/\n/g, ' ');
-  return preview + (note.content.length > 10 ? '...' : '');
+  const content = note.content || '';
+  const preview = content.slice(0, 10).replace(/\n/g, ' ');
+  return preview + (content.length > 10 ? '...' : '');
 }

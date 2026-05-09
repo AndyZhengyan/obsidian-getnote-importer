@@ -112,7 +112,6 @@ export default class GetNoteSyncPlugin extends Plugin {
       this.startAutoSync();
     }
 
-    console.log(t('console.loaded'));
   }
 
   onunload(): void {

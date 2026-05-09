@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian';
+import { App, requestUrl, TFile } from 'obsidian';
 import { fetchAllNotes, fetchNoteDetail } from './api';
 import { formatDateTime, formatTimestampPrefix, renderNote, generateDisplayTitle } from './note-parser';
 import { getCategoryDir } from './types';
@@ -136,16 +136,40 @@ export class SyncEngine {
       // Skip already-existing files
       if (this.app.vault.getAbstractFileByPath(targetPath)) return targetPath;
 
-      const res = await fetch(attachment.url);
-      if (!res.ok) {
+      const res = await requestUrl({ url: attachment.url, throw: false });
+      if (res.status < 200 || res.status >= 300) {
         console.error(`[GetNote] Audio download failed: ${res.status} ${attachment.url}`);
         return null;
       }
-      const blob = await res.arrayBuffer();
-      await this.app.vault.createBinary(targetPath, blob);
+      await this.app.vault.createBinary(targetPath, res.arrayBuffer);
       return targetPath;
     } catch (err) {
       console.error(`[GetNote] Audio download error:`, err);
+      return null;
+    }
+  }
+
+  private async writeAudioTranscriptAsset(note: GetNoteNote): Promise<string | null> {
+    if (!note.audio) return null;
+
+    try {
+      const categoryDir = await this.ensureCategoryDir(getCategoryDir(note.note_type));
+      const assetDir = `${categoryDir}/asset`;
+      if (!this.app.vault.getAbstractFileByPath(assetDir)) {
+        await this.app.vault.createFolder(assetDir);
+      }
+
+      const targetPath = `${assetDir}/${this.getFileName(note)}.md`;
+      const content = `# ${generateDisplayTitle(note) || t('picker.noTitle')}\n\n${note.audio}`;
+      const existing = this.app.vault.getAbstractFileByPath(targetPath);
+      if (existing instanceof TFile) {
+        await this.app.vault.modify(existing, content);
+      } else {
+        await this.app.vault.create(targetPath, content);
+      }
+      return targetPath;
+    } catch (err) {
+      console.error('[GetNote] Audio transcript write error:', err);
       return null;
     }
   }
@@ -272,17 +296,12 @@ export class SyncEngine {
         signal
       );
       const attachment = noteDetail.attachments?.find(a => a.type === 'audio');
-      console.log(
-        `[GetNote] Audio note detail [${note.note_id}]: attachments=${noteDetail.attachments?.length ?? 0}`,
-        'audio=',
-        noteDetail.audio ? 'present' : 'missing'
-      );
       if (attachment) {
-        const downloaded = await this.downloadAudioAsset(noteDetail, attachment);
-        console.log(`[GetNote] Audio download result [${note.note_id}]:`, downloaded ?? 'FAILED');
+        await this.downloadAudioAsset(noteDetail, attachment);
       } else {
         console.warn(`[GetNote] No audio attachment found in note detail [${note.note_id}]`);
       }
+      await this.writeAudioTranscriptAsset(noteDetail);
       return noteDetail;
     } catch (err) {
       console.warn(`[GetNote] Failed to enrich audio note ${note.note_id}:`, err);

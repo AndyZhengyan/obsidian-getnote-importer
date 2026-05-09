@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as obsidian from 'obsidian';
 import { SyncEngine } from '../src/sync';
 import type { Settings, GetNoteNote } from '../src/types';
 
@@ -246,45 +247,57 @@ describe('SyncEngine — audio note sync', () => {
 
   it('音频笔记下载附件到 asset 目录，md 内嵌音频链接', async () => {
     const createdFiles: string[] = [];
-    const originalFetch = global.fetch;
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    let callCount = 0;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
-    global.fetch = vi.fn().mockImplementation((url: string | URL) => {
-      const urlStr = url instanceof URL ? url.toString() : String(url);
+    const requestSpy = vi.spyOn(obsidian, 'requestUrl').mockImplementation((request: any) => {
+      const urlStr = typeof request === 'string' ? request : request.url;
       if (urlStr.includes('/resource/note/list')) {
         return Promise.resolve({
-          ok: true,
-          headers: new Headers({ 'content-type': 'application/json' }),
-          text: () => Promise.resolve(JSON.stringify({
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+          text: JSON.stringify({
             data: { notes: [audioNote], has_more: false, next_cursor: '' },
-          })),
-        } as unknown as Response);
+          }),
+          json: { data: { notes: [audioNote], has_more: false, next_cursor: '' } },
+          arrayBuffer: new ArrayBuffer(0),
+        });
       }
       if (urlStr.includes('/resource/note/detail')) {
         return Promise.resolve({
-          ok: true,
-          headers: new Headers({ 'content-type': 'application/json' }),
-          text: () => Promise.resolve(JSON.stringify({
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+          text: JSON.stringify({
             success: true,
             data: {
               ...audioNote,
               attachments: [{ type: 'audio', url: 'https://cdn.example.com/test.mp3', title: '', duration: 883920 }],
               audio: '🟢 说话人1 [00:00:01]\n转写内容',
             },
-          })),
-        } as unknown as Response);
+          }),
+          json: null,
+          arrayBuffer: new ArrayBuffer(0),
+        });
       }
       if (urlStr.includes('cdn.example.com')) {
-        return Promise.resolve(new Response(new ArrayBuffer(1024)));
+        return Promise.resolve({
+          status: 200,
+          headers: {},
+          text: '',
+          json: null,
+          arrayBuffer: new ArrayBuffer(1024),
+        });
       }
-      return originalFetch(url);
+      throw new Error(`Unexpected request: ${urlStr}`);
     }) as any;
 
     const mockApp = makeMockApp();
     mockApp.vault.create = vi.fn().mockImplementation(async (path: string) => {
       createdFiles.push(path);
       return { path };
+    });
+    mockApp.vault.modify = vi.fn().mockImplementation(async (_file: { path: string }, data: string) => {
+      createdFiles.push(`[modify:${data.slice(0, 20)}]`);
     });
     mockApp.vault.createBinary = vi.fn().mockImplementation(async (path: string) => {
       createdFiles.push(path);
@@ -296,6 +309,13 @@ describe('SyncEngine — audio note sync', () => {
 
     // 验证 asset 目录被创建/写入
     expect(createdFiles.some(f => f.includes('/asset/'))).toBe(true);
+    expect(createdFiles).toContain('Get笔记/录音长录/asset/我的录音笔记.mp3');
+    expect(createdFiles).toContain('Get笔记/录音长录/asset/我的录音笔记.md');
+    expect(requestSpy).toHaveBeenCalledWith(expect.objectContaining({
+      url: 'https://cdn.example.com/test.mp3',
+      throw: false,
+    }));
+    expect(fetchSpy).not.toHaveBeenCalledWith('https://cdn.example.com/test.mp3');
     // 验证 md 文件被创建
     expect(createdFiles.some(f => f.endsWith('.md'))).toBe(true);
     expect(result.items).toEqual([
@@ -307,16 +327,21 @@ describe('SyncEngine — audio note sync', () => {
         status: 'created',
       }),
     ]);
-    expect(logSpy.mock.calls.flat().join(' ')).not.toContain('https://cdn.example.com/test.mp3');
+    expect(logSpy).not.toHaveBeenCalled();
 
     logSpy.mockRestore();
-    global.fetch = originalFetch;
+    fetchSpy.mockRestore();
   });
 
   it('拒绝下载非 HTTPS 音频附件', async () => {
-    const originalFetch = global.fetch;
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    global.fetch = vi.fn().mockResolvedValue(new Response(new ArrayBuffer(1024))) as any;
+    const requestSpy = vi.spyOn(obsidian, 'requestUrl').mockResolvedValue({
+      status: 200,
+      headers: {},
+      text: '',
+      json: null,
+      arrayBuffer: new ArrayBuffer(1024),
+    });
 
     const mockApp = makeMockApp();
     const engine = new SyncEngine(mockApp as any, makeSettings());
@@ -330,12 +355,11 @@ describe('SyncEngine — audio note sync', () => {
     });
 
     expect(result).toBeNull();
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(requestSpy).not.toHaveBeenCalled();
     expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
     expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('http://127.0.0.1/private.mp3');
 
     warnSpy.mockRestore();
-    global.fetch = originalFetch;
   });
 });
 
@@ -346,13 +370,14 @@ describe('SyncEngine — selective sync cancellation', () => {
       makeNote({ note_id: 'select_2', title: '选择 2' }),
     ];
 
-    const originalFetch = global.fetch;
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      text: () => Promise.resolve(JSON.stringify({
+    vi.spyOn(obsidian, 'requestUrl').mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      text: JSON.stringify({
         data: { notes, has_more: false, next_cursor: '' },
-      })),
+      }),
+      json: { data: { notes, has_more: false, next_cursor: '' } },
+      arrayBuffer: new ArrayBuffer(0),
     }) as any;
 
     const mockApp = makeMockApp();
@@ -364,7 +389,5 @@ describe('SyncEngine — selective sync cancellation', () => {
 
     await expect(engine.syncNoteIds(['select_1', 'select_2'])).rejects.toThrow('Sync cancelled');
     expect(mockApp.vault.create).toHaveBeenCalledTimes(1);
-
-    global.fetch = originalFetch;
   });
 });

@@ -1,3 +1,4 @@
+import { requestUrl } from 'obsidian';
 import type { ListResponse, GetNoteNote } from './types';
 import { t } from './i18n';
 
@@ -12,20 +13,34 @@ function safeJsonParse(text: string): unknown {
   return JSON.parse(safe);
 }
 
+function getHeader(headers: Record<string, string>, name: string): string | undefined {
+  const lowerName = name.toLowerCase();
+  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === lowerName);
+  return entry?.[1];
+}
+
 async function apiRequest<T>(
   url: string,
   options: RequestInit,
   retries = 1,
   signal?: AbortSignal
 ): Promise<T> {
-  const res = await fetch(url, {
-    ...options,
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> | undefined),
+  };
+
+  const res = await requestUrl({
+    url,
+    method: options.method,
+    headers,
+    body: options.body as string | ArrayBuffer | undefined,
+    throw: false,
   });
+
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
   if (res.status === 401) {
     throw new Error(t('error.invalidCredentials'));
@@ -33,8 +48,8 @@ async function apiRequest<T>(
 
   if (res.status === 429) {
     // Check for Retry-After header or rate limit info
-    const retryAfter = res.headers.get('Retry-After');
-    const limitRemaining = res.headers.get('X-RateLimit-Remaining');
+    const retryAfter = getHeader(res.headers, 'Retry-After');
+    const limitRemaining = getHeader(res.headers, 'X-RateLimit-Remaining');
 
     // If we got a "quota exhausted" signal (remaining: 0 or no retry-after), stop immediately
     if ((limitRemaining === '0' || !retryAfter) && retries > 0) {
@@ -55,13 +70,11 @@ async function apiRequest<T>(
     throw new Error(t('error.apiFailed', { status: 429, msg: 'Rate limit exceeded' }));
   }
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(t('error.apiFailed', { status: res.status, msg: text }));
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(t('error.apiFailed', { status: res.status, msg: res.text }));
   }
 
-  const text = await res.text();
-  return safeJsonParse(text) as T;
+  return safeJsonParse(res.text) as T;
 }
 
 export interface FetchNotesOptions {
@@ -138,19 +151,23 @@ export interface OAuthTokenResponse {
 export async function fetchOAuthDeviceCode(
   signal?: AbortSignal
 ): Promise<OAuthDeviceCodeResponse> {
-  const res = await fetch(`${BASE_URL}/oauth/device/code`, {
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+  const res = await requestUrl({
+    url: `${BASE_URL}/oauth/device/code`,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_id: 'cli_a1b2c3d4e5f6789012345678abcdef90' }),
-    signal,
+    throw: false,
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(t('error.oauthDeviceCodeFailed', { status: res.status, msg: text }));
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(t('error.oauthDeviceCodeFailed', { status: res.status, msg: res.text }));
   }
 
-  const json = await res.json() as Record<string, unknown>;
+  const json = safeJsonParse(res.text) as Record<string, unknown>;
 
   // Support both { success, data } wrapper and flat response
   const source = (json.data ?? json) as Record<string, unknown>;
@@ -209,7 +226,8 @@ export async function pollOAuthToken(
   for (let i = 0; i < maxAttempts; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    const res = await fetch(`${BASE_URL}/oauth/token`, {
+    const res = await requestUrl({
+      url: `${BASE_URL}/oauth/token`,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -217,14 +235,15 @@ export async function pollOAuthToken(
         client_id: 'cli_a1b2c3d4e5f6789012345678abcdef90',
         code,
       }),
-      signal,
+      throw: false,
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(t('error.apiFailed', { status: res.status, msg: text }));
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(t('error.apiFailed', { status: res.status, msg: res.text }));
     }
-    const json = await res.json() as Record<string, unknown>;
+    const json = safeJsonParse(res.text) as Record<string, unknown>;
     const parsed = parseOAuthTokenResponse(json);
 
     if (parsed.isSuccess) {

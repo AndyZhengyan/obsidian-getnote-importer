@@ -1,138 +1,272 @@
 # GetNote Importer
 
-[![Obsidian Plugin](https://img.shields.io/badge/Obsidian-Plugin-blueviolet?style=flat-square)](https://obsidian.md)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/AndyZhengyan/obsidian-getnote-importer?style=flat-square)](https://github.com/AndyZhengyan/obsidian-getnote-importer/releases)
-[![GitHub stars](https://img.shields.io/github/stars/AndyZhengyan/obsidian-getnote-importer?style=flat-square)](https://github.com/AndyZhengyan/obsidian-getnote-importer)
+[![Obsidian Plugin](https://img.shields.io/badge/Obsidian-Plugin-7c3aed?style=flat-square)](https://obsidian.md)
+[![Latest Release](https://img.shields.io/github/v/release/AndyZhengyan/obsidian-getnote-importer?style=flat-square)](https://github.com/AndyZhengyan/obsidian-getnote-importer/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/AndyZhengyan/obsidian-getnote-importer/ci.yml?branch=main&style=flat-square)](https://github.com/AndyZhengyan/obsidian-getnote-importer/actions)
 [![License](https://img.shields.io/github/license/AndyZhengyan/obsidian-getnote-importer?style=flat-square)](LICENSE)
 
-> 将 Get笔记 App 的笔记同步到 Obsidian 本地 vault，支持增量同步、自动定时同步和选择性同步。
+Bring your GetNote ideas, highlights, links, recordings, and AI summaries into Obsidian as clean, searchable Markdown.
 
-![](./images/demo.gif)
+中文：把 Get笔记里的灵感、摘录、链接、录音和 AI 总结同步进 Obsidian，变成可长期整理、搜索和链接的本地 Markdown 知识库。
 
-## 功能
+GetNote Importer is an Obsidian plugin for people who capture in GetNote but think, connect, and build in Obsidian. It keeps imports readable from day one: title-based filenames, type-based folders, source metadata in frontmatter, incremental updates, selective sync, scheduled sync, and detailed sync history.
 
-| 功能 | 说明 |
-|------|------|
-| **增量同步** | 只拉取新增或修改的笔记，不重复写入 |
-| **选择性同步** | 先勾选要同步的笔记，再执行同步 |
-| **定时自动同步** | 可配置间隔，后台静默同步 |
-| **按类型分类** | 自动按纯文本 / 链接笔记 / 录音等分类存放 |
-| **标题文件名** | 使用笔记标题作为文件名，易于辨认 |
-| **时间戳前缀** | 可配置时间戳前缀（如 `YYYY-MM-DD`），文件名更整洁 |
-| **冲突处理** | 标题重复时自动加数字后缀，不会覆盖不同笔记 |
-| **迁移友好** | 笔记内容变化时自动重命名文件，保留笔记位置 |
+中文：GetNote Importer 适合把 Get笔记作为快速捕捉入口、把 Obsidian 作为长期知识库的人。插件会用可读文件名、分类目录、frontmatter、增量更新、选择性同步和同步历史，尽量让导入内容从第一天就能融入你的 vault。
 
-## 安装
+## Why It Feels Good
 
-### 方法一：BRAT（推荐）
+- **Readable files, not dumped data**: notes are named from their titles and organized by note type.  
+  中文：导入后不是一堆难认的数据文件，而是按标题命名、按类型归档的 Markdown。
+- **Incremental by default**: unchanged notes are skipped; updated notes are refreshed.  
+  中文：默认增量同步，没变的不重复写，变了的才更新。
+- **Selective when you need control**: pick exactly which notes to bring into Obsidian.  
+  中文：需要精细整理时，可以只勾选指定笔记同步。
+- **Scheduled when you want peace of mind**: keep the vault fresh in the background.  
+  中文：支持定时同步，也可以在 Obsidian 启动时自动同步。
+- **Audio-aware**: recording notes can include downloaded audio assets and transcript content when the GetNote API provides them.  
+  中文：当 Get笔记 API 返回录音附件和转写时，插件会尝试保存音频并写入转写内容。
+- **Mobile-friendly networking**: API calls use Obsidian `requestUrl`, keeping the plugin suitable for desktop and mobile Obsidian.  
+  中文：网络请求使用 Obsidian `requestUrl`，保留桌面端和移动端兼容性。
 
-1. 在 Obsidian 中安装 **BRAT** 社区插件
-2. 点击 `Settings → Community Plugins → BRAT → Add a beta plugin`
-3. 填入仓库地址：`https://github.com/AndyZhengyan/obsidian-getnote-importer`
-4. 启用 GetNote Importer 插件
+## Features
 
-### 方法二：手动安装
+| Feature | Description | 中文 |
+| --- | --- | --- |
+| Incremental sync | Create new notes, update changed notes, skip unchanged notes | 增量同步新增、更新和跳过未变化内容 |
+| Selective sync | Choose notes from a picker before importing | 从列表中选择指定笔记同步 |
+| Scheduled sync | Sync in the background on an interval | 按间隔自动后台同步 |
+| Startup sync | Optionally sync once when Obsidian starts | Obsidian 启动时可自动同步一次 |
+| Type-based folders | Plain text, links, recordings, local audio, and unknown types are grouped separately | 按纯文本、链接、录音、本地音频等分类 |
+| Title-based filenames | Uses note titles first, then content previews as fallback | 优先使用标题，没有标题则从正文生成 |
+| Date prefixes | Supports patterns like `YYYY-MM-DD` and `YYYYMMDD_HHmm` | 支持日期时间前缀 |
+| Conflict protection | Avoids overwriting different notes with the same title | 同名不同笔记自动加后缀 |
+| Sync history | Shows per-note created, updated, skipped, and failed results | 同步历史展示逐条笔记结果 |
 
-1. 从 [GitHub Releases](https://github.com/AndyZhengyan/obsidian-getnote-importer/releases/latest) 下载最新版本的 `main.js`、`manifest.json`、`styles.css`
-2. 放入 `.obsidian/plugins/obsidian-getnote-importer/` 目录
-3. 在 `Settings → Community Plugins` 中启用
+## Installation
 
-## 获取 API 凭证
+### From Obsidian Community Plugins
 
-> ⚠️ 凭证仅用于访问 Get笔记开放平台 API，不会被上传到任何第三方。
+GetNote Importer is being prepared for Obsidian's official community plugin directory. After it is listed:
 
-1. 打开 Get笔记 App → 设置 → 开放平台
-2. 创建应用，获取 **Token** 和 **Client ID**
-3. 在插件设置中填入对应凭证
+中文：插件正在准备提交 Obsidian 官方社区插件市场。上架后可以这样安装：
 
-## 使用
+1. Open `Settings -> Community plugins -> Browse`.
+2. Search for `GetNote Importer`.
+3. Install and enable the plugin.
 
-### 快速同步
+### Via BRAT
 
-点击设置面板中的 **立即同步** 按钮，或使用命令面板（`Ctrl/Cmd+P` → `Get笔记: 同步笔记`）。
+1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) community plugin.
+2. Open `Settings -> Community plugins -> BRAT -> Add a beta plugin`.
+3. Enter this repository URL:
 
-### 选择性同步
-
-点击 **选择性同步** 按钮，勾选要同步的笔记后点击同步。
-
-### 定时同步
-
-在设置中开启 **定时同步**，配置同步间隔和是否在启动时同步。
-
-## 目录结构
-
+```text
+https://github.com/AndyZhengyan/obsidian-getnote-importer
 ```
+
+4. Enable `GetNote Importer`.
+
+中文：如果插件尚未上架官方市场，可以用 BRAT 添加上面的仓库地址进行安装。
+
+### Manual Install
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/AndyZhengyan/obsidian-getnote-importer/releases/latest).
+2. Put them into:
+
+```text
+<your-vault>/.obsidian/plugins/getnote-importer/
+```
+
+3. Reload Obsidian and enable `GetNote Importer`.
+
+中文：手动安装时请注意插件目录名是 `getnote-importer`，需要和 `manifest.json` 里的 `id` 一致。
+
+## Get API Credentials
+
+Your GetNote API credentials are stored in Obsidian plugin settings and are used only to call the GetNote Open API.
+
+中文：API 凭证保存在 Obsidian 插件设置中，仅用于访问 Get笔记开放平台 API。
+
+1. Open the GetNote app.
+2. Go to `Settings -> Open Platform`.
+3. Create an app and copy the `Token` and `Client ID`.
+4. Paste them into `Settings -> GetNote Importer`.
+
+You can also use the OAuth button in the plugin settings when available.
+
+中文：如果设置页中提供 OAuth 按钮，也可以通过 OAuth 自动获取凭证。
+
+## Usage
+
+### Sync Everything
+
+Open the plugin settings and click `Sync now`, or run this command from the command palette:
+
+```text
+Get笔记: 同步笔记
+```
+
+中文：在设置页点击“立即同步”，或在命令面板运行上面的命令。
+
+### Pick Notes to Sync
+
+Click `Selective sync`, choose the notes you want, then start syncing. This is useful for project cleanup, topic-based imports, and one-off migrations.
+
+中文：点击“选择性同步”，勾选需要导入的笔记后再同步，适合专题整理或一次性迁移。
+
+### Keep It Fresh
+
+Enable scheduled sync, choose an interval, and optionally sync once when Obsidian starts.
+
+中文：开启定时同步后，插件会按设定间隔后台同步，也可以在启动时自动同步一次。
+
+## Output Structure
+
+By default, notes are written under `Get笔记/`.
+
+中文：默认情况下，笔记会写入 vault 内的 `Get笔记/` 目录。
+
+```text
 vault/
-└── Get笔记/           ← 可在设置中自定义文件夹名
+└── Get笔记/
     ├── 纯文本/
     │   └── 会议记录.md
     ├── 链接笔记/
     │   └── 2026-04-30_文章摘录.md
-    └── 录音长录/
-        └── 2026-04-29_录音摘要.md
+    ├── 录音长录/
+    │   ├── 录音摘要.md
+    │   └── asset/
+    │       ├── 录音摘要.mp3
+    │       └── 录音摘要.md
+    └── 其他/
+        └── 未识别类型.md
 ```
 
-## 文件命名规则
+Each Markdown note includes frontmatter so future syncs can identify and update the same GetNote item.
 
-| 情况 | 文件名示例 |
-|------|-----------|
-| 有标题 | `会议记录.md` |
-| 无标题（取正文前 20 字） | `这是笔记的第一段文字...md` |
-| 有前缀 `YYYY-MM-DD` | `2026-04-30_会议记录.md` |
-| 标题冲突 | `会议记录-2.md` |
+中文：每个 Markdown 文件都会写入 frontmatter，后续同步会用其中的 `uid` 识别同一条 Get笔记。
 
-> 标题中的非法字符（`\ / : * ? " < > |`）会被自动过滤。
+```yaml
+---
+uid: "1908723638246504120"
+title: "会议记录"
+created: 2026-04-30 12:45:24
+modified: 2026-04-30 13:00:07
+source: Get笔记
+note_type: recorder_audio
+tags: ["work"]
+---
+```
 
-## 设置项
+## Filename Rules
 
-| 设置项 | 说明 | 默认值 |
-|--------|------|--------|
-| API Token | Get笔记开放平台 Token | — |
-| Client ID | Get笔记开放平台 Client ID | — |
-| 目标文件夹 | vault 内子目录名 | `Get笔记` |
-| 最大同步天数 | 只同步 N 天内更新的笔记，0 = 不限制 | `30` |
-| 文件名前缀（时间戳） | 格式如 `YYYY-MM-DD` 或 `YYYYMMDD_HHmm` | 空 |
-| 定时同步 | 开启后自动定时同步 | 关闭 |
-| 同步间隔（分钟） | 定时同步间隔，最小 5 分钟 | `30` |
-| 启动时同步 | Obsidian 启动时自动同步一次 | 开启 |
+| Scenario | Example | 中文 |
+| --- | --- | --- |
+| Note has a title | `会议记录.md` | 使用标题 |
+| Note has no title | `这是笔记的第一段文字.md` | 从正文生成标题 |
+| Prefix is `YYYY-MM-DD` | `2026-04-30_会议记录.md` | 加日期前缀 |
+| Same title, different note | `会议记录-2.md` | 自动加冲突后缀 |
 
-## 同步机制
+Invalid filename characters such as `\ / : * ? " < > |` are removed automatically.
 
-1. 同步开始时扫描 vault，建立 **uid → 文件** 索引
-2. 每条笔记通过 `note_id`（存储在 frontmatter 的 `uid` 字段）判断是否为同一笔记
-3. 若笔记已存在，比较 `updated_at` 判断是否需要更新
-4. 若标题变化，自动重命名文件（不丢失编辑历史）
+中文：文件名中的非法字符会自动移除。
 
-## 已知限制
+## Settings
 
-- Detail API 返回 404，暂不支持附件（图片/音频）下载
-- 录音笔记同步的是 AI 生成的文字摘要，非原始音频
-- 链接笔记同步的是摘录内容，非原始网页
+| Setting | Description | Default |
+| --- | --- | --- |
+| API Token | GetNote Open API token | empty |
+| Client ID | GetNote Open API client ID | empty |
+| Target folder | Destination folder inside your vault | `Get笔记` |
+| Max sync days | Only sync notes updated in the last N days. `0` means no limit | `30` |
+| Sync start date | Optional absolute start date for manual sync | empty |
+| Filename prefix | Date/time prefix format, such as `YYYY-MM-DD` | empty |
+| Scheduled sync | Run sync automatically in the background | off |
+| Sync interval | Scheduled sync interval in minutes | `30` |
+| Sync on start | Run once when Obsidian starts | on |
 
-## FAQ
+中文：以上设置都可以在 Obsidian 的 `Settings -> GetNote Importer` 中配置。
 
-**Q: 同步后文件名还是数字 ID？**
-A: 请确保插件已更新到最新版本，重新加载插件后再次同步。
+## Sync Model
 
-**Q: 定时同步没有生效？**
-A: 检查设置中是否已开启"定时同步"，并确认"同步间隔"填写正确（最小 5 分钟）。
+GetNote Importer treats GetNote as the source of truth for imported note content.
 
-**Q: 同步失败怎么排查？**
-A: 打开 Obsidian 开发者工具（`View → Toggle Developer Tools`），在控制台查看错误信息。
+中文：对已导入内容来说，插件默认把 Get笔记视为同步来源。
 
-## 技术栈
+1. Scan the target folder and build a `uid -> file` index from frontmatter.
+2. Fetch notes from the GetNote Open API.
+3. Filter notes by your sync range.
+4. Create files for new notes.
+5. Update files when `updated_at` changes.
+6. Rename files when the display title changes.
+7. Record per-note results in sync history.
 
-- **语言**：TypeScript
-- **构建**：esbuild
-- **UI 框架**：Preact（轻量 React 替代）
-- **测试**：Vitest
+中文：同步时会扫描目标目录、获取 API 数据、按时间范围过滤、创建或更新文件，并记录逐条结果。
 
-## 支持与反馈
+## Privacy
 
-- 🐛 发现 bug？请提交 [GitHub Issue](https://github.com/AndyZhengyan/obsidian-getnote-importer/issues)
-- 💡 有功能建议？欢迎提交 [Discussion](https://github.com/AndyZhengyan/obsidian-getnote-importer/discussions)
-- ⭐ 觉得好用？给个 Star！
+- No external backend is involved.  
+  中文：插件不依赖额外后端服务。
+- API credentials stay in local Obsidian plugin data.  
+  中文：API 凭证保存在本地 Obsidian 插件数据中。
+- Note data is requested from GetNote and written directly into your vault.  
+  中文：笔记数据从 Get笔记获取后直接写入你的 vault。
+- Audio attachments are downloaded only from HTTPS URLs returned by the GetNote API.  
+  中文：音频附件只会从 Get笔记 API 返回的 HTTPS 地址下载。
+
+## Known Limitations
+
+- The plugin depends on the availability and response shape of the GetNote Open API.  
+  中文：插件依赖 Get笔记开放平台 API 的可用性和响应格式。
+- Audio download works only when the detail API returns a valid HTTPS audio attachment.  
+  中文：只有详情接口返回有效 HTTPS 音频附件时，音频下载才会生效。
+- Imported Markdown content may be updated by future syncs. Keep personal edits in separate notes or backlinks if you need full manual control.  
+  中文：后续同步可能更新已导入文件；如果你要大量手动编辑，建议把个人补充写到独立笔记或反向链接中。
+
+## Development
+
+```bash
+npm install
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+Release assets are generated from the repository root:
+
+- `main.js`
+- `manifest.json`
+- `styles.css`
+
+The GitHub release workflow verifies typecheck, lint, tests, build, and version/tag consistency before uploading those files.
+
+中文：发布 workflow 会在上传 release 产物前检查类型、lint、测试、构建以及 tag 和 manifest 版本一致性。
+
+## Obsidian Community Plugin Submission
+
+Suggested entry for `obsidianmd/obsidian-releases`:
+
+```json
+{
+  "id": "getnote-importer",
+  "name": "GetNote Importer",
+  "author": "Zheng Yan",
+  "description": "Sync notes, links, recordings, and AI summaries from GetNote into your Obsidian vault.",
+  "repo": "AndyZhengyan/obsidian-getnote-importer"
+}
+```
+
+中文：提交 Obsidian 官方社区插件市场时，可以使用上面的 `community-plugins.json` 条目。
+
+## Support
+
+- Report bugs in [GitHub Issues](https://github.com/AndyZhengyan/obsidian-getnote-importer/issues).
+- Share ideas in [GitHub Discussions](https://github.com/AndyZhengyan/obsidian-getnote-importer/discussions).
+- Star the repository if it saves you time.
+
+中文：Bug 请提交 Issue，功能建议可以发 Discussion。如果这个插件帮你省了时间，欢迎给项目一个 star。
 
 ## License
 
-MIT
+[MIT](LICENSE)

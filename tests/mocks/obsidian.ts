@@ -170,6 +170,22 @@ export function getLanguage(): string {
   return 'zh-CN';
 }
 
+export async function requestUrl(_request: unknown): Promise<{
+  status: number;
+  headers: Record<string, string>;
+  text: string;
+  json: unknown;
+  arrayBuffer: ArrayBuffer;
+}> {
+  return {
+    status: 200,
+    headers: {},
+    text: '',
+    json: null,
+    arrayBuffer: new ArrayBuffer(0),
+  };
+}
+
 // ---- AbstractInputSuggest (minimal stub for FolderSuggest tests) ----
 export abstract class AbstractInputSuggest<T> {
   constructor(_app: unknown, _inputEl: HTMLElement) {}

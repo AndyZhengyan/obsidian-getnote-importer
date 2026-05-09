@@ -178,6 +178,7 @@ describe('renderNote — audio note', () => {
     const summaryIdx = result.indexOf(summaryLine);
     expect(audioIdx).toBeGreaterThan(0);
     expect(audioIdx).toBeLessThan(summaryIdx);
+    expect(result).toContain('[📝 转写](asset/我的录音.md)');
 
     // 转写文本在正文之后
     expect(result).toContain('### 原始录音转写');

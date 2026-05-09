@@ -1,7 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as obsidian from 'obsidian';
 import { fetchOAuthDeviceCode, pollOAuthToken } from '../src/api';
 
 const BASE_URL = 'https://openapi.biji.com/open/api/v1';
+
+function response(status: number, data: unknown, text = JSON.stringify(data)) {
+  return {
+    status,
+    headers: { 'content-type': 'application/json' },
+    text,
+    json: data,
+    arrayBuffer: new ArrayBuffer(0),
+  };
+}
 
 describe('fetchOAuthDeviceCode', () => {
   beforeEach(() => {
@@ -9,9 +20,7 @@ describe('fetchOAuthDeviceCode', () => {
   });
 
   it('POSTs to /oauth/device/code with correct body', async () => {
-    const mockFetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({
+    const requestSpy = vi.spyOn(obsidian, 'requestUrl').mockResolvedValueOnce(response(200, {
         success: true,
         data: {
           verification_uri: 'https://biji.com/verify',
@@ -19,18 +28,17 @@ describe('fetchOAuthDeviceCode', () => {
           code: 'dev_abc',
           interval: 5,
         },
-      }),
-    });
-    vi.stubGlobal('fetch', mockFetch);
+      }));
 
     const result = await fetchOAuthDeviceCode();
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      `${BASE_URL}/oauth/device/code`,
+    expect(requestSpy).toHaveBeenCalledWith(
       expect.objectContaining({
+        url: `${BASE_URL}/oauth/device/code`,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: 'cli_a1b2c3d4e5f6789012345678abcdef90' }),
+        throw: false,
       })
     );
     expect(result).toEqual({
@@ -42,48 +50,24 @@ describe('fetchOAuthDeviceCode', () => {
   });
 
   it('throws when success=false from API', async () => {
-    const mockFetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ success: false, message: 'invalid client' }),
-    });
-    vi.stubGlobal('fetch', mockFetch);
+    vi.spyOn(obsidian, 'requestUrl').mockResolvedValueOnce(response(200, { success: false, message: 'invalid client' }));
 
     await expect(fetchOAuthDeviceCode()).rejects.toThrow('invalid client');
   });
 
   it('throws on non-ok response', async () => {
-    const mockFetch = vi.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      text: () => Promise.resolve('Internal Error'),
-    });
-    vi.stubGlobal('fetch', mockFetch);
+    vi.spyOn(obsidian, 'requestUrl').mockResolvedValueOnce(response(500, {}, 'Internal Error'));
 
     await expect(fetchOAuthDeviceCode()).rejects.toThrow('OAuth 设备码请求失败 500: Internal Error');
   });
 
-  it('passes signal to fetch', async () => {
-    const mockFetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({
-        success: true,
-        data: {
-          verification_uri: 'https://biji.com/verify',
-          user_code: 'ABCD-1234',
-          code: 'dev_abc',
-          interval: 5,
-        },
-      }),
-    });
-    vi.stubGlobal('fetch', mockFetch);
-
+  it('throws on abort before request', async () => {
+    const requestSpy = vi.spyOn(obsidian, 'requestUrl');
     const controller = new AbortController();
-    await fetchOAuthDeviceCode(controller.signal);
+    controller.abort();
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ signal: controller.signal })
-    );
+    await expect(fetchOAuthDeviceCode(controller.signal)).rejects.toThrow('Aborted');
+    expect(requestSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -103,15 +87,11 @@ describe('pollOAuthToken', () => {
   });
 
   it('returns api_key and client_id on success (status 0)', async () => {
-    const mockFetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({
+    vi.spyOn(obsidian, 'requestUrl').mockResolvedValueOnce(response(200, {
         success: true,
         data: { api_key: 'gk_live_abc', client_id: 'cli_123' },
         status: 0,
-      }),
-    });
-    vi.stubGlobal('fetch', mockFetch);
+      }));
 
     const result = await pollOAuthToken('dev_abc', 5);
 
@@ -120,21 +100,17 @@ describe('pollOAuthToken', () => {
 
   it('polls again on pending status 10012 and returns on success', async () => {
     let callCount = 0;
-    const mockFetch = vi.fn().mockImplementation(() => {
+    vi.spyOn(obsidian, 'requestUrl').mockImplementation(() => {
       callCount++;
       if (callCount === 1) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 10012 }) });
+        return Promise.resolve(response(200, { status: 10012 }));
       }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({
+      return Promise.resolve(response(200, {
           success: true,
           data: { api_key: 'gk_live_ok', client_id: 'cli_ok' },
           status: 0,
-        }),
-      });
+        }));
     });
-    vi.stubGlobal('fetch', mockFetch);
 
     const result = await pollOAuthToken('dev_abc', 5);
 
@@ -143,21 +119,13 @@ describe('pollOAuthToken', () => {
   });
 
   it('throws on expired status 10013', async () => {
-    const mockFetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ status: 10013, message: 'code expired' }),
-    });
-    vi.stubGlobal('fetch', mockFetch);
+    vi.spyOn(obsidian, 'requestUrl').mockResolvedValueOnce(response(200, { status: 10013, message: 'code expired' }));
 
     await expect(pollOAuthToken('dev_abc', 5)).rejects.toThrow('OAuth 授权已过期，请重试');
   });
 
   it('throws with raw JSON on unknown status', async () => {
-    const mockFetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ status: 999, message: 'weird response' }),
-    });
-    vi.stubGlobal('fetch', mockFetch);
+    vi.spyOn(obsidian, 'requestUrl').mockResolvedValueOnce(response(200, { status: 999, message: 'weird response' }));
 
     const err = await pollOAuthToken('dev_abc', 5).catch(e => e.message);
     expect(err).toContain('999');
@@ -165,22 +133,18 @@ describe('pollOAuthToken', () => {
   });
 
   it('throws on timeout after max attempts', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ status: 10012 }),
-    });
-    vi.stubGlobal('fetch', mockFetch);
+    vi.spyOn(obsidian, 'requestUrl').mockResolvedValue(response(200, { status: 10012 }));
 
     await expect(pollOAuthToken('dev_abc', 5)).rejects.toThrow('OAuth 授权超时，请重试');
   });
 
   it('throws on abort before first fetch', async () => {
-    const mockFetch = vi.fn();
-    vi.stubGlobal('fetch', mockFetch);
+    const requestSpy = vi.spyOn(obsidian, 'requestUrl');
 
     const controller = new AbortController();
     controller.abort();
 
     await expect(pollOAuthToken('dev_abc', 5, controller.signal)).rejects.toThrow('Aborted');
+    expect(requestSpy).not.toHaveBeenCalled();
   });
 });

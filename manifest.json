@@ -1,11 +1,9 @@
 {
-  "id": "obsidian-getnote-importer",
+  "id": "getnote-importer",
   "name": "GetNote Importer",
-  "version": "0.5.11",
+  "version": "0.5.12",
   "description": "将 Get笔记 App 的笔记同步到 Obsidian vault",
   "author": "Zheng Yan",
-  "authorUrl": "",
-  "fundingUrl": "",
   "license": "MIT",
   "isDesktopOnly": false,
   "minAppVersion": "1.5.0",

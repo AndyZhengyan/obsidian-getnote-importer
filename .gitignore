@@ -4,6 +4,7 @@ main.js.map
 
 # Local agent/tooling state
 .superpowers/
+.claude-mem-context.md
 
 # Environment and local overrides
 .env

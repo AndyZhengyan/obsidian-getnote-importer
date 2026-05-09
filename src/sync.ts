@@ -259,6 +259,37 @@ export class SyncEngine {
     });
   }
 
+  private async enrichAudioNote(note: GetNoteNote, signal: AbortSignal): Promise<GetNoteNote> {
+    if (!AUDIO_NOTE_TYPES.has(note.note_type)) {
+      return note;
+    }
+
+    try {
+      const noteDetail = await fetchNoteDetail(
+        note.note_id,
+        this.settings.apiToken,
+        this.settings.clientId,
+        signal
+      );
+      const attachment = noteDetail.attachments?.find(a => a.type === 'audio');
+      console.log(
+        `[GetNote] Audio note detail [${note.note_id}]: attachments=${noteDetail.attachments?.length ?? 0}`,
+        'audio=',
+        noteDetail.audio ? 'present' : 'missing'
+      );
+      if (attachment) {
+        const downloaded = await this.downloadAudioAsset(noteDetail, attachment);
+        console.log(`[GetNote] Audio download result [${note.note_id}]:`, downloaded ?? 'FAILED');
+      } else {
+        console.warn(`[GetNote] No audio attachment found in note detail [${note.note_id}]`);
+      }
+      return noteDetail;
+    } catch (err) {
+      console.warn(`[GetNote] Failed to enrich audio note ${note.note_id}:`, err);
+      return note;
+    }
+  }
+
   private filterNotesByDateRange(notes: GetNoteNote[]): GetNoteNote[] {
     const { syncStartDate } = this.scopeOptions;
     if (!syncStartDate) return notes;
@@ -332,31 +363,7 @@ export class SyncEngine {
         for (const note of filtered) {
           if (this.cancelled || modal?.isCancelled()) throw new SyncCancelledError();
           result.total++;
-          let noteToWrite = note;
-          if (AUDIO_NOTE_TYPES.has(note.note_type)) {
-            try {
-              noteToWrite = await fetchNoteDetail(
-                note.note_id,
-                this.settings.apiToken,
-                this.settings.clientId,
-                controller.signal
-              );
-              const attachment = noteToWrite.attachments?.find(a => a.type === 'audio');
-              console.log(
-                `[GetNote] Audio note detail [${note.note_id}]: attachments=${noteToWrite.attachments?.length ?? 0}`,
-                'audio=',
-                noteToWrite.audio ? 'present' : 'missing'
-              );
-              if (attachment) {
-                const downloaded = await this.downloadAudioAsset(noteToWrite, attachment);
-                console.log(`[GetNote] Audio download result [${note.note_id}]:`, downloaded ?? 'FAILED');
-              } else {
-                console.warn(`[GetNote] No audio attachment found in note detail [${note.note_id}]`);
-              }
-            } catch (err) {
-              console.warn(`[GetNote] Failed to enrich audio note ${note.note_id}:`, err);
-            }
-          }
+          const noteToWrite = await this.enrichAudioNote(note, controller.signal);
           const writeResult = await this.writeNote(noteToWrite, uidIndex);
           switch (writeResult.status) {
             case 'created': result.created++; break;
@@ -430,31 +437,7 @@ export class SyncEngine {
             total: noteIds.length,
             percent,
           });
-          let noteToWrite = note;
-          if (AUDIO_NOTE_TYPES.has(note.note_type)) {
-            try {
-              noteToWrite = await fetchNoteDetail(
-                note.note_id,
-                this.settings.apiToken,
-                this.settings.clientId,
-                controller.signal
-              );
-              const attachment = noteToWrite.attachments?.find(a => a.type === 'audio');
-              console.log(
-                `[GetNote] Audio note detail [${note.note_id}]: attachments=${noteToWrite.attachments?.length ?? 0}`,
-                'audio=',
-                noteToWrite.audio ? 'present' : 'missing'
-              );
-              if (attachment) {
-                const downloaded = await this.downloadAudioAsset(noteToWrite, attachment);
-                console.log(`[GetNote] Audio download result [${note.note_id}]:`, downloaded ?? 'FAILED');
-              } else {
-                console.warn(`[GetNote] No audio attachment found in note detail [${note.note_id}]`);
-              }
-            } catch (err) {
-              console.warn(`[GetNote] Failed to enrich audio note ${note.note_id}:`, err);
-            }
-          }
+          const noteToWrite = await this.enrichAudioNote(note, controller.signal);
           const writeResult = await this.writeNote(noteToWrite, uidIndex);
           switch (writeResult.status) {
             case 'created': result.created++; break;

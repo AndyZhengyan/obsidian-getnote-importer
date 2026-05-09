@@ -20,6 +20,7 @@ jobs:
       !contains(github.event.issue.title, '[skip ai]') &&
       !contains(github.event.issue.body || '', '[skip ai]')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Check account age

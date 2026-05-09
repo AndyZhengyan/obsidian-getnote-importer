@@ -222,6 +222,7 @@ export default class GetNoteSyncPlugin extends Plugin {
     const engine = new SyncEngine(this.app, this.settings, (info) => this.setProgress(info), scopeOptions);
     this.currentSyncEngine = engine;
     engine.setOnCancel(() => this.cancelSync());
+    let shouldResetSyncState = type === 'auto';
 
     try {
       const result = selectedIds
@@ -256,6 +257,7 @@ export default class GetNoteSyncPlugin extends Plugin {
         await this.recordSyncHistory(emptySyncResult(), type, startedAt, resolvedScope, 'cancelled');
         if (type !== 'auto') {
           this.syncProgress = { message: t('modal.cancelled'), count: '', percent: 0 };
+          shouldResetSyncState = true;
         }
       } else {
         const error = err instanceof Error ? err.message : String(err);
@@ -278,13 +280,16 @@ export default class GetNoteSyncPlugin extends Plugin {
         } else {
           this.syncProgress = { message: t('notice.syncFailed', { msg: error }), count: '', percent: 0 };
           console.error(t('console.syncError'), err);
+          shouldResetSyncState = true;
         }
       }
     } finally {
-      if (type === 'auto') {
+      if (shouldResetSyncState) {
         this.isSyncing = false;
         this.currentSyncEngine = null;
-        this.syncProgress = { message: '', count: '', percent: 0 };
+        if (type === 'auto') {
+          this.syncProgress = { message: '', count: '', percent: 0 };
+        }
         this.refreshSettingsTab();
       }
     }

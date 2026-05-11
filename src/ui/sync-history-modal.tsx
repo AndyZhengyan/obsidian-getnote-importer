@@ -8,6 +8,21 @@ export function formatHistoryNoteType(noteType: string): string {
   return label === key ? t('picker.type.unknown') : label;
 }
 
+export function formatHistoryScope(entry: SyncHistoryEntry): string {
+  if (entry.scope?.selectedCount !== undefined) {
+    return t('syncHistory.params.selected', { count: entry.scope.selectedCount });
+  }
+
+  const parts: string[] = [];
+  if (entry.scope?.syncStartDate) {
+    parts.push(t('syncHistory.params.startDate', { date: entry.scope.syncStartDate }));
+  }
+  if (!entry.scope?.syncStartDate && entry.scope?.maxDays && entry.scope.maxDays > 0) {
+    parts.push(t('syncHistory.params.maxDays', { days: entry.scope.maxDays }));
+  }
+  return parts.length > 0 ? parts.join(' · ') : t('syncHistory.params.noLimit');
+}
+
 export function openSyncHistoryModal(app: App, history: SyncHistoryEntry[]) {
   const modal = new SyncHistoryModal(app, history);
   modal.open();
@@ -61,21 +76,6 @@ class SyncHistoryModal extends Modal {
         if (entry.mode === 'auto' || entry.type === 'auto') return t('syncHistory.mode.auto');
         if (entry.mode === 'selected' || entry.type === 'selective') return t('syncHistory.mode.selected');
         return t('syncHistory.mode.time');
-      };
-
-      const formatScope = (entry: SyncHistoryEntry): string => {
-        if (entry.scope?.selectedCount !== undefined) {
-          return t('syncHistory.params.selected', { count: entry.scope.selectedCount });
-        }
-
-        const parts: string[] = [];
-        if (entry.scope?.syncStartDate) {
-          parts.push(t('syncHistory.params.startDate', { date: entry.scope.syncStartDate }));
-        }
-        if (entry.scope?.maxDays && entry.scope.maxDays > 0) {
-          parts.push(t('syncHistory.params.maxDays', { days: entry.scope.maxDays }));
-        }
-        return parts.length > 0 ? parts.join(' · ') : t('syncHistory.params.noLimit');
       };
 
       const renderMeta = (parent: HTMLElement, label: string, value: string): void => {
@@ -157,7 +157,7 @@ class SyncHistoryModal extends Modal {
         const detailEl = entryEl.createDiv('getnote-history-entry-body');
         const metaEl = detailEl.createDiv('getnote-history-meta-grid');
         renderMeta(metaEl, t('syncHistory.meta.method'), formatMode(entry));
-        renderMeta(metaEl, t('syncHistory.meta.params'), formatScope(entry));
+        renderMeta(metaEl, t('syncHistory.meta.params'), formatHistoryScope(entry));
         renderMeta(metaEl, t('syncHistory.meta.filter'), t('syncHistory.filter.default'));
         renderMeta(metaEl, t('syncHistory.meta.result'), `${formatStatus(entry.status)} · ${formatDuration(entry.durationMs)}`);
 

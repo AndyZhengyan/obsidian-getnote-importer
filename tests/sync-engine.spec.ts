@@ -129,6 +129,108 @@ describe('SyncEngine — filterRecentNotes', () => {
   });
 });
 
+describe('SyncEngine — page cutoff', () => {
+  it('treats date-only syncStartDate as the local start of day', () => {
+    const app = makeMockApp();
+    const engine = new SyncEngine(
+      app as any,
+      makeSettings({ maxDays: 0 }),
+      undefined,
+      { syncStartDate: '2026-05-09', maxDays: 0 }
+    );
+    const justAfterLocalMidnight = makeNote({
+      note_id: 'local_midnight',
+      updated_at: '2026-05-09T00:30:00+08:00',
+    });
+
+    // @ts-ignore accessing private method for boundary regression coverage
+    expect(engine['filterNotesByDateRange']([justAfterLocalMidnight])).toHaveLength(1);
+  });
+
+  it('uses chronological time instead of string order for last synced timestamp', async () => {
+    const requestSpy = vi.spyOn(obsidian, 'requestUrl').mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      text: JSON.stringify({
+        data: {
+          notes: [
+            makeNote({
+              note_id: 'lexically_later',
+              updated_at: '2026-05-09T09:30:00+08:00',
+            }),
+            makeNote({
+              note_id: 'chronologically_later',
+              updated_at: '2026-05-09T02:00:00Z',
+            }),
+          ],
+          has_more: false,
+          next_cursor: '',
+        },
+      }),
+      json: null,
+      arrayBuffer: new ArrayBuffer(0),
+    });
+
+    try {
+      const app = makeMockApp();
+      const engine = new SyncEngine(app as any, makeSettings({ maxDays: 0 }));
+
+      const result = await engine.sync();
+
+      expect(result.lastNoteTimestamp).toBe('2026-05-09T02:00:00Z');
+    } finally {
+      requestSpy.mockRestore();
+    }
+  });
+
+  it('processes recent notes on a page before stopping at an old tail note', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-11T12:00:00+08:00'));
+    const requestSpy = vi.spyOn(obsidian, 'requestUrl').mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      text: JSON.stringify({
+        data: {
+          notes: [
+            makeNote({
+              note_id: 'today',
+              title: '今天最新',
+              updated_at: '2026-05-11T11:30:00+08:00',
+            }),
+            makeNote({
+              note_id: 'old_tail',
+              title: '旧尾巴',
+              updated_at: '2026-05-09T11:30:00+08:00',
+            }),
+          ],
+          has_more: false,
+          next_cursor: '',
+        },
+      }),
+      json: null,
+      arrayBuffer: new ArrayBuffer(0),
+    });
+
+    try {
+      const app = makeMockApp();
+      const engine = new SyncEngine(app as any, makeSettings({ maxDays: 1 }));
+
+      const result = await engine.sync();
+
+      expect(result.created).toBe(1);
+      expect(result.items).toEqual([
+        expect.objectContaining({
+          noteId: 'today',
+          status: 'created',
+        }),
+      ]);
+    } finally {
+      requestSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('SyncEngine — buildUidIndex', () => {
   it('返回空 Map 当 vault 没有 md 文件', () => {
     const app = makeMockApp();

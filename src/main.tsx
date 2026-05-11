@@ -146,6 +146,7 @@ export default class GetNoteSyncPlugin extends Plugin {
         void this.doAutoSync();
       }
     }, interval);
+    this.registerInterval(this.autoSyncIntervalId);
   }
 
   stopAutoSync(): void {
@@ -186,7 +187,7 @@ export default class GetNoteSyncPlugin extends Plugin {
     this.settings.syncHistory = this.syncHistory;
 
     // lastSyncEndTimestamp only belongs to auto sync
-    if (type === 'auto' && result.lastNoteTimestamp) {
+    if (type === 'auto' && result.failed === 0 && result.lastNoteTimestamp) {
       this.settings.lastSyncEndTimestamp = result.lastNoteTimestamp;
     }
 
@@ -206,9 +207,10 @@ export default class GetNoteSyncPlugin extends Plugin {
     }
 
     const startedAt = Date.now();
+    const resolvedSyncStartDate = scopeOptions?.syncStartDate ?? this.settings.syncStartDate;
     const resolvedScope: SyncHistoryScope = {
-      maxDays: scopeOptions?.maxDays ?? this.settings.maxDays,
-      syncStartDate: scopeOptions?.syncStartDate ?? this.settings.syncStartDate,
+      maxDays: resolvedSyncStartDate ? 0 : scopeOptions?.maxDays ?? this.settings.maxDays,
+      syncStartDate: resolvedSyncStartDate,
       selectedCount: selectedIds?.length,
       selectedIds,
     };
@@ -236,19 +238,11 @@ export default class GetNoteSyncPlugin extends Plugin {
           showNotice(t('notice.autoSynced', { created: result.created, updated: result.updated }));
         }
       } else {
-        this.syncProgress = {
-          message: t('modal.done'),
-          count: `${t('modal.created', { created: result.created })} · ${t('modal.updated', { updated: result.updated })} · ${t('modal.skipped', { skipped: result.skipped })}${result.failed > 0 ? ` · ${t('modal.failed', { failed: result.failed })}` : ''}`,
-          percent: 100,
-        };
-        this.refreshSettingsTab();
         showNotice(t('notice.syncComplete', { created: result.created, updated: result.updated, skipped: result.skipped, failed: result.failed > 0 ? ` · ${t('modal.failed', { failed: result.failed })}` : '' }), 8000);
-        activeWindow.setTimeout(() => {
-          this.syncProgress = { message: '', count: '', percent: 0 };
-          this.isSyncing = false;
-          this.currentSyncEngine = null;
-          this.refreshSettingsTab();
-        }, 8000);
+        this.syncProgress = { message: '', count: '', percent: 0 };
+        this.isSyncing = false;
+        this.currentSyncEngine = null;
+        this.refreshSettingsTab();
         return;
       }
     } catch (err) {
@@ -297,8 +291,9 @@ export default class GetNoteSyncPlugin extends Plugin {
   private doAutoSync(): void {
     // Auto sync uses lastSyncEndTimestamp as cutoff: skip notes already synced last time.
     // This IS the early-exit mechanism — no separate lastSyncEndTimestamp logic needed in engine.
-    const scopeOptions: Partial<SyncScopeOptions> = this.settings.lastSyncEndTimestamp
-      ? { syncStartDate: this.settings.lastSyncEndTimestamp, maxDays: 0 }
+    const syncStartDate = this.settings.lastSyncEndTimestamp || this.settings.syncStartDate;
+    const scopeOptions: Partial<SyncScopeOptions> = syncStartDate
+      ? { syncStartDate, maxDays: 0 }
       : {};
     void this.runSync('auto', scopeOptions);
   }

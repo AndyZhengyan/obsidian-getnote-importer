@@ -14,6 +14,36 @@ const AUDIO_NOTE_TYPES = new Set([
   'local_audio',
 ]);
 
+function parseSyncBoundaryTime(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+    return new Date(Number(year), Number(month) - 1, Number(day)).getTime();
+  }
+
+  const parsed = Date.parse(trimmed);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function parseNoteUpdatedTime(note: GetNoteNote): number | null {
+  const parsed = Date.parse(note.updated_at);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function isSortedByUpdatedDesc(notes: GetNoteNote[]): boolean {
+  let previous: number | null = null;
+  for (const note of notes) {
+    const current = parseNoteUpdatedTime(note);
+    if (current === null) return false;
+    if (previous !== null && current > previous) return false;
+    previous = current;
+  }
+  return true;
+}
+
 function isSafeAttachmentUrl(url: string): boolean {
   try {
     return new URL(url).protocol === 'https:';
@@ -52,9 +82,10 @@ export class SyncEngine {
   constructor(app: App, settings: Settings, onProgress?: SyncProgressCallback, scopeOptions?: Partial<SyncScopeOptions>) {
     this.app = app;
     this.settings = settings;
+    const syncStartDate = scopeOptions?.syncStartDate ?? settings.syncStartDate;
     this.scopeOptions = {
-      maxDays: scopeOptions?.maxDays ?? settings.maxDays,
-      syncStartDate: scopeOptions?.syncStartDate ?? settings.syncStartDate,
+      maxDays: syncStartDate ? 0 : scopeOptions?.maxDays ?? settings.maxDays,
+      syncStartDate,
     };
     this.onProgress = onProgress;
   }
@@ -327,10 +358,12 @@ export class SyncEngine {
     const { syncStartDate } = this.scopeOptions;
     if (!syncStartDate) return notes;
 
-    const startTime = new Date(syncStartDate).getTime();
+    const startTime = parseSyncBoundaryTime(syncStartDate);
+    if (startTime === null) return notes;
+
     return notes.filter(note => {
-      const updated = new Date(note.updated_at).getTime();
-      return updated >= startTime;
+      const updated = parseNoteUpdatedTime(note);
+      return updated !== null && updated >= startTime;
     });
   }
 
@@ -340,8 +373,8 @@ export class SyncEngine {
 
     const cutoff = Date.now() - maxDays * 24 * 60 * 60 * 1000;
     return notes.filter(note => {
-      const updated = new Date(note.updated_at).getTime();
-      return !Number.isNaN(updated) && updated >= cutoff;
+      const updated = parseNoteUpdatedTime(note);
+      return updated !== null && updated >= cutoff;
     });
   }
 
@@ -357,7 +390,7 @@ export class SyncEngine {
     // - maxDays cutoff (relative): only keep notes within last N days
     // Taking the max means early exit fires when EITHER boundary is reached.
     const syncStartCutoff = this.scopeOptions.syncStartDate
-      ? new Date(this.scopeOptions.syncStartDate).getTime()
+      ? parseSyncBoundaryTime(this.scopeOptions.syncStartDate)
       : null;
     const maxDaysCutoff = this.scopeOptions.maxDays && this.scopeOptions.maxDays > 0
       ? Date.now() - this.scopeOptions.maxDays * 24 * 60 * 60 * 1000
@@ -365,6 +398,7 @@ export class SyncEngine {
     const cutoffTime = [syncStartCutoff, maxDaysCutoff]
       .filter((t): t is number => t !== null)
       .reduce((max, t) => Math.max(max, t), 0) || null;
+    let lastNoteTimestampTime: number | null = null;
 
     const cleanup = () => {
       this.cancelled = true;
@@ -380,17 +414,6 @@ export class SyncEngine {
         this.onProgress?.({ page: pageCount, percent: 0 });
 
         const recentNotes = this.filterRecentNotes(notes);
-
-        // Notes are sorted by updated_at DESC. Check the oldest note in this page;
-        // if it's already older than cutoff, no more pages need processing.
-        if (cutoffTime !== null && notes.length > 0) {
-          const oldestNote = notes[notes.length - 1];
-          const oldestTime = new Date(oldestNote.updated_at).getTime();
-          if (oldestTime < cutoffTime) {
-            break;
-          }
-        }
-
         const filtered = this.filterNotesByDateRange(recentNotes);
 
         for (const note of filtered) {
@@ -405,8 +428,21 @@ export class SyncEngine {
             case 'failed': result.failed++; break;
           }
           this.recordItem(result, noteToWrite, writeResult);
-          if (!result.lastNoteTimestamp || note.updated_at > result.lastNoteTimestamp) {
+          const updatedTime = parseNoteUpdatedTime(note);
+          if (updatedTime !== null && (lastNoteTimestampTime === null || updatedTime > lastNoteTimestampTime)) {
+            lastNoteTimestampTime = updatedTime;
             result.lastNoteTimestamp = note.updated_at;
+          }
+        }
+
+        // Notes are sorted by updated_at DESC. Once the oldest note in this page
+        // is older than the cutoff, later pages can be skipped after this page's
+        // still-valid notes have been processed.
+        if (cutoffTime !== null && notes.length > 0 && isSortedByUpdatedDesc(notes)) {
+          const oldestNote = notes[notes.length - 1];
+          const oldestTime = parseNoteUpdatedTime(oldestNote);
+          if (oldestTime !== null && oldestTime < cutoffTime) {
+            break;
           }
         }
 

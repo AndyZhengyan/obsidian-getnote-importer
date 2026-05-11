@@ -163,12 +163,10 @@ describe('sync history note type display', () => {
 });
 
 describe('sync history scope display', () => {
-  it('hides maxDays for auto sync when a start date is present', () => {
+  it('hides maxDays when a start date is present', () => {
     initI18n('zh-CN');
 
     expect(formatHistoryScope(makeEntry({
-      type: 'auto',
-      mode: 'auto',
       scope: {
         syncStartDate: '2026-05-09',
         maxDays: 30,

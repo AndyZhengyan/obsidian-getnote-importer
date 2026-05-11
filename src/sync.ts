@@ -82,9 +82,10 @@ export class SyncEngine {
   constructor(app: App, settings: Settings, onProgress?: SyncProgressCallback, scopeOptions?: Partial<SyncScopeOptions>) {
     this.app = app;
     this.settings = settings;
+    const syncStartDate = scopeOptions?.syncStartDate ?? settings.syncStartDate;
     this.scopeOptions = {
-      maxDays: scopeOptions?.maxDays ?? settings.maxDays,
-      syncStartDate: scopeOptions?.syncStartDate ?? settings.syncStartDate,
+      maxDays: syncStartDate ? 0 : scopeOptions?.maxDays ?? settings.maxDays,
+      syncStartDate,
     };
     this.onProgress = onProgress;
   }

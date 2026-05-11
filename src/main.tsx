@@ -207,9 +207,10 @@ export default class GetNoteSyncPlugin extends Plugin {
     }
 
     const startedAt = Date.now();
+    const resolvedSyncStartDate = scopeOptions?.syncStartDate ?? this.settings.syncStartDate;
     const resolvedScope: SyncHistoryScope = {
-      maxDays: scopeOptions?.maxDays ?? this.settings.maxDays,
-      syncStartDate: scopeOptions?.syncStartDate ?? this.settings.syncStartDate,
+      maxDays: resolvedSyncStartDate ? 0 : scopeOptions?.maxDays ?? this.settings.maxDays,
+      syncStartDate: resolvedSyncStartDate,
       selectedCount: selectedIds?.length,
       selectedIds,
     };

@@ -92,6 +92,16 @@ function mockFetchAllNotes(notes: GetNoteNote[] = []) {
 }
 
 describe('SyncEngine — filterRecentNotes', () => {
+  it('disables maxDays when syncStartDate is set', () => {
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({ maxDays: 30, syncStartDate: '2026-05-09' }));
+
+    expect(engine['scopeOptions']).toEqual({
+      maxDays: 0,
+      syncStartDate: '2026-05-09',
+    });
+  });
+
   it('返回所有笔记当 maxDays <= 0', () => {
     const app = makeMockApp();
     const engine = new SyncEngine(app as any, makeSettings({ maxDays: 0 }));

@@ -83,6 +83,27 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     expect(plugin.syncProgress).toEqual({ message: '', count: '', percent: 0 });
   });
 
+  it('records only start date when scope contains both date and maxDays', async () => {
+    vi.spyOn(SyncEngine.prototype, 'sync').mockResolvedValue({
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      total: 0,
+      items: [],
+    });
+    const plugin = makePlugin();
+
+    await plugin['runSync']('full', { maxDays: 30, syncStartDate: '2026-05-09' });
+
+    expect(plugin.syncHistory.at(-1)?.scope).toEqual({
+      maxDays: 0,
+      syncStartDate: '2026-05-09',
+      selectedCount: undefined,
+      selectedIds: undefined,
+    });
+  });
+
   it('registers scheduled sync interval with Obsidian lifecycle', () => {
     vi.useFakeTimers();
     const plugin = makePlugin();

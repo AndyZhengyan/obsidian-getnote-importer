@@ -70,7 +70,14 @@ export function SettingsComponent({
   const [showApiToken, setShowApiToken] = useState(false);
   const [folderName, setFolderName] = useState(settings.folderName);
   const [filenamePrefix, setFilenamePrefix] = useState(settings.filenamePrefix);
-  const [syncStartDate, setSyncStartDate] = useState(settings.syncStartDate);
+  const todayDefault = (() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  })();
+  const [syncStartDate, setSyncStartDate] = useState(settings.syncStartDate || todayDefault);
   const [scheduledEnabled, setScheduledEnabled] = useState(settings.scheduledSync.enabled);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');

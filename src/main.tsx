@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { DEFAULT_SETTINGS, type Settings, type SyncHistoryScope, type SyncProgressDetail, type SyncHistoryEntry, type SyncResult, type SyncScopeOptions } from './types';
 import { GetNoteSettingsTab } from './settings-tab';
 import { SyncEngine, SyncCancelledError } from './sync';
-import { showError, showNotice } from './ui/notice';
+import { showError, showNotice, showSuccess, showInfo } from './ui/notice';
 import { NotePickerModal } from './ui/note-picker-modal';
 import { ManualSyncModal } from './ui/manual-sync-modal';
 import { initI18n, t } from './i18n';
@@ -235,10 +235,15 @@ export default class GetNoteSyncPlugin extends Plugin {
       if (type === 'auto') {
         this.autoSyncFailCount = 0;
         if (result.created > 0 || result.updated > 0) {
-          showNotice(t('notice.autoSynced', { created: result.created, updated: result.updated }));
+          showSuccess(t('notice.autoSynced', { created: result.created, updated: result.updated }));
         }
       } else {
-        showNotice(t('notice.syncComplete', { created: result.created, updated: result.updated, skipped: result.skipped, failed: result.failed > 0 ? ` · ${t('modal.failed', { failed: result.failed })}` : '' }), 8000);
+        const hasChanges = result.created > 0 || result.updated > 0;
+        if (hasChanges) {
+          showSuccess(t('notice.syncComplete', { created: result.created, updated: result.updated, skipped: result.skipped, failed: result.failed > 0 ? ` · ${t('modal.failed', { failed: result.failed })}` : '' }), 8000);
+        } else {
+          showInfo(t('notice.syncComplete', { created: result.created, updated: result.updated, skipped: result.skipped, failed: result.failed > 0 ? ` · ${t('modal.failed', { failed: result.failed })}` : '' }), 8000);
+        }
         this.syncProgress = { message: '', count: '', percent: 0 };
         this.isSyncing = false;
         this.currentSyncEngine = null;

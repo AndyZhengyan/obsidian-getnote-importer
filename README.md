@@ -21,6 +21,21 @@ GetNote Importer is an Obsidian plugin for people who capture in GetNote but thi
 - **Audio-aware**: recording notes can include downloaded audio assets and transcript content when the GetNote API provides them.
 - **Mobile-friendly networking**: API calls use Obsidian `requestUrl`, keeping the plugin suitable for desktop and mobile Obsidian.
 
+## Why Not GetNote's Official Export?
+
+GetNote's official export has significant limitations:
+
+| GetNote Official Export | GetNote Importer |
+| --- | --- |
+| Exports as offline HTML (one giant file) | Syncs as individual Markdown files |
+| Max 10,000 notes per export | No hard limit; incremental sync handles any volume |
+| Manual one-time export | Scheduled auto-sync keeps your vault up to date |
+| All-or-nothing export | Selective sync — choose exactly which notes to import |
+| No incremental updates | Only changed notes are re-downloaded |
+| Audio files need separate handling | Audio attachments downloaded and linked automatically |
+
+If you've ever tried to find that one note in a 10,000-note HTML file, you know why this plugin exists.
+
 ## Screenshots
 
 Settings page — credentials, filename format, scheduled sync toggle and interval.

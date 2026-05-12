@@ -12,7 +12,14 @@ interface ManualSyncModalProps {
 
 export function ManualSyncModal({ initialOptions, onConfirm, onCancel }: ManualSyncModalProps) {
   const [syncMode, setSyncMode] = useState<SyncMode>('date');
-  const [syncStartDate, setSyncStartDate] = useState(initialOptions.syncStartDate);
+  const todayDefault = (() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  })();
+  const [syncStartDate, setSyncStartDate] = useState(initialOptions.syncStartDate || todayDefault);
   const [maxDays, setMaxDays] = useState(String(initialOptions.maxDays));
 
   const handleConfirm = () => {

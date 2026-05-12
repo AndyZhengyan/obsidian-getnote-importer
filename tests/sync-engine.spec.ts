@@ -319,6 +319,359 @@ describe('SyncEngine — writeNote', () => {
   });
 });
 
+describe('SyncEngine — filterNotesByDateRange', () => {
+  it('keeps notes with updated_at > syncStartDate (boundary is exclusive)', () => {
+    const app = makeMockApp();
+    const engine = new SyncEngine(
+      app as any,
+      makeSettings({ maxDays: 0 }),
+      undefined,
+      { syncStartDate: '2026-05-09T10:00:00+08:00', maxDays: 0 }
+    );
+
+    const boundaryNote = makeNote({
+      note_id: 'boundary',
+      updated_at: '2026-05-09T10:00:00+08:00', // == startDate → excluded
+    });
+    const afterBoundary = makeNote({
+      note_id: 'after',
+      updated_at: '2026-05-10T10:00:00+08:00', // > startDate → kept
+    });
+    const beforeBoundary = makeNote({
+      note_id: 'before',
+      updated_at: '2026-05-08T10:00:00+08:00', // < startDate → excluded
+    });
+
+    // @ts-ignore accessing private method
+    const result = engine['filterNotesByDateRange']([boundaryNote, afterBoundary, beforeBoundary]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].note_id).toBe('after');
+  });
+
+  it('keeps all notes when syncStartDate is empty', () => {
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({ maxDays: 0 }));
+
+    const notes = [
+      makeNote({ note_id: 'n1', updated_at: '2026-04-01T10:00:00+08:00' }),
+      makeNote({ note_id: 'n2', updated_at: '2026-04-02T10:00:00+08:00' }),
+    ];
+    // @ts-ignore
+    expect(engine['filterNotesByDateRange'](notes)).toHaveLength(2);
+  });
+
+  it('returns all notes when syncStartDate is an unparsable value', () => {
+    const app = makeMockApp();
+    const engine = new SyncEngine(
+      app as any,
+      makeSettings({ maxDays: 0 }),
+      undefined,
+      { syncStartDate: 'not-a-date', maxDays: 0 }
+    );
+
+    const notes = [makeNote({ note_id: 'n1' })];
+    // @ts-ignore
+    expect(engine['filterNotesByDateRange'](notes)).toHaveLength(1);
+  });
+});
+
+describe('SyncEngine — sync lastNoteTimestamp tracking', () => {
+  it('records the newest updated_at as lastNoteTimestamp', async () => {
+    vi.spyOn(obsidian, 'requestUrl').mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      text: JSON.stringify({
+        data: {
+          notes: [
+            makeNote({ note_id: 'note_1', updated_at: '2026-05-11T12:00:00+08:00' }),
+            makeNote({ note_id: 'note_2', updated_at: '2026-05-10T12:00:00+08:00' }),
+            makeNote({ note_id: 'note_3', updated_at: '2026-05-09T12:00:00+08:00' }),
+          ],
+          has_more: false,
+          next_cursor: '',
+        },
+      }),
+      json: null,
+      arrayBuffer: new ArrayBuffer(0),
+    }) as any;
+
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({ maxDays: 0 }));
+
+    const result = await engine.sync();
+
+    expect(result.lastNoteTimestamp).toBe('2026-05-11T12:00:00+08:00');
+  });
+
+  it('does not set lastNoteTimestamp when no notes are processed', async () => {
+    vi.spyOn(obsidian, 'requestUrl').mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      text: JSON.stringify({
+        data: { notes: [], has_more: false, next_cursor: '' },
+      }),
+      json: null,
+      arrayBuffer: new ArrayBuffer(0),
+    }) as any;
+
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({ maxDays: 0 }));
+
+    const result = await engine.sync();
+    expect(result.lastNoteTimestamp).toBeUndefined();
+    expect(result.total).toBe(0);
+  });
+
+  it('tracks newest timestamp across multiple pages', async () => {
+    let page = 0;
+    vi.spyOn(obsidian, 'requestUrl').mockImplementation(() => {
+      page++;
+      if (page === 1) {
+        return Promise.resolve({
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+          text: JSON.stringify({
+            data: {
+              notes: [
+                makeNote({ note_id: 'early', updated_at: '2026-05-10T10:00:00+08:00' }),
+              ],
+              has_more: true,
+              next_cursor: 'page2',
+            },
+          }),
+          json: null,
+          arrayBuffer: new ArrayBuffer(0),
+        });
+      }
+      return Promise.resolve({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        text: JSON.stringify({
+          data: {
+            notes: [
+              makeNote({ note_id: 'newer', updated_at: '2026-05-12T10:00:00+08:00' }),
+            ],
+            has_more: false,
+            next_cursor: '',
+          },
+        }),
+        json: null,
+        arrayBuffer: new ArrayBuffer(0),
+      });
+    }) as any;
+
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({ maxDays: 0 }));
+
+    const result = await engine.sync();
+    expect(result.lastNoteTimestamp).toBe('2026-05-12T10:00:00+08:00');
+    expect(result.total).toBe(2);
+  });
+});
+
+describe('SyncEngine — seenNoteIds cross-page dedup', () => {
+  it('deduplicates notes that appear on multiple pages', async () => {
+    let page = 0;
+    vi.spyOn(obsidian, 'requestUrl').mockImplementation(() => {
+      page++;
+      if (page === 1) {
+        return Promise.resolve({
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+          text: JSON.stringify({
+            data: {
+              notes: [
+                makeNote({ note_id: 'note_A', title: 'Note A' }),
+                makeNote({ note_id: 'note_B', title: 'Note B' }),
+              ],
+              has_more: true,
+              next_cursor: 'page2',
+            },
+          }),
+          json: null,
+          arrayBuffer: new ArrayBuffer(0),
+        });
+      }
+      return Promise.resolve({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        text: JSON.stringify({
+          data: {
+            notes: [
+              makeNote({ note_id: 'note_B', title: 'Note B' }),
+              makeNote({ note_id: 'note_C', title: 'Note C' }),
+            ],
+            has_more: false,
+            next_cursor: '',
+          },
+        }),
+        json: null,
+        arrayBuffer: new ArrayBuffer(0),
+      });
+    }) as any;
+
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({ maxDays: 0 }));
+
+    const result = await engine.sync();
+
+    // 3 unique notes total
+    expect(result.total).toBe(3);
+    expect(result.created).toBe(3);
+    // note_B should NOT be double-counted
+    const uniqueNoteIds = new Set(result.items!.map(i => i.noteId));
+    expect(uniqueNoteIds.size).toBe(3);
+    // Verify no duplicate noteId appears in items
+    const noteIds = result.items!.map(i => i.noteId);
+    expect(noteIds.filter(id => id === 'note_B')).toHaveLength(1);
+  });
+
+  it('processes only unique notes when all notes in page 2 are already seen in page 1', async () => {
+    let page = 0;
+    vi.spyOn(obsidian, 'requestUrl').mockImplementation(() => {
+      page++;
+      if (page === 1) {
+        return Promise.resolve({
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+          text: JSON.stringify({
+            data: {
+              notes: [
+                makeNote({ note_id: 'only_A', title: 'Only A' }),
+              ],
+              has_more: true,
+              next_cursor: 'page2',
+            },
+          }),
+          json: null,
+          arrayBuffer: new ArrayBuffer(0),
+        });
+      }
+      return Promise.resolve({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        text: JSON.stringify({
+          data: {
+            notes: [
+              makeNote({ note_id: 'only_A', title: 'Only A' }),
+            ],
+            has_more: false,
+            next_cursor: '',
+          },
+        }),
+        json: null,
+        arrayBuffer: new ArrayBuffer(0),
+      });
+    }) as any;
+
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({ maxDays: 0 }));
+
+    const result = await engine.sync();
+
+    expect(result.total).toBe(1);
+    expect(result.created).toBe(1);
+    expect(result.skipped).toBe(0);
+  });
+});
+
+describe('SyncEngine — lastSyncEndTimestamp boundary re-check', () => {
+  it('boundary note at lastSyncEndTimestamp is now excluded by layer-1 filter (>)', async () => {
+    vi.spyOn(obsidian, 'requestUrl').mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      text: JSON.stringify({
+        data: {
+          notes: [
+            makeNote({
+              note_id: 'boundary_note',
+              updated_at: '2026-05-10T12:00:00+08:00',
+            }),
+          ],
+          has_more: false,
+          next_cursor: '',
+        },
+      }),
+      json: null,
+      arrayBuffer: new ArrayBuffer(0),
+    }) as any;
+
+    const app = makeMockApp();
+    app.vault._addFile(
+      'Get笔记/纯文本/测试笔记.md',
+      '---\nuid: "boundary_note"\ntitle: "测试笔记"\nmodified: 2026-05-10 12:00:00\n---\n正文',
+      { uid: 'boundary_note', modified: '2026-05-10 12:00:00' }
+    );
+    app.vault._addFolder('Get笔记/纯文本');
+
+    const engine = new SyncEngine(
+      app as any,
+      makeSettings({ maxDays: 0 }),
+      undefined,
+      { syncStartDate: '2026-05-10T12:00:00+08:00', maxDays: 0 }
+    );
+
+    const result = await engine.sync();
+
+    // Boundary note excluded by Layer 1 (> filter) — no longer re-processed
+    expect(result.total).toBe(0);
+    expect(result.skipped).toBe(0);
+    expect(result.lastNoteTimestamp).toBeUndefined();
+  });
+
+  it('newer notes (> boundary) pass the > filter and advance lastSyncEndTimestamp', async () => {
+    vi.spyOn(obsidian, 'requestUrl').mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      text: JSON.stringify({
+        data: {
+          notes: [
+            makeNote({
+              note_id: 'new_note',
+              title: '新笔记',
+              updated_at: '2026-05-11T12:00:00+08:00', // > startDate → kept
+            }),
+            makeNote({
+              note_id: 'boundary_note',
+              title: '边界笔记',
+              updated_at: '2026-05-10T12:00:00+08:00', // == startDate → excluded
+            }),
+          ],
+          has_more: false,
+          next_cursor: '',
+        },
+      }),
+      json: null,
+      arrayBuffer: new ArrayBuffer(0),
+    }) as any;
+
+    const app = makeMockApp();
+    app.vault._addFile(
+      'Get笔记/纯文本/边界笔记.md',
+      '---\nuid: "boundary_note"\ntitle: "边界笔记"\nmodified: 2026-05-10 12:00:00\n---\n正文',
+      { uid: 'boundary_note', modified: '2026-05-10 12:00:00' }
+    );
+    app.vault._addFolder('Get笔记/纯文本');
+
+    const engine = new SyncEngine(
+      app as any,
+      makeSettings({ maxDays: 0 }),
+      undefined,
+      { syncStartDate: '2026-05-10T12:00:00+08:00', maxDays: 0 }
+    );
+
+    const result = await engine.sync();
+
+    // Only new_note (> boundary) passes Layer 1 filter
+    expect(result.total).toBe(1);
+    expect(result.created).toBe(1);
+    expect(result.skipped).toBe(0);
+    // lastNoteTimestamp advances past the boundary
+    expect(result.lastNoteTimestamp).toBe('2026-05-11T12:00:00+08:00');
+  });
+});
+
 describe('SyncEngine — getFileName', () => {
   it('无前缀时返回标题', () => {
     const app = makeMockApp();

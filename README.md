@@ -28,6 +28,24 @@ GetNote Importer is an Obsidian plugin for people who capture in GetNote but thi
 - **Mobile-friendly networking**: API calls use Obsidian `requestUrl`, keeping the plugin suitable for desktop and mobile Obsidian.  
   中文：网络请求使用 Obsidian `requestUrl`，保留桌面端和移动端兼容性。
 
+## Screenshots
+
+插件设置页面 — 凭证配置、文件名格式、定时同步开关和间隔设置。
+
+![Settings](docs/screenshots/settings.png)
+
+同步日志弹窗 — 显示每次同步的过滤条件、参数和逐条笔记的处理结果（新增/更新/跳过/失败）。
+
+![Sync History](docs/screenshots/sync-history.png)
+
+手动同步弹窗 — 填写起始日期后按时间同步，笔记详情以折叠组展示。
+
+![Manual Sync](docs/screenshots/manual-sync.png)
+
+同步后的录音笔记 — 包含音频文件、转写文本和 AI 总结，元数据（uid、标签、来源）记录在 frontmatter 中。
+
+![Synced Recording](docs/screenshots/synced-recording.png)
+
 ## Features
 
 | Feature | Description | 中文 |

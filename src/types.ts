@@ -61,6 +61,7 @@ export interface Settings {
 export interface SyncScopeOptions {
   maxDays: number;
   syncStartDate: string;
+  checkpointTime?: string;  // for auto sync: the lastSyncEndTimestamp used as cutoff, for display in history
 }
 
 export interface SyncHistoryScope {
@@ -68,6 +69,7 @@ export interface SyncHistoryScope {
   syncStartDate: string;
   selectedCount?: number;
   selectedIds?: string[];
+  checkpointTime?: string;  // lastNoteTimestamp from auto sync, used for display label
 }
 
 export const DEFAULT_SETTINGS: Settings = {

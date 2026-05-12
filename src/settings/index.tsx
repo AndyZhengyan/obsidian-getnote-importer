@@ -70,14 +70,7 @@ export function SettingsComponent({
   const [showApiToken, setShowApiToken] = useState(false);
   const [folderName, setFolderName] = useState(settings.folderName);
   const [filenamePrefix, setFilenamePrefix] = useState(settings.filenamePrefix);
-  const todayDefault = (() => {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  })();
-  const [syncStartDate, setSyncStartDate] = useState(settings.syncStartDate || todayDefault);
+  const lastSyncedTo = settings.lastSyncEndTimestamp || settings.syncStartDate || '';
   const [scheduledEnabled, setScheduledEnabled] = useState(settings.scheduledSync.enabled);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -127,14 +120,6 @@ export function SettingsComponent({
     (value: string) => {
       setFilenamePrefix(value);
       updateSetting('filenamePrefix', value);
-    },
-    [updateSetting]
-  );
-
-  const handleSyncStartDateChange = useCallback(
-    (value: string) => {
-      setSyncStartDate(value);
-      updateSetting('syncStartDate', value);
     },
     [updateSetting]
   );
@@ -363,16 +348,11 @@ export function SettingsComponent({
             </div>
                         <div className="getnote-scheduled-row getnote-scheduled-date-row">
               <span className="getnote-scheduled-row-label">{t('settings.syncStartDate.label')}</span>
-              <span className="getnote-scheduled-row-control">
-                <input
-                  type="date"
-                  className="getnote-input getnote-date-input"
-                  value={syncStartDate}
-                  onChange={(e) => handleSyncStartDateChange((e.target as HTMLInputElement).value)}
-                />
+              <span className="getnote-scheduled-row-control getnote-muted-text">
+                {lastSyncedTo || '-'}
               </span>
             </div>
-            <div className="getnote-input-hint">{t('settings.syncStartDate.desc')}</div>
+            <div className="getnote-input-hint">{t('settings.syncStartDate.lastSyncedToDesc')}</div>
           </div>
         </div>
       </SettingItem>

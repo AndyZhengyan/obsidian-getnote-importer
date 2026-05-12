@@ -213,6 +213,7 @@ export default class GetNoteSyncPlugin extends Plugin {
       syncStartDate: resolvedSyncStartDate,
       selectedCount: selectedIds?.length,
       selectedIds,
+      checkpointTime: type === 'auto' ? (scopeOptions?.checkpointTime ?? this.settings.lastSyncEndTimestamp) : undefined,
     };
     this.isSyncing = true;
     this.syncProgress = { message: t('sync.fetching', { page: 1 }), count: '', percent: 0 };
@@ -296,9 +297,9 @@ export default class GetNoteSyncPlugin extends Plugin {
   private doAutoSync(): void {
     // Auto sync uses lastSyncEndTimestamp as cutoff: skip notes already synced last time.
     // This IS the early-exit mechanism — no separate lastSyncEndTimestamp logic needed in engine.
-    const syncStartDate = this.settings.lastSyncEndTimestamp || this.settings.syncStartDate;
-    const scopeOptions: Partial<SyncScopeOptions> = syncStartDate
-      ? { syncStartDate, maxDays: 0 }
+    const checkpointTime = this.settings.lastSyncEndTimestamp || this.settings.syncStartDate;
+    const scopeOptions: Partial<SyncScopeOptions> = checkpointTime
+      ? { syncStartDate: checkpointTime, maxDays: 0, checkpointTime }
       : {};
     void this.runSync('auto', scopeOptions);
   }

@@ -1,7 +1,8 @@
 # GetNote Importer
 
-[![Obsidian Plugin](https://img.shields.io/badge/Obsidian-Plugin-7c3aed?style=flat-square)](https://obsidian.md)
+[![Community Plugin](https://img.shields.io/badge/Obsidian-Community%20Plugin-7c3aed?style=flat-square&logo=obsidian)](https://community.obsidian.md/plugins/getnote-importer)
 [![Latest Release](https://img.shields.io/github/v/release/AndyZhengyan/obsidian-getnote-importer?style=flat-square)](https://github.com/AndyZhengyan/obsidian-getnote-importer/releases)
+[![Downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&query=%24.getnote-importer.downloads&style=flat-square&label=downloads)](https://community.obsidian.md/plugins/getnote-importer)
 [![CI](https://img.shields.io/github/actions/workflow/status/AndyZhengyan/obsidian-getnote-importer/ci.yml?branch=main&style=flat-square)](https://github.com/AndyZhengyan/obsidian-getnote-importer/actions)
 [![License](https://img.shields.io/github/license/AndyZhengyan/obsidian-getnote-importer?style=flat-square)](LICENSE)
 
@@ -73,23 +74,11 @@ Synced recording note — includes audio file, transcript text, and AI summary, 
 
 ### From Obsidian Community Plugins
 
-> ⚠️ The plugin is under review by Obsidian. Once approved, it will be available here.
+[![Available on Obsidian](https://img.shields.io/badge/Obsidian-Community%20Plugin-7c3aed?style=flat-square&logo=obsidian)](https://community.obsidian.md/plugins/getnote-importer)
 
 1. Open `Settings -> Community plugins -> Browse`.
 2. Search for `GetNote Importer`.
 3. Install and enable the plugin.
-
-### Via BRAT
-
-1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) community plugin.
-2. Open `Settings -> Community plugins -> BRAT -> Add a beta plugin`.
-3. Enter this repository URL:
-
-```text
-https://github.com/AndyZhengyan/obsidian-getnote-importer
-```
-
-4. Enable `GetNote Importer`.
 
 ### Manual Install
 
@@ -237,35 +226,6 @@ GetNote Importer treats GetNote as the source of truth for imported note content
 - Audio download works only when the detail API returns a valid HTTPS audio attachment.
 - Imported Markdown content may be updated by future syncs. Keep personal edits in separate notes or backlinks if you need full manual control.
 
-## Install for Local Testing
-
-Two options:
-
-**Option 1 — Download from releases (no build needed)**
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/AndyZhengyan/obsidian-getnote-importer/releases/latest).
-2. Create the plugin directory if it doesn't exist:
-   ```bash
-   mkdir -p <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
-   ```
-3. Copy the files in:
-   ```bash
-   cp main.js manifest.json styles.css <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
-   ```
-
-**Option 2 — Build from source**
-```bash
-# Build the plugin
-npm run build
-
-# Create plugin directory (if it doesn't exist)
-mkdir -p <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
-
-# Copy plugin files to vault
-cp main.js manifest.json styles.css <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
-```
-
-**Reload Obsidian** after installing: press `Cmd+P` (macOS) or `Ctrl+P` (Windows/Linux), search `Reload`, and choose `Reload app without saving` (or restart Obsidian).
-
 ## Development
 
 ```bash
@@ -284,20 +244,6 @@ Release assets are generated from the repository root:
 
 The GitHub release workflow verifies typecheck, lint, tests, build, and version/tag consistency before uploading those files.
 
-## Obsidian Community Plugin Submission
-
-Suggested entry for `obsidianmd/obsidian-releases`:
-
-```json
-{
-  "id": "getnote-importer",
-  "name": "GetNote Importer",
-  "author": "Zheng Yan",
-  "description": "Sync notes, links, recordings, and AI summaries from GetNote into your Obsidian vault.",
-  "repo": "AndyZhengyan/obsidian-getnote-importer"
-}
-```
-
 ## Support
 
 - Report bugs in [GitHub Issues](https://github.com/AndyZhengyan/obsidian-getnote-importer/issues).
@@ -308,7 +254,7 @@ Suggested entry for `obsidianmd/obsidian-releases`:
 
 Enterprise AI practitioner, indie AI blogger, AGI believer, and enthusiast. Scan to follow my WeChat public account — let's talk.
 
-![微信公众号](docs/screenshots/wechat-qr.jpg)
+![WeChat Public Account](docs/screenshots/wechat-qr.jpg)
 
 ## License
 

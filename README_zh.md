@@ -1,7 +1,8 @@
 # GetNote Importer（Get笔记导入器）
 
-[![Obsidian 插件](https://img.shields.io/badge/Obsidian-Plugin-7c3aed?style=flat-square)](https://obsidian.md)
+[![社区插件](https://img.shields.io/badge/Obsidian-Community%20Plugin-7c3aed?style=flat-square&logo=obsidian)](https://community.obsidian.md/plugins/getnote-importer)
 [![最新版本](https://img.shields.io/github/v/release/AndyZhengyan/obsidian-getnote-importer?style=flat-square)](https://github.com/AndyZhengyan/obsidian-getnote-importer/releases)
+[![下载量](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&query=%24.getnote-importer.downloads&style=flat-square&label=downloads)](https://community.obsidian.md/plugins/getnote-importer)
 [![CI](https://img.shields.io/github/actions/workflow/status/AndyZhengyan/obsidian-getnote-importer/ci.yml?branch=main&style=flat-square)](https://github.com/AndyZhengyan/obsidian-getnote-importer/actions)
 [![许可证](https://img.shields.io/github/license/AndyZhengyan/obsidian-getnote-importer?style=flat-square)](LICENSE)
 
@@ -71,25 +72,13 @@ Get笔记官方只支持导出为**离线 HTML 文件**：
 
 ## 安装
 
-### 通过 Obsidian 社区插件（待上线）
+### 通过 Obsidian 社区插件
 
-插件正在准备提交 Obsidian 官方社区插件市场。上架后可以这样安装：
+[![Available on Obsidian](https://img.shields.io/badge/Obsidian-Community%20Plugin-7c3aed?style=flat-square&logo=obsidian)](https://community.obsidian.md/plugins/getnote-importer)
 
-1. 打开 `设置 -> 社区插件 -> 浏览`.
-2. 搜索 `GetNote Importer`.
+1. 打开 `设置 -> 社区插件 -> 浏览`。
+2. 搜索 `GetNote Importer`。
 3. 安装并启用插件。
-
-### 通过 BRAT 安装
-
-1. 安装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) 社区插件。
-2. 打开 `设置 -> 社区插件 -> BRAT -> 添加测试版插件`.
-3. 输入仓库地址：
-
-```text
-https://github.com/AndyZhengyan/obsidian-getnote-importer
-```
-
-4. 启用 `GetNote Importer`。
 
 ### 手动安装
 
@@ -215,35 +204,6 @@ tags: ["work"]
 | 同步间隔 | 定时同步间隔（分钟） | `30` |
 | 启动时同步 | Obsidian 启动时自动同步一次 | 开启 |
 
-## 本地测试安装
-
-两种方式：
-
-**方式一 — 直接下载 release（无需构建）**
-1. 从 [最新版本](https://github.com/AndyZhengyan/obsidian-getnote-importer/releases/latest) 下载 `main.js`、`manifest.json`、`styles.css`。
-2. 创建插件目录（如不存在）：
-   ```bash
-   mkdir -p <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
-   ```
-3. 复制文件进去：
-   ```bash
-   cp main.js manifest.json styles.css <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
-   ```
-
-**方式二 — 从源码构建**
-```bash
-# 构建插件
-npm run build
-
-# 创建插件目录（如不存在）
-mkdir -p <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
-
-# 复制插件文件到 vault
-cp main.js manifest.json styles.css <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
-```
-
-**安装完成后重载 Obsidian**：按 `Cmd+P`（macOS）或 `Ctrl+P`（Windows/Linux），搜索 `Reload`，选择 `Reload app without saving`（或直接重启 Obsidian）。
-
 ## 同步模型
 
 对已导入内容来说，插件默认把 Get笔记视为同步来源。
@@ -286,20 +246,6 @@ npm run build
 - `styles.css`
 
 GitHub release workflow 会在上传产物前验证：类型检查、lint、测试、构建，以及 tag 和 manifest 版本一致性。
-
-## 提交到 Obsidian 社区插件市场
-
-提交 `obsidianmd/obsidian-releases` 时可使用以下条目：
-
-```json
-{
-  "id": "getnote-importer",
-  "name": "GetNote Importer",
-  "author": "Zheng Yan",
-  "description": "Sync notes, links, recordings, and AI summaries from GetNote into your Obsidian vault.",
-  "repo": "AndyZhengyan/obsidian-getnote-importer"
-}
-```
 
 ## 支持
 

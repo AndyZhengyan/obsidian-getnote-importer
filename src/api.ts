@@ -1,4 +1,6 @@
-// No import needed - using native fetch
+import { requestUrl } from 'obsidian';
+import type { ListResponse, GetNoteNote, Attachment } from './types';
+import { t } from './i18n';
 
 const BASE_URL = 'https://openapi.biji.com/open/api/v1';
 export const GETNOTE_LIST_LIMIT = 20;
@@ -11,9 +13,9 @@ function safeJsonParse(text: string): unknown {
   return JSON.parse(safe);
 }
 
-function getHeader(headers: Headers, name: string): string | undefined {
+function getHeader(headers: Record<string, string>, name: string): string | undefined {
   const lowerName = name.toLowerCase();
-  const entry = Array.from(headers.entries()).find(([key]) => key.toLowerCase() === lowerName);
+  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === lowerName);
   return entry?.[1];
 }
 
@@ -57,9 +59,17 @@ async function apiRequest<T>(
 ): Promise<T> {
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-  const res = await fetch(url, {
-    ...options,
-    signal,
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> | undefined),
+  };
+
+  const res = await requestUrl({
+    url,
+    method: options.method,
+    headers,
+    body: options.body as string | ArrayBuffer | undefined,
+    throw: false,
   });
 
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -69,16 +79,18 @@ async function apiRequest<T>(
   }
 
   if (res.status === 429) {
-    const retryAfter = res.headers.get('Retry-After');
-    const limitRemaining = res.headers.get('X-RateLimit-Remaining');
+    // Check for Retry-After header or rate limit info
+    const retryAfter = getHeader(res.headers, 'Retry-After');
+    const limitRemaining = getHeader(res.headers, 'X-RateLimit-Remaining');
 
+    // If we got a "quota exhausted" signal (remaining: 0 or no retry-after), stop immediately
     if ((limitRemaining === '0' || !retryAfter) && retries > 0) {
       throw new Error(t('error.quotaExceeded'));
     }
 
     if (retryAfter) {
       const baseDelay = parseInt(retryAfter, 10);
-      const delay = Math.min(baseDelay, 60) * 1000;
+      const delay = Math.min(baseDelay, 60) * 1000; // cap at 60s
       await new Promise((r, reject) => {
         const timer = activeWindow.setTimeout(() => r(undefined), delay);
         signal?.addEventListener('abort', () => { activeWindow.clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
@@ -91,12 +103,10 @@ async function apiRequest<T>(
   }
 
   if (res.status < 200 || res.status >= 300) {
-    const text = await res.text();
-    throw new Error(t('error.apiFailed', { status: res.status, msg: text }));
+    throw new Error(t('error.apiFailed', { status: res.status, msg: res.text }));
   }
 
-  const text = await res.text();
-  return safeJsonParse(text) as T;
+  return safeJsonParse(res.text) as T;
 }
 
 export interface FetchNotesOptions {
@@ -110,6 +120,7 @@ export interface FetchNotesOptions {
 export async function fetchNotes(options: FetchNotesOptions): Promise<{
   notes: GetNoteNote[];
   hasMore: boolean;
+  nextCursor: string;
 }> {
   const { token, clientId, sinceId = '0', signal } = options;
   const requestedLimit = options.limit ?? GETNOTE_LIST_LIMIT;
@@ -127,6 +138,7 @@ export async function fetchNotes(options: FetchNotesOptions): Promise<{
   return {
     notes: data.data.notes,
     hasMore: data.data.has_more,
+    nextCursor: data.data.next_cursor,
   };
 }
 
@@ -178,22 +190,21 @@ export async function fetchOAuthDeviceCode(
 ): Promise<OAuthDeviceCodeResponse> {
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-  const res = await fetch(`${BASE_URL}/oauth/device/code`, {
+  const res = await requestUrl({
+    url: `${BASE_URL}/oauth/device/code`,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_id: 'cli_a1b2c3d4e5f6789012345678abcdef90' }),
-    signal,
+    throw: false,
   });
 
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
   if (res.status < 200 || res.status >= 300) {
-    const text = await res.text();
-    throw new Error(t('error.oauthDeviceCodeFailed', { status: res.status, msg: text }));
+    throw new Error(t('error.oauthDeviceCodeFailed', { status: res.status, msg: res.text }));
   }
 
-  const text = await res.text();
-  const json = safeJsonParse(text) as Record<string, unknown>;
+  const json = safeJsonParse(res.text) as Record<string, unknown>;
 
   // Support both { success, data } wrapper and flat response
   const source = (json.data ?? json) as Record<string, unknown>;
@@ -252,7 +263,8 @@ export async function pollOAuthToken(
   for (let i = 0; i < maxAttempts; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    const res = await fetch(`${BASE_URL}/oauth/token`, {
+    const res = await requestUrl({
+      url: `${BASE_URL}/oauth/token`,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -260,17 +272,15 @@ export async function pollOAuthToken(
         client_id: 'cli_a1b2c3d4e5f6789012345678abcdef90',
         code,
       }),
-      signal,
+      throw: false,
     });
 
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     if (res.status < 200 || res.status >= 300) {
-      const text = await res.text();
-      throw new Error(t('error.apiFailed', { status: res.status, msg: text }));
+      throw new Error(t('error.apiFailed', { status: res.status, msg: res.text }));
     }
-    const text = await res.text();
-    const json = safeJsonParse(text) as Record<string, unknown>;
+    const json = safeJsonParse(res.text) as Record<string, unknown>;
     const parsed = parseOAuthTokenResponse(json);
 
     if (parsed.isSuccess) {
@@ -309,7 +319,7 @@ export async function* fetchAllNotes(
 
   while (true) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    const { notes, hasMore } = await fetchNotes({
+    const { notes, hasMore, nextCursor } = await fetchNotes({
       token,
       clientId,
       sinceId: cursor,
@@ -320,8 +330,7 @@ export async function* fetchAllNotes(
       yield notes;
     }
 
-    if (!hasMore || notes.length === 0) break;
-    // Use last note's id as cursor for next page (not the API's next_cursor, which may be unreliable)
-    cursor = String(notes[notes.length - 1].id);
+    if (!hasMore || !nextCursor || notes.length === 0) break;
+    cursor = nextCursor;
   }
 }

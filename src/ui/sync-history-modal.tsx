@@ -13,11 +13,6 @@ export function formatHistoryScope(entry: SyncHistoryEntry): string {
     return t('syncHistory.params.selected', { count: entry.scope.selectedCount });
   }
 
-  // Auto sync uses checkpointTime (lastNoteTimestamp) for display
-  if ((entry.type === 'auto' || entry.mode === 'auto') && entry.scope?.checkpointTime) {
-    return t('syncHistory.params.checkpoint', { date: entry.scope.checkpointTime });
-  }
-
   const parts: string[] = [];
   if (entry.scope?.syncStartDate) {
     parts.push(t('syncHistory.params.startDate', { date: entry.scope.syncStartDate }));

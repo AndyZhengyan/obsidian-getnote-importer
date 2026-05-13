@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { DEFAULT_SETTINGS, type Settings, type SyncHistoryScope, type SyncProgressDetail, type SyncHistoryEntry, type SyncResult, type SyncScopeOptions } from './types';
 import { GetNoteSettingsTab } from './settings-tab';
 import { SyncEngine, SyncCancelledError } from './sync';
-import { showError, showNotice, showSuccess, showInfo } from './ui/notice';
+import { showError, showNotice } from './ui/notice';
 import { NotePickerModal } from './ui/note-picker-modal';
 import { ManualSyncModal } from './ui/manual-sync-modal';
 import { initI18n, t } from './i18n';
@@ -187,9 +187,7 @@ export default class GetNoteSyncPlugin extends Plugin {
     this.settings.syncHistory = this.syncHistory;
 
     // lastSyncEndTimestamp only belongs to auto sync
-    // 更新断点只要：有笔记成功同步且有 lastNoteTimestamp（即使有部分失败）
-    const hasSuccessfulSync = (result.created > 0 || result.updated > 0);
-    if (type === 'auto' && hasSuccessfulSync && result.lastNoteTimestamp) {
+    if (type === 'auto' && result.failed === 0 && result.lastNoteTimestamp) {
       this.settings.lastSyncEndTimestamp = result.lastNoteTimestamp;
     }
 
@@ -215,7 +213,6 @@ export default class GetNoteSyncPlugin extends Plugin {
       syncStartDate: resolvedSyncStartDate,
       selectedCount: selectedIds?.length,
       selectedIds,
-      checkpointTime: type === 'auto' ? (scopeOptions?.checkpointTime ?? this.settings.lastSyncEndTimestamp) : undefined,
     };
     this.isSyncing = true;
     this.syncProgress = { message: t('sync.fetching', { page: 1 }), count: '', percent: 0 };
@@ -238,15 +235,10 @@ export default class GetNoteSyncPlugin extends Plugin {
       if (type === 'auto') {
         this.autoSyncFailCount = 0;
         if (result.created > 0 || result.updated > 0) {
-          showSuccess(t('notice.autoSynced', { created: result.created, updated: result.updated }));
+          showNotice(t('notice.autoSynced', { created: result.created, updated: result.updated }));
         }
       } else {
-        const hasChanges = result.created > 0 || result.updated > 0;
-        if (hasChanges) {
-          showSuccess(t('notice.syncComplete', { created: result.created, updated: result.updated, skipped: result.skipped, failed: result.failed > 0 ? ` · ${t('modal.failed', { failed: result.failed })}` : '' }), 8000);
-        } else {
-          showInfo(t('notice.syncComplete', { created: result.created, updated: result.updated, skipped: result.skipped, failed: result.failed > 0 ? ` · ${t('modal.failed', { failed: result.failed })}` : '' }), 8000);
-        }
+        showNotice(t('notice.syncComplete', { created: result.created, updated: result.updated, skipped: result.skipped, failed: result.failed > 0 ? ` · ${t('modal.failed', { failed: result.failed })}` : '' }), 8000);
         this.syncProgress = { message: '', count: '', percent: 0 };
         this.isSyncing = false;
         this.currentSyncEngine = null;
@@ -297,17 +289,13 @@ export default class GetNoteSyncPlugin extends Plugin {
   }
 
   private doAutoSync(): void {
-    // 1) lastSyncEndTimestamp: precise checkpoint from previous sync
-    // 2) syncStartDate: user-configured initial cutoff (first run only)
-    // 3) maxDays: fallback bounded sync
-    const checkpointTime = this.settings.lastSyncEndTimestamp;
-    if (checkpointTime) {
-      void this.runSync('auto', { syncStartDate: checkpointTime, maxDays: 0, checkpointTime });
-    } else if (this.settings.syncStartDate) {
-      void this.runSync('auto', { syncStartDate: this.settings.syncStartDate, maxDays: 0 });
-    } else {
-      void this.runSync('auto', { maxDays: this.settings.maxDays });
-    }
+    // Auto sync uses lastSyncEndTimestamp as cutoff: skip notes already synced last time.
+    // This IS the early-exit mechanism — no separate lastSyncEndTimestamp logic needed in engine.
+    const syncStartDate = this.settings.lastSyncEndTimestamp || this.settings.syncStartDate;
+    const scopeOptions: Partial<SyncScopeOptions> = syncStartDate
+      ? { syncStartDate, maxDays: 0 }
+      : {};
+    void this.runSync('auto', scopeOptions);
   }
 
   private setProgress(info: { page?: number; processed?: number; total?: number; created?: number; updated?: number; skipped?: number; failed?: number; percent?: number }) {

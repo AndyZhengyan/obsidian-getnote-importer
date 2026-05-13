@@ -1,7 +1,7 @@
 // Get笔记 API 响应类型
 
 export interface GetNoteNote {
-  id: string;           // 64位整数，API返回int，safeJsonParse预处理为string以避免精度丢失
+  id: number;            // 64位整数，JSON 解析前需预处理
   note_id: string;
   title: string;
   content: string;       // 正文（markdown），录音笔记为 AI 摘要
@@ -61,7 +61,6 @@ export interface Settings {
 export interface SyncScopeOptions {
   maxDays: number;
   syncStartDate: string;
-  checkpointTime?: string;  // for auto sync: the lastSyncEndTimestamp used as cutoff, for display in history
 }
 
 export interface SyncHistoryScope {
@@ -69,7 +68,6 @@ export interface SyncHistoryScope {
   syncStartDate: string;
   selectedCount?: number;
   selectedIds?: string[];
-  checkpointTime?: string;  // lastNoteTimestamp from auto sync, used for display label
 }
 
 export const DEFAULT_SETTINGS: Settings = {

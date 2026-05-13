@@ -67,7 +67,6 @@ type WriteStatus = SyncResultItem['status'];
 
 interface WriteNoteResult {
   status: WriteStatus;
-  file?: TFile;
   error?: string;
 }
 
@@ -168,13 +167,12 @@ export class SyncEngine {
       // Skip already-existing files
       if (this.app.vault.getAbstractFileByPath(targetPath)) return targetPath;
 
-      const res = await fetch(attachment.url);
+      const res = await requestUrl({ url: attachment.url, throw: false });
       if (res.status < 200 || res.status >= 300) {
         console.error(`[GetNote] Audio download failed: ${res.status}`);
         return null;
       }
-      const buffer = await res.arrayBuffer();
-      await this.app.vault.createBinary(targetPath, buffer);
+      await this.app.vault.createBinary(targetPath, res.arrayBuffer);
       return targetPath;
     } catch (err) {
       console.error(`[GetNote] Audio download error:`, err);
@@ -260,21 +258,21 @@ export class SyncEngine {
         const contentChanged = this.isContentChanged(existingByUid, note);
         const pathChanged = existingByUid.path !== targetPath;
 
-        if (!contentChanged && !pathChanged) return { status: 'skipped', file: existingByUid };
+        if (!contentChanged && !pathChanged) return { status: 'skipped' };
 
         const content = renderNote(note, note.assetFileName);
         if (pathChanged) {
           await this.app.vault.rename(existingByUid, targetPath);
         }
         await this.app.vault.modify(existingByUid, content);
-        return { status: 'updated', file: existingByUid };
+        return { status: 'updated' };
       } else if (existingAtTarget instanceof TFile) {
         // File exists at target path but wasn't in uidIndex - check content
         const contentChanged = this.isContentChanged(existingAtTarget, note);
         const content = renderNote(note, note.assetFileName);
         await this.app.vault.modify(existingAtTarget, content);
         uidIndex.set(note.note_id, existingAtTarget);
-        return { status: contentChanged ? 'updated' : 'skipped', file: existingAtTarget };
+        return { status: contentChanged ? 'updated' : 'skipped' };
       } else {
         const content = renderNote(note, note.assetFileName);
         try {
@@ -283,7 +281,7 @@ export class SyncEngine {
           if (created && created instanceof TFile) {
             uidIndex.set(note.note_id, created);
           }
-          return { status: 'created', file: created instanceof TFile ? created : undefined };
+          return { status: 'created' };
         } catch (createErr) {
           // File was created by another process between check and create
           const existing = this.app.vault.getAbstractFileByPath(targetPath);
@@ -291,7 +289,7 @@ export class SyncEngine {
             const contentChanged = this.isContentChanged(existing, note);
             await this.app.vault.modify(existing, content);
             uidIndex.set(note.note_id, existing);
-            return { status: contentChanged ? 'updated' : 'skipped', file: existing };
+            return { status: contentChanged ? 'updated' : 'skipped' };
           }
           throw createErr;
         }
@@ -300,7 +298,6 @@ export class SyncEngine {
       console.error(`[GetNote] Write failed [${generateDisplayTitle(note) || note.note_id}]:`, err);
       return {
         status: 'failed',
-        file: undefined,
         error: err instanceof Error ? err.message : String(err),
       };
     }
@@ -366,7 +363,7 @@ export class SyncEngine {
 
     return notes.filter(note => {
       const updated = parseNoteUpdatedTime(note);
-      return updated !== null && updated > startTime;
+      return updated !== null && updated >= startTime;
     });
   }
 
@@ -384,7 +381,6 @@ export class SyncEngine {
   async sync(modal?: SyncModal): Promise<SyncResult> {
     const result: SyncResult = { created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] };
     const uidIndex = this.buildUidIndex();
-    const seenNoteIds = new Set<string>();
     const controller = new AbortController();
     this.abortController = controller;
     let pageCount = 0;
@@ -422,9 +418,6 @@ export class SyncEngine {
 
         for (const note of filtered) {
           if (this.cancelled || modal?.isCancelled()) throw new SyncCancelledError();
-          // Skip notes we've already processed in this sync run (dedup across pages)
-          if (seenNoteIds.has(note.note_id)) continue;
-          seenNoteIds.add(note.note_id);
           result.total++;
           const noteToWrite = await this.enrichAudioNote(note, controller.signal);
           const writeResult = await this.writeNote(noteToWrite, uidIndex);
@@ -442,13 +435,15 @@ export class SyncEngine {
           }
         }
 
-        // Early exit: if this page has notes but all of them are outside the date range
-        // (filtered is empty but original notes exist), then all subsequent pages will
-        // also be outside the range, so we can stop here.
-        // This works regardless of whether the API guarantees sorting.
-        if (cutoffTime !== null && notes.length > 0 && filtered.length === 0) {
-          // All notes in this page are outside the cutoff range
-          break;
+        // Notes are sorted by updated_at DESC. Once the oldest note in this page
+        // is older than the cutoff, later pages can be skipped after this page's
+        // still-valid notes have been processed.
+        if (cutoffTime !== null && notes.length > 0 && isSortedByUpdatedDesc(notes)) {
+          const oldestNote = notes[notes.length - 1];
+          const oldestTime = parseNoteUpdatedTime(oldestNote);
+          if (oldestTime !== null && oldestTime < cutoffTime) {
+            break;
+          }
         }
 
         if (result.total % 10 === 0) {
@@ -483,7 +478,6 @@ export class SyncEngine {
     const result: SyncResult = { created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] };
     const idSet = new Set(noteIds);
     const uidIndex = this.buildUidIndex();
-    const seenNoteIds = new Set<string>();
     const controller = new AbortController();
     this.abortController = controller;
     this.cancelled = false;
@@ -503,9 +497,6 @@ export class SyncEngine {
 
         for (const note of matched) {
           if (this.cancelled || modal?.isCancelled()) throw new SyncCancelledError();
-          // Skip notes we've already processed in this sync run (dedup across pages)
-          if (seenNoteIds.has(note.note_id)) continue;
-          seenNoteIds.add(note.note_id);
 
           fetchedCount++;
           result.total++;

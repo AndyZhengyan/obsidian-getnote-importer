@@ -45,6 +45,8 @@
 
 .getnote-settings-header h2 {
   margin: 0 0 4px;
+  padding-left: 0;
+  border-left: none;
 }
 
 .getnote-settings-author {
@@ -55,6 +57,7 @@
 .getnote-settings-desc {
   color: var(--text-muted);
   margin: 0 0 16px;
+  padding-left: 0;
   font-size: 13px;
 }
 

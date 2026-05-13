@@ -1,8 +1,8 @@
 export const translations: Record<string, Record<string, string>> = {
   zh: {
     // === Settings ===
-    'settings.title': 'Get笔记导入',
-    'settings.desc': '🔄 Get笔记 → Obsidian，一键迁移无负担',
+    'settings.title': '⏪ Get笔记导入',
+    'settings.desc': 'Get笔记 → Obsidian，一键迁移无负担，',
     'settings.community': '欢迎交流',
     'settings.apiToken.label': 'API Token',
     'settings.apiToken.desc': 'Get笔记开放平台的 Authorization Token（gk_live_xxx）',
@@ -201,18 +201,18 @@ export const translations: Record<string, Record<string, string>> = {
 
   en: {
     // === Settings ===
-    'settings.title': 'Get笔记导入',
-    'settings.desc': '🔄 Get笔记 → Obsidian，one-click migration',
+    'settings.title': '⏪ GetNote Importer',
+    'settings.desc': 'GetNote → Obsidian, one-click migration',
     'settings.community': 'Welcome to discuss',
     'settings.apiToken.label': 'API Token',
-    'settings.apiToken.desc': 'Get笔记 Open Platform Authorization Token (gk_live_xxx)',
+    'settings.apiToken.desc': 'GetNote Open Platform Authorization Token (gk_live_xxx)',
     'settings.apiToken.placeholder': 'App Key: gk_xxx',
     'settings.clientId.label': 'Client ID',
-    'settings.clientId.desc': 'Get笔记 Open Platform Client ID (cli_xxx)',
+    'settings.clientId.desc': 'GetNote Open Platform Client ID (cli_xxx)',
     'settings.clientId.placeholder': 'Client ID: cli_xxx',
     'settings.folder.label': 'Target Folder',
-    'settings.folder.desc': 'Subfolder in vault to sync notes to (default: Get笔记)',
-    'settings.folder.placeholder': 'Get笔记',
+    'settings.folder.desc': 'Subfolder in vault to sync notes to (default: GetNote)',
+    'settings.folder.placeholder': 'GetNote',
     'settings.maxDays.label': 'Auto Sync Range',
     'settings.maxDays.desc': 'Scheduled sync only pulls notes updated within N days (0 = no limit)',
     'settings.maxDays.placeholder': '30',
@@ -347,7 +347,7 @@ export const translations: Record<string, Record<string, string>> = {
     'picker.type.unknown': 'Other',
 
     // === Sync Modal ===
-    'modal.title': 'Get笔记 Syncing',
+    'modal.title': 'GetNote Syncing',
     'modal.connecting': 'Connecting to API...',
     'modal.done': 'Sync Complete',
     'modal.created': 'Created {created}',

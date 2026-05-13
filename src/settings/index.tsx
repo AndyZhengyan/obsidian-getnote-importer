@@ -8,7 +8,7 @@ import { App, AbstractInputSuggest } from 'obsidian';
 import { fetchNotes } from '../api';
 import { t } from '../i18n';
 
-const GITHUB_URL = 'https://github.com/AndyZhengyan/obsidian-getnote-importer';
+const GITHUB_URL = 'https://github.com/AndyZhengyan/obsidian-getnote-importer#about-the-author';
 
 class FolderSuggest extends AbstractInputSuggest<string> {
   private el: HTMLInputElement;

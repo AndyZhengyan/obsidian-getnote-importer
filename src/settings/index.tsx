@@ -70,8 +70,7 @@ export function SettingsComponent({
   const [showApiToken, setShowApiToken] = useState(false);
   const [folderName, setFolderName] = useState(settings.folderName);
   const [filenamePrefix, setFilenamePrefix] = useState(settings.filenamePrefix);
-  // Only show actual lastSyncEndTimestamp — do NOT fallback to syncStartDate
-  const lastSyncedTo = settings.lastSyncEndTimestamp || '';
+  const [syncStartDate, setSyncStartDate] = useState(settings.syncStartDate);
   const [scheduledEnabled, setScheduledEnabled] = useState(settings.scheduledSync.enabled);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -79,16 +78,6 @@ export function SettingsComponent({
   const [intervalWarning, setIntervalWarning] = useState(false);
 
   const folderInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!settings.syncStartDate && !settings.lastSyncEndTimestamp) {
-      const d = new Date();
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      updateSetting('syncStartDate', `${y}-${m}-${day}`);
-    }
-  }, []);
 
   useEffect(() => {
     const inputEl = folderInputRef.current;
@@ -135,9 +124,13 @@ export function SettingsComponent({
     [updateSetting]
   );
 
-  const handleSyncStartDateChange = (value: string) => {
-    updateSetting('syncStartDate', value);
-  };
+  const handleSyncStartDateChange = useCallback(
+    (value: string) => {
+      setSyncStartDate(value);
+      updateSetting('syncStartDate', value);
+    },
+    [updateSetting]
+  );
 
   const handleScheduledEnabled = (checked: boolean) => {
     setScheduledEnabled(checked);
@@ -361,27 +354,18 @@ export function SettingsComponent({
                 />
               </span>
             </div>
-            <div className="getnote-scheduled-row getnote-scheduled-date-row">
-              <span className="getnote-scheduled-row-label">
-                {lastSyncedTo ? t('settings.syncStartDate.lastSyncedTo') : t('settings.syncStartDate.label')}
-              </span>
-              <span className="getnote-scheduled-row-control getnote-muted-text">
-                {lastSyncedTo ? (
-                  lastSyncedTo
-                ) : (
-                  <input
-                    type="date"
-                    className="getnote-input getnote-date-input"
-                    value={settings.syncStartDate}
-                    placeholder={t('settings.syncStartDate.placeholder')}
-                    onChange={(e) => handleSyncStartDateChange((e.target as HTMLInputElement).value)}
-                  />
-                )}
+                        <div className="getnote-scheduled-row getnote-scheduled-date-row">
+              <span className="getnote-scheduled-row-label">{t('settings.syncStartDate.label')}</span>
+              <span className="getnote-scheduled-row-control">
+                <input
+                  type="date"
+                  className="getnote-input getnote-date-input"
+                  value={syncStartDate}
+                  onChange={(e) => handleSyncStartDateChange((e.target as HTMLInputElement).value)}
+                />
               </span>
             </div>
-            <div className="getnote-input-hint">
-              {lastSyncedTo ? t('settings.syncStartDate.lastSyncedToDesc') : t('settings.syncStartDate.desc')}
-            </div>
+            <div className="getnote-input-hint">{t('settings.syncStartDate.desc')}</div>
           </div>
         </div>
       </SettingItem>

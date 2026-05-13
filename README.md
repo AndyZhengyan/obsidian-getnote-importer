@@ -304,6 +304,12 @@ Suggested entry for `obsidianmd/obsidian-releases`:
 - Share ideas in [GitHub Discussions](https://github.com/AndyZhengyan/obsidian-getnote-importer/discussions).
 - Star the repository if it saves you time.
 
+### About the Author
+
+Enterprise AI practitioner, indie AI blogger, AGI believer, and enthusiast. Scan to follow my WeChat public account — let's talk.
+
+![微信公众号](docs/screenshots/wechat-qr.jpg)
+
 ## License
 
 [MIT](LICENSE)

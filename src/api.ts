@@ -13,12 +13,6 @@ function safeJsonParse(text: string): unknown {
   return JSON.parse(safe);
 }
 
-function getHeader(headers: Headers, name: string): string | undefined {
-  const lowerName = name.toLowerCase();
-  const entry = Array.from(headers.entries()).find(([key]) => key.toLowerCase() === lowerName);
-  return entry?.[1];
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

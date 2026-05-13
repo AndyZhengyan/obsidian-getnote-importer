@@ -168,12 +168,13 @@ export class SyncEngine {
       // Skip already-existing files
       if (this.app.vault.getAbstractFileByPath(targetPath)) return targetPath;
 
-      const res = await requestUrl({ url: attachment.url, throw: false });
+      const res = await fetch(attachment.url);
       if (res.status < 200 || res.status >= 300) {
         console.error(`[GetNote] Audio download failed: ${res.status}`);
         return null;
       }
-      await this.app.vault.createBinary(targetPath, res.arrayBuffer);
+      const buffer = await res.arrayBuffer();
+      await this.app.vault.createBinary(targetPath, buffer);
       return targetPath;
     } catch (err) {
       console.error(`[GetNote] Audio download error:`, err);
@@ -441,15 +442,13 @@ export class SyncEngine {
           }
         }
 
-        // Notes are sorted by updated_at DESC. Once the oldest note in this page
-        // is older than the cutoff, later pages can be skipped after this page's
-        // still-valid notes have been processed.
-        if (cutoffTime !== null && notes.length > 0 && isSortedByUpdatedDesc(notes)) {
-          const oldestNote = notes[notes.length - 1];
-          const oldestTime = parseNoteUpdatedTime(oldestNote);
-          if (oldestTime !== null && oldestTime < cutoffTime) {
-            break;
-          }
+        // Early exit: if this page has notes but all of them are outside the date range
+        // (filtered is empty but original notes exist), then all subsequent pages will
+        // also be outside the range, so we can stop here.
+        // This works regardless of whether the API guarantees sorting.
+        if (cutoffTime !== null && notes.length > 0 && filtered.length === 0) {
+          // All notes in this page are outside the cutoff range
+          break;
         }
 
         if (result.total % 10 === 0) {

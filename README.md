@@ -237,6 +237,35 @@ GetNote Importer treats GetNote as the source of truth for imported note content
 - Audio download works only when the detail API returns a valid HTTPS audio attachment.
 - Imported Markdown content may be updated by future syncs. Keep personal edits in separate notes or backlinks if you need full manual control.
 
+## Install for Local Testing
+
+Two options:
+
+**Option 1 — Download from releases (no build needed)**
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/AndyZhengyan/obsidian-getnote-importer/releases/latest).
+2. Create the plugin directory if it doesn't exist:
+   ```bash
+   mkdir -p <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
+   ```
+3. Copy the files in:
+   ```bash
+   cp main.js manifest.json styles.css <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
+   ```
+
+**Option 2 — Build from source**
+```bash
+# Build the plugin
+npm run build
+
+# Create plugin directory (if it doesn't exist)
+mkdir -p <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
+
+# Copy plugin files to vault
+cp main.js manifest.json styles.css <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
+```
+
+**Reload Obsidian** after installing: press `Cmd+P` (macOS) or `Ctrl+P` (Windows/Linux), search `Reload`, and choose `Reload app without saving` (or restart Obsidian).
+
 ## Development
 
 ```bash

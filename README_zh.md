@@ -215,6 +215,35 @@ tags: ["work"]
 | 同步间隔 | 定时同步间隔（分钟） | `30` |
 | 启动时同步 | Obsidian 启动时自动同步一次 | 开启 |
 
+## 本地测试安装
+
+两种方式：
+
+**方式一 — 直接下载 release（无需构建）**
+1. 从 [最新版本](https://github.com/AndyZhengyan/obsidian-getnote-importer/releases/latest) 下载 `main.js`、`manifest.json`、`styles.css`。
+2. 创建插件目录（如不存在）：
+   ```bash
+   mkdir -p <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
+   ```
+3. 复制文件进去：
+   ```bash
+   cp main.js manifest.json styles.css <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
+   ```
+
+**方式二 — 从源码构建**
+```bash
+# 构建插件
+npm run build
+
+# 创建插件目录（如不存在）
+mkdir -p <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
+
+# 复制插件文件到 vault
+cp main.js manifest.json styles.css <your-vault>/.obsidian/plugins/obsidian-getnote-importer/
+```
+
+**安装完成后重载 Obsidian**：按 `Cmd+P`（macOS）或 `Ctrl+P`（Windows/Linux），搜索 `Reload`，选择 `Reload app without saving`（或直接重启 Obsidian）。
+
 ## 同步模型
 
 对已导入内容来说，插件默认把 Get笔记视为同步来源。

@@ -3,7 +3,7 @@
   "name": "GetNote Importer",
   "version": "1.0.8",
   "description": "Sync notes, links, recordings, and AI summaries from GetNote into your local vault.",
-  "author": "Zheng Yan",
+  "author": "Andy Zheng (公众号：关山的月儿)",
   "isDesktopOnly": false,
   "minAppVersion": "1.8.7"
 }

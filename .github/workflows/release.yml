@@ -67,8 +67,7 @@ jobs:
             manifest.json
             styles.css
           generate_release_notes: true
-          previous_tag_name: ${{ steps.prev-tag.outputs.prev_tag }}
-          replace_all_tags: false
+          previous_tag: ${{ steps.prev-tag.outputs.prev_tag }}
 
       - name: Attest Build Artifacts
         if: startsWith(github.ref, 'refs/tags/')

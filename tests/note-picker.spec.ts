@@ -4,7 +4,7 @@ import type { GetNoteNote } from '../src/types';
 
 function makeNote(overrides: Partial<GetNoteNote> = {}): GetNoteNote {
   return {
-    id: 1,
+    id: '1',
     note_id: 'test-1',
     title: '测试笔记',
     content: '正文内容',

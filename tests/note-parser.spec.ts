@@ -4,7 +4,7 @@ import type { GetNoteNote } from '../src/types';
 
 function makeNote(overrides: Partial<GetNoteNote> = {}): GetNoteNote {
   return {
-    id: 1,
+    id: '1',
     note_id: '12345',
     title: '测试笔记',
     content: '这是正文内容',
@@ -155,7 +155,7 @@ describe('generateDisplayTitle', () => {
 describe('renderNote — audio note', () => {
   it('在正文前插入音频链接，并将转写文本追加到正文', () => {
     const note: GetNoteNote = {
-      id: 1,
+      id: '1',
       note_id: 'note_audio_001',
       title: '我的录音',
       content: '### 📑 智能总结\n这是AI摘要',
@@ -190,7 +190,7 @@ describe('renderNote — audio note', () => {
 
   it('无音频附件时行为不变', () => {
     const note: GetNoteNote = {
-      id: 1,
+      id: '1',
       note_id: 'note_001',
       title: '普通笔记',
       content: '正文内容',

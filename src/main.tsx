@@ -187,7 +187,9 @@ export default class GetNoteSyncPlugin extends Plugin {
     this.settings.syncHistory = this.syncHistory;
 
     // lastSyncEndTimestamp only belongs to auto sync
-    if (type === 'auto' && result.failed === 0 && result.lastNoteTimestamp) {
+    // 更新断点只要：有笔记成功同步且有 lastNoteTimestamp（即使有部分失败）
+    const hasSuccessfulSync = (result.created > 0 || result.updated > 0);
+    if (type === 'auto' && hasSuccessfulSync && result.lastNoteTimestamp) {
       this.settings.lastSyncEndTimestamp = result.lastNoteTimestamp;
     }
 
@@ -295,13 +297,17 @@ export default class GetNoteSyncPlugin extends Plugin {
   }
 
   private doAutoSync(): void {
-    // Auto sync uses lastSyncEndTimestamp as cutoff: skip notes already synced last time.
-    // This IS the early-exit mechanism — no separate lastSyncEndTimestamp logic needed in engine.
-    const checkpointTime = this.settings.lastSyncEndTimestamp || this.settings.syncStartDate;
-    const scopeOptions: Partial<SyncScopeOptions> = checkpointTime
-      ? { syncStartDate: checkpointTime, maxDays: 0, checkpointTime }
-      : {};
-    void this.runSync('auto', scopeOptions);
+    // 1) lastSyncEndTimestamp: precise checkpoint from previous sync
+    // 2) syncStartDate: user-configured initial cutoff (first run only)
+    // 3) maxDays: fallback bounded sync
+    const checkpointTime = this.settings.lastSyncEndTimestamp;
+    if (checkpointTime) {
+      void this.runSync('auto', { syncStartDate: checkpointTime, maxDays: 0, checkpointTime });
+    } else if (this.settings.syncStartDate) {
+      void this.runSync('auto', { syncStartDate: this.settings.syncStartDate, maxDays: 0 });
+    } else {
+      void this.runSync('auto', { maxDays: this.settings.maxDays });
+    }
   }
 
   private setProgress(info: { page?: number; processed?: number; total?: number; created?: number; updated?: number; skipped?: number; failed?: number; percent?: number }) {

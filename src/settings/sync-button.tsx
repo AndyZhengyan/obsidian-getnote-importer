@@ -7,25 +7,10 @@ interface SyncButtonProps {
 }
 
 export function SyncButton({ hasCredentials, isSyncing, onClick }: SyncButtonProps) {
-  if (isSyncing) {
-    return (
-      <button className="mod-secondary getnote-sync-action-button" disabled>
-        {t('sync.syncing')}
-      </button>
-    );
-  }
-
-  if (!hasCredentials) {
-    return (
-      <button className="mod-secondary getnote-sync-action-button" disabled>
-        {t('sync.noCredentials')}
-      </button>
-    );
-  }
-
   return (
     <button
       className="mod-secondary getnote-sync-action-button"
+      disabled={!hasCredentials || isSyncing}
       onClick={onClick}
     >
       {t('sync.start')}

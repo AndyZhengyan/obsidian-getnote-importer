@@ -198,3 +198,59 @@ describe('fetchNotes limit', () => {
     );
   });
 });
+
+describe('safeJsonParse — 64位整数精度保护', () => {
+  it('API 返回的 64 位 id 转换为字符串避免精度丢失', () => {
+    // 模拟 API 返回: id 是大整数
+    const input = '{"id":1909816521665949040,"note_id":"1909816521665949040","title":"test"}';
+    const result = safeJsonParse(input) as Record<string, unknown>;
+    expect(typeof result.id).toBe('string');
+    expect(result.id).toBe('1909816521665949040');
+    // note_id 原本是字符串，保持不变
+    expect(typeof result.note_id).toBe('string');
+    expect(result.note_id).toBe('1909816521665949040');
+  });
+
+  it('超大 64 位整数精度不丢失', () => {
+    const input = '{"id":9223372036854775807,"title":"max64"}';
+    const result = safeJsonParse(input) as Record<string, unknown>;
+    expect(result.id).toBe('9223372036854775807');
+    expect((result.id as string).length).toBe(19);
+  });
+
+  it('safeJsonParse 后的 id 可作为分页游标', () => {
+    const input = '{"id":1909816521665949040}';
+    const result = safeJsonParse(input) as Record<string, unknown>;
+    const cursor = String(result.id);
+    // cursor 应该是精确的字符串
+    expect(cursor).toBe('1909816521665949040');
+    // 模拟用于下次请求的 since_id 参数
+    expect(cursor).not.toBe('1909816521665949000'); // 不能是错误的精度
+  });
+
+  it('嵌套在数组中的 note 对象 id 也正确转换', () => {
+    // 直接使用 JSON 字符串，避免 JSON.stringify 截断大整数
+    const input = `{"data":{"notes":[{"id":1909816521665949040,"note_id":"1909816521665949040","title":"note1"},{"id":1909816521665949041,"note_id":"1909816521665949041","title":"note2"}],"has_more":true,"next_cursor":1909816521665949042}}`;
+    const result = safeJsonParse(input) as any;
+    expect(result.data.notes[0].id).toBe('1909816521665949040');
+    expect(result.data.notes[1].id).toBe('1909816521665949041');
+    // next_cursor 不在转换列表中，会保持数字（但代码不用它）
+  });
+
+  it('边界情况: id 刚好是 MAX_SAFE_INTEGER', () => {
+    const input = '{"id":9007199254740991}';
+    const result = safeJsonParse(input) as Record<string, unknown>;
+    expect(result.id).toBe('9007199254740991');
+    expect(Number.isSafeInteger(Number(result.id))).toBe(true);
+  });
+
+  it('边界情况: id 超出 MAX_SAFE_INTEGER', () => {
+    const input = '{"id":9007199254740992}';
+    const result = safeJsonParse(input) as Record<string, unknown>;
+    expect(result.id).toBe('9007199254740992');
+    // 原始数字会被截断
+    expect(Number.isSafeInteger(Number(result.id))).toBe(false);
+    // 但字符串是精确的
+    expect(result.id).toBe('9007199254740992');
+  });
+});

@@ -70,7 +70,7 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
 
 function makeNote(overrides: Partial<GetNoteNote> = {}): GetNoteNote {
   return {
-    id: 1,
+    id: '1',
     note_id: 'note_001',
     title: '测试笔记',
     content: '正文内容',

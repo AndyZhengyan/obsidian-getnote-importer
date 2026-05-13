@@ -150,7 +150,7 @@ export function SettingsComponent({
         ...settings.scheduledSync,
         intervalMinutes: 5,
       });
-      activeWindow.setTimeout(() => setIntervalWarning(false), 3000);
+      window.setTimeout(() => setIntervalWarning(false), 3000);
     } else {
       updateSetting('scheduledSync', {
         ...settings.scheduledSync,
@@ -170,11 +170,11 @@ export function SettingsComponent({
     try {
       await fetchNotes({ token: apiToken.trim(), clientId: clientId.trim(), sinceId: '0', limit: 1 });
       setConnectionStatus('success');
-      activeWindow.setTimeout(() => setConnectionStatus('idle'), 3000);
+      window.setTimeout(() => setConnectionStatus('idle'), 3000);
     } catch (err) {
       setConnectionStatus('error');
       setConnectionErrorMsg(err instanceof Error ? err.message : String(err));
-      activeWindow.setTimeout(() => {
+      window.setTimeout(() => {
         setConnectionStatus('idle');
         setConnectionErrorMsg('');
       }, 3000);

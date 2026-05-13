@@ -82,8 +82,8 @@ async function apiRequest<T>(
       const baseDelay = parseInt(retryAfter, 10);
       const delay = Math.min(baseDelay, 60) * 1000;
       await new Promise((r, reject) => {
-        const timer = activeWindow.setTimeout(() => r(undefined), delay);
-        signal?.addEventListener('abort', () => { activeWindow.clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
+        const timer = window.setTimeout(() => r(undefined), delay);
+        signal?.addEventListener('abort', () => { window.clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
       });
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       return apiRequest(url, options, retries - 1, signal);
@@ -106,8 +106,8 @@ async function apiRequest<T>(
     if (error?.code === 10202) {
       if (retries > 0) {
         await new Promise((r, reject) => {
-          const timer = activeWindow.setTimeout(() => r(undefined), 3000);
-          signal?.addEventListener('abort', () => { activeWindow.clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
+          const timer = window.setTimeout(() => r(undefined), 3000);
+          signal?.addEventListener('abort', () => { window.clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
         });
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         return apiRequest(url, options, retries - 1, signal);
@@ -298,8 +298,8 @@ export async function pollOAuthToken(
     if (parsed.status === 10012) {
       // still pending, wait interval seconds
       await new Promise<void>((resolve, reject) => {
-        const t = activeWindow.setTimeout(() => resolve(), interval * 1000);
-        signal?.addEventListener('abort', () => { activeWindow.clearTimeout(t); reject(new DOMException('Aborted', 'AbortError')); });
+        const t = window.setTimeout(() => resolve(), interval * 1000);
+        signal?.addEventListener('abort', () => { window.clearTimeout(t); reject(new DOMException('Aborted', 'AbortError')); });
       });
       continue;
     }

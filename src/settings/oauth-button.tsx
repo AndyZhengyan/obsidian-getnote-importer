@@ -41,7 +41,7 @@ export function OAuthButton({ onAuthorize }: OAuthButtonProps) {
 
   const showCopiedFeedback = (setter: (v: boolean) => void) => {
     setter(true);
-    activeWindow.setTimeout(() => setter(false), 3000);
+    window.setTimeout(() => setter(false), 3000);
   };
 
   const copyWithFeedback = (value: string, setter: (v: boolean) => void) => {
@@ -81,7 +81,7 @@ export function OAuthButton({ onAuthorize }: OAuthButtonProps) {
       setStep('code');
 
       // Let Obsidian render the user code first, then open the verification page.
-      await new Promise(resolve => activeWindow.setTimeout(resolve, 0));
+      await new Promise(resolve => window.setTimeout(resolve, 0));
       openVerificationPage(dc.verification_uri);
 
       // Step 2: poll for token
@@ -91,7 +91,7 @@ export function OAuthButton({ onAuthorize }: OAuthButtonProps) {
       setStep('success');
       // Save credentials immediately
       onAuthorize(token.api_key, token.client_id);
-      activeWindow.setTimeout(() => setStep('idle'), 3000);
+      window.setTimeout(() => setStep('idle'), 3000);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         setStep('idle');

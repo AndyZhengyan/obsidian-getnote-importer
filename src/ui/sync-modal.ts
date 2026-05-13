@@ -74,14 +74,14 @@ export class SyncModal extends Modal {
     );
     this.countEl.setText(t('modal.total', { total: result.total }));
     this.cancelBtn.addClass('getnote-hidden');
-    activeWindow.setTimeout(() => this.close(), 3000);
+    window.setTimeout(() => this.close(), 3000);
   }
 
   showCancelled() {
     this.progressEl.setText(t('modal.cancelled'));
     this.statusEl.setText('');
     this.cancelBtn.addClass('getnote-hidden');
-    activeWindow.setTimeout(() => this.close(), 1500);
+    window.setTimeout(() => this.close(), 1500);
   }
 
   isCancelled(): boolean {

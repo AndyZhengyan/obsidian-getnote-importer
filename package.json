@@ -1,6 +1,6 @@
 {
   "name": "obsidian-getnote-importer",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "GetNote Importer for Obsidian",
   "main": "main.js",
   "scripts": {

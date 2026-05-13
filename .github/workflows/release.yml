@@ -50,6 +50,13 @@ jobs:
           echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
           echo "Version $MANIFEST_VERSION OK"
 
+      - name: Find previous tag
+        id: prev-tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -60,6 +67,8 @@ jobs:
             manifest.json
             styles.css
           generate_release_notes: true
+          previous_tag_name: ${{ steps.prev-tag.outputs.prev_tag }}
+          replace_all_tags: false
 
       - name: Attest Build Artifacts
         if: startsWith(github.ref, 'refs/tags/')

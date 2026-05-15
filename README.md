@@ -93,6 +93,8 @@ Synced recording note — includes audio file, transcript text, and AI summary, 
 
 ## Get API Credentials
 
+> **Note**: GetNote Open API requires a **Get笔记PRO** subscription. We confirmed with the GetNote team that API costs are high, so access is currently limited to paid members only. If you are using the free tier, the Open API endpoints will not return data.
+
 Your GetNote API credentials are stored in Obsidian plugin settings and are used only to call the GetNote Open API.
 
 1. Open the GetNote app.

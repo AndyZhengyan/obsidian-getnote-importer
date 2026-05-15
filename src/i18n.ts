@@ -169,6 +169,7 @@ export const translations: Record<string, Record<string, string>> = {
     'sync.processingCount': '处理中... {current}/{total}',
 
     // === Notices ===
+    'sync.autoSwitchToWebApi': '检测到会员专属笔记，正在切换到网页 API...',
     'sync.started': 'Get笔记同步开始...',
     'sync.autoComplete': '自动同步完成：新增 {created} 更新 {updated}',
     'sync.autoFailRepeated': '自动同步连续失败 {count} 次，请检查设置',
@@ -369,6 +370,7 @@ export const translations: Record<string, Record<string, string>> = {
     'sync.processingCount': 'Processing... {current}/{total}',
 
     // === Notices ===
+    'sync.autoSwitchToWebApi': 'Member-only notes detected, switching to Web API...',
     'sync.started': 'GetNote sync started...',
     'sync.autoComplete': 'Auto sync complete: {created} created {updated} updated',
     'sync.autoFailRepeated': 'Auto sync failed {count} times, please check settings',

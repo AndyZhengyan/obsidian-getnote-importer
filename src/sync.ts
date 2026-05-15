@@ -1,5 +1,5 @@
 import { App, TFile } from 'obsidian';
-import { fetchAllNotes, fetchNoteDetail } from './api';
+import { fetchAllNotes, fetchNoteDetail, fetchAllNotesWebApi, fetchNoteDetailWebApi, getEffectiveApiMode, isMemberOnlyError } from './api';
 import { formatDateTime, formatTimestampPrefix, renderNote, generateDisplayTitle } from './note-parser';
 import { getCategoryDir } from './types';
 import type { GetNoteNote, Settings, SyncResult, SyncResultItem, SyncScopeOptions } from './types';
@@ -444,7 +444,14 @@ export class SyncEngine {
     modal?.setOnCancel(cleanup);
 
     try {
-      for await (const notes of fetchAllNotes(this.settings.apiToken, this.settings.clientId, controller.signal)) {
+      const apiMode = getEffectiveApiMode(this.settings);
+      const useWebApi = apiMode === 'webapi';
+
+      const noteIterator = useWebApi
+        ? fetchAllNotesWebApi(this.settings.webApiToken, this.settings.webCsrfToken, controller.signal)
+        : fetchAllNotes(this.settings.apiToken, this.settings.clientId, controller.signal);
+
+      for await (const notes of noteIterator) {
         if (this.cancelled || modal?.isCancelled()) throw new SyncCancelledError();
         pageCount++;
         this.onProgress?.({ page: pageCount, percent: 0 });
@@ -505,6 +512,47 @@ export class SyncEngine {
       if (err instanceof DOMException && err.name === 'AbortError') {
         throw new SyncCancelledError();
       }
+      // Auto-switch to Web API when OpenAPI returns 10201 (member-only error)
+      if (!useWebApi && isMemberOnlyError(err) && this.settings.webApiToken) {
+        this.app.notice(t('sync.autoSwitchToWebApi'));
+        const retryIterator = fetchAllNotesWebApi(
+          this.settings.webApiToken,
+          this.settings.webCsrfToken,
+          controller.signal
+        );
+        try {
+          for await (const notes of retryIterator) {
+            if (this.cancelled) throw new SyncCancelledError();
+            // Re-process notes with Web API (reuse the same logic below)
+            const recentNotes = this.filterRecentNotes(notes);
+            const filtered = this.filterNotesByDateRange(recentNotes);
+            for (const note of filtered) {
+              if (this.cancelled) throw new SyncCancelledError();
+              if (seenNoteIds.has(note.note_id)) continue;
+              seenNoteIds.add(note.note_id);
+              result.total++;
+              const noteToWrite = await this.enrichAudioNote(note, controller.signal);
+              const writeResult = await this.writeNote(noteToWrite, uidIndex);
+              switch (writeResult.status) {
+                case 'created': result.created++; break;
+                case 'updated': result.updated++; break;
+                case 'skipped': result.skipped++; break;
+                case 'failed': result.failed++; break;
+              }
+              this.recordItem(result, noteToWrite, writeResult);
+              const updatedTime = parseNoteUpdatedTime(note);
+              if (updatedTime !== null && (lastNoteTimestampTime === null || updatedTime > lastNoteTimestampTime)) {
+                lastNoteTimestampTime = updatedTime;
+                result.lastNoteTimestamp = note.updated_at;
+              }
+            }
+          }
+          this.onProgress?.({ percent: 100 });
+          return result;
+        } catch {
+          // Fall through to throw original error
+        }
+      }
       throw err;
     }
   }
@@ -529,7 +577,14 @@ export class SyncEngine {
     modal?.setOnCancel(cleanup);
 
     try {
-      for await (const batch of fetchAllNotes(this.settings.apiToken, this.settings.clientId, controller.signal)) {
+      const apiMode2 = getEffectiveApiMode(this.settings);
+      const useWebApi2 = apiMode2 === 'webapi';
+
+      const batchIterator = useWebApi2
+        ? fetchAllNotesWebApi(this.settings.webApiToken, this.settings.webCsrfToken, controller.signal)
+        : fetchAllNotes(this.settings.apiToken, this.settings.clientId, controller.signal);
+
+      for await (const batch of batchIterator) {
         if (this.cancelled || modal?.isCancelled()) throw new SyncCancelledError();
 
         const matched = batch.filter(n => idSet.has(n.note_id));

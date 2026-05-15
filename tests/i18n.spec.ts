@@ -268,7 +268,7 @@ describe('t() - New settings keys', () => {
   });
 
   it('settings.onboarding', () => {
-    expect(i18n.t('settings.onboarding')).toBe('👋 欢迎使用！请先选择认证方式获取凭证，然后点击同步。');
+    expect(i18n.t('settings.onboarding')).toBe('👋 欢迎使用！请先选择认证方式获取凭证，然后点击同步（由于 OpenAPI 限制，目前仅支持 Get笔记PRO 会员）');
   });
 
   it('settings.lastSync.result with vars', () => {
@@ -283,7 +283,7 @@ describe('t() - New settings keys', () => {
     expect(i18n.t('settings.maxDays.hint')).toBe('0 = no limit');
     expect(i18n.t('settings.interval.hint')).toBe('Minimum 5 minutes');
     expect(i18n.t('settings.lastSync.never')).toBe('Never synced');
-    expect(i18n.t('settings.onboarding')).toBe('👋 Welcome! Please choose an auth method to get credentials, then click sync.');
+    expect(i18n.t('settings.onboarding')).toBe('👋 Welcome! Please choose an auth method to get credentials, then click sync (OpenAPI is available to GetNotePRO members only).');
   });
 });
 

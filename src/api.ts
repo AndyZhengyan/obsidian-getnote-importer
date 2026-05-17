@@ -1,8 +1,9 @@
 // No import needed - using native fetch
-import type { ListResponse, GetNoteNote, Attachment } from './types';
+import type { ListResponse, GetNoteNote, Attachment, AuthMode } from './types';
 import { t } from './i18n';
 
 const BASE_URL = 'https://openapi.biji.com/open/api/v1';
+const WEB_BASE_URL = 'https://get-notes.luojilab.com/voicenotes/web';
 export const GETNOTE_LIST_LIMIT = 20;
 
 function safeJsonParse(text: string): unknown {
@@ -15,6 +16,43 @@ function safeJsonParse(text: string): unknown {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+
+function normalizeAuthMode(authMode?: AuthMode): AuthMode {
+  return authMode === 'web' ? 'web' : 'openapi';
+}
+
+function normalizeBearerToken(token: string): string {
+  const trimmed = token.trim();
+  return /^Bearer\s+/i.test(trimmed) ? trimmed : `Bearer ${trimmed}`;
+}
+
+function buildAuthHeaders(token: string, clientId: string, authMode?: AuthMode, webCsrfToken?: string): Record<string, string> {
+  if (normalizeAuthMode(authMode) === 'web') {
+    const headers: Record<string, string> = {
+      Authorization: normalizeBearerToken(token),
+      'x-request-id': String(Date.now()),
+    };
+    const csrf = webCsrfToken?.trim();
+    if (csrf) headers['xi-csrf-token'] = csrf;
+    return headers;
+  }
+
+  return {
+    Authorization: normalizeBearerToken(token),
+    'X-Client-ID': clientId,
+  };
+}
+
+function normalizeListData(value: unknown): { notes: GetNoteNote[]; hasMore: boolean } {
+  if (!isRecord(value)) return { notes: [], hasMore: false };
+
+  const data = isRecord(value.data) ? value.data : value;
+  const notes = Array.isArray(data.notes) ? data.notes as GetNoteNote[] : [];
+  const hasMore = Boolean(data.has_more ?? data.hasMore);
+
+  return { notes, hasMore };
 }
 
 function normalizeAudio(value: unknown): string | undefined {
@@ -119,53 +157,65 @@ export interface FetchNotesOptions {
   sinceId?: string;
   limit?: number;
   signal?: AbortSignal;
+  authMode?: AuthMode;
+  webCsrfToken?: string;
 }
 
 export async function fetchNotes(options: FetchNotesOptions): Promise<{
   notes: GetNoteNote[];
   hasMore: boolean;
 }> {
-  const { token, clientId, sinceId = '0', signal } = options;
-  const url = `${BASE_URL}/resource/note/list?since_id=${sinceId}`;
+  const { token, clientId, sinceId = '0', limit, signal, authMode, webCsrfToken } = options;
+  const mode = normalizeAuthMode(authMode);
+  const params = new URLSearchParams();
+  let url: string;
+
+  if (mode === 'web') {
+    params.set('limit', String(limit ?? GETNOTE_LIST_LIMIT));
+    params.set('since_id', sinceId === '0' ? '' : sinceId);
+    params.set('sort', 'create_desc');
+    url = `${WEB_BASE_URL}/notes?${params.toString()}`;
+  } else {
+    params.set('since_id', sinceId);
+    url = `${BASE_URL}/resource/note/list?${params.toString()}`;
+  }
 
   const data = await apiRequest<ListResponse>(url, {
     method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'X-Client-ID': clientId,
-    },
+    headers: buildAuthHeaders(token, clientId, mode, webCsrfToken),
   }, 3, signal);
 
-  return {
-    notes: data.data.notes,
-    hasMore: data.data.has_more,
-  };
+  return normalizeListData(data);
 }
 
 export async function fetchNoteDetail(
   id: string,
   token: string,
   clientId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  authMode?: AuthMode,
+  webCsrfToken?: string
 ): Promise<Partial<GetNoteNote>> {
-  const url = `${BASE_URL}/resource/note/detail?id=${id}`;
+  const mode = normalizeAuthMode(authMode);
+  const url = mode === 'web'
+    ? `${WEB_BASE_URL}/notes/${encodeURIComponent(id)}`
+    : `${BASE_URL}/resource/note/detail?id=${encodeURIComponent(id)}`;
   const data = await apiRequest<{
-    success: boolean;
+    success?: boolean;
     data?: unknown;
     error?: { message: string };
   }>(url, {
     method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'X-Client-ID': clientId,
-    },
+    headers: buildAuthHeaders(token, clientId, mode, webCsrfToken),
   }, 2, signal);
 
-  if (!data.success || !data.data) {
+  const detailData = mode === 'web' ? data.data ?? data : data.data;
+
+  if (data.success === false || !detailData) {
     throw new Error(data.error?.message ?? 'Failed to fetch note detail');
   }
 
-  const noteDetail = normalizeNoteDetailData(data.data);
+  const noteDetail = normalizeNoteDetailData(detailData);
   if (!noteDetail) {
     throw new Error('Failed to parse note detail');
   }
@@ -315,7 +365,9 @@ export async function* fetchAllNotes(
   token: string,
   clientId: string,
   signal?: AbortSignal,
-  startCursor?: string | null
+  startCursor?: string | null,
+  authMode?: AuthMode,
+  webCsrfToken?: string
 ): AsyncGenerator<GetNoteNote[]> {
   let cursor = startCursor && startCursor !== '0' ? startCursor : '0';
 
@@ -326,6 +378,8 @@ export async function* fetchAllNotes(
       clientId,
       sinceId: cursor,
       signal,
+      authMode,
+      webCsrfToken,
     });
 
     if (notes && notes.length > 0) {

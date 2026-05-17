@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import type { GetNoteNote } from '../types';
+import type { AuthMode, GetNoteNote } from '../types';
 import { fetchNotes } from '../api';
 import { generateDisplayTitle } from '../note-parser';
 import { t } from '../i18n';
@@ -9,6 +9,8 @@ interface NotePickerModalProps {
   onCancel: () => void;
   token: string;
   clientId: string;
+  authMode?: AuthMode;
+  webCsrfToken?: string;
   abortSignal?: AbortSignal;
 }
 
@@ -52,7 +54,7 @@ function NoteRow({ note, checked, onChange }: { note: GetNoteNote; checked: bool
   );
 }
 
-export function NotePickerModal({ token, clientId, onConfirm, onCancel, abortSignal }: NotePickerModalProps) {
+export function NotePickerModal({ token, clientId, authMode, webCsrfToken, onConfirm, onCancel, abortSignal }: NotePickerModalProps) {
   const [notes, setNotes] = useState<GetNoteNote[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -70,7 +72,7 @@ export function NotePickerModal({ token, clientId, onConfirm, onCancel, abortSig
     setNotes([]);
     void (async () => {
       try {
-        const result = await fetchNotes({ token, clientId, sinceId: '0', signal: abortSignal });
+        const result = await fetchNotes({ token, clientId, authMode, webCsrfToken, sinceId: '0', signal: abortSignal });
         setNotes(result.notes);
         setHasMore(result.hasMore);
         if (result.notes.length > 0) setCursor(result.notes[result.notes.length - 1].note_id);
@@ -81,14 +83,14 @@ export function NotePickerModal({ token, clientId, onConfirm, onCancel, abortSig
         setLoading(false);
       }
     })();
-  }, [token, clientId, abortSignal]);
+  }, [token, clientId, authMode, webCsrfToken, abortSignal]);
 
   useEffect(() => { loadFirstPage(); }, [loadFirstPage]);
 
   const loadNextPage = async () => {
     setLoadingMore(true);
     try {
-      const result = await fetchNotes({ token, clientId, sinceId: cursor, signal: abortSignal });
+      const result = await fetchNotes({ token, clientId, authMode, webCsrfToken, sinceId: cursor, signal: abortSignal });
       setNotes(prev => [...prev, ...result.notes]);
       setHasMore(result.hasMore);
       if (result.notes.length > 0) setCursor(result.notes[result.notes.length - 1].note_id);

@@ -202,3 +202,98 @@ describe('fetchNotes limit', () => {
     }
   });
 });
+
+describe('web auth mode', () => {
+  it('requests the web notes endpoint with bearer and csrf headers', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({ data: { notes: [], has_more: false } }) as Response
+    );
+
+    try {
+      await fetchNotes({
+        token: 'web-token',
+        clientId: '',
+        authMode: 'web',
+        webCsrfToken: 'csrf-token',
+        sinceId: '0',
+        limit: 10,
+      });
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'https://get-notes.luojilab.com/voicenotes/web/notes?limit=10&since_id=&sort=create_desc',
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer web-token',
+            'xi-csrf-token': 'csrf-token',
+            'x-request-id': expect.any(String),
+          }),
+        })
+      );
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
+  it('keeps an existing Bearer prefix and reads flat web list data', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({ notes: [{ note_id: 'n1', id: 'n1' }], has_more: true }) as Response
+    );
+
+    try {
+      const result = await fetchNotes({
+        token: 'Bearer copied-token',
+        clientId: '',
+        authMode: 'web',
+        sinceId: 'cursor-1',
+      });
+
+      expect(result.hasMore).toBe(true);
+      expect(result.notes[0].note_id).toBe('n1');
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('since_id=cursor-1'),
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer copied-token' }),
+        })
+      );
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
+  it('fetches note detail from the web detail endpoint', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({
+        data: {
+          id: '1909428570156704824',
+          note_id: '1909428570156704824',
+          title: '网页模式详情',
+          content: 'content',
+          note_type: 'plain_text',
+          source: 'web',
+          tags: [],
+          created_at: '2026-05-15T10:00:00+08:00',
+          updated_at: '2026-05-15T10:00:00+08:00',
+        },
+      }) as Response
+    );
+
+    try {
+      const result = await fetchNoteDetail(
+        '1909428570156704824',
+        'web-token',
+        '',
+        undefined,
+        'web'
+      );
+
+      expect(result.title).toBe('网页模式详情');
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'https://get-notes.luojilab.com/voicenotes/web/notes/1909428570156704824',
+        expect.objectContaining({ method: 'GET' })
+      );
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+});

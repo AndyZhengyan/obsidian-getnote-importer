@@ -61,8 +61,10 @@ describe('DEFAULT_SETTINGS', () => {
   });
 
   it('apiToken 和 clientId 默认空', () => {
+    expect(DEFAULT_SETTINGS.authMode).toBe('openapi');
     expect(DEFAULT_SETTINGS.apiToken).toBe('');
     expect(DEFAULT_SETTINGS.clientId).toBe('');
+    expect(DEFAULT_SETTINGS.webCsrfToken).toBe('');
   });
 });
 

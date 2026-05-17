@@ -95,14 +95,20 @@ Synced recording note — includes audio file, transcript text, and AI summary, 
 
 > **Note**: GetNote Open API requires a **Get笔记PRO** subscription. We confirmed with the GetNote team that API costs are high, so access is currently limited to paid members only. If you are using the free tier, the Open API endpoints will not return data.
 
-Your GetNote API credentials are stored in Obsidian plugin settings and are used only to call the GetNote Open API.
+Your GetNote credentials are stored in Obsidian plugin settings and are used only to call the selected GetNote API mode.
+
+### OpenAPI Mode
 
 1. Open the GetNote app.
 2. Go to `Settings -> Open Platform`.
 3. Create an app and copy the `Token` and `Client ID`.
-4. Paste them into `Settings -> GetNote Importer`.
+4. Select `OpenAPI mode (PRO)` in `Settings -> GetNote Importer` and paste both values.
 
 You can also use the OAuth button in the plugin settings when available.
+
+### Web Mode (Manual Token)
+
+If OpenAPI is unavailable for your account, select `Web mode (manual token)` and paste the `Authorization` Bearer token from an active GetNote web session. You may also paste `xi-csrf-token` when your captured request includes it. Web tokens are copied manually from your browser session and may expire after several days, so refresh them if connection testing or syncing starts returning authentication errors.
 
 ## Usage
 

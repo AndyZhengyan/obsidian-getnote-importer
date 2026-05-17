@@ -46,9 +46,13 @@ export interface ScheduledSyncSettings {
   syncOnStart: boolean;
 }
 
+export type AuthMode = 'openapi' | 'web';
+
 export interface Settings {
+  authMode: AuthMode;
   apiToken: string;
   clientId: string;
+  webCsrfToken: string;
   folderName: string;
   filenamePrefix: string;
   maxDays: number;
@@ -71,8 +75,10 @@ export interface SyncHistoryScope {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  authMode: 'openapi',
   apiToken: '',
   clientId: '',
+  webCsrfToken: '',
   folderName: 'Get笔记',
   filenamePrefix: '',
   maxDays: 30,

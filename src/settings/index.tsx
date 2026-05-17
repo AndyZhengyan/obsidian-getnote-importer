@@ -3,7 +3,7 @@ import { SettingItem } from './setting-item';
 import { SyncButton } from './sync-button';
 import { OAuthButton } from './oauth-button';
 import { openSyncHistoryModal } from '../ui/sync-history-modal';
-import type { Settings, SyncHistoryEntry, SyncProgressDetail } from '../types';
+import type { AuthMode, Settings, SyncHistoryEntry, SyncProgressDetail } from '../types';
 import { App, AbstractInputSuggest } from 'obsidian';
 import { fetchNotes } from '../api';
 import { t } from '../i18n';
@@ -66,8 +66,10 @@ export function SettingsComponent({
   lastSyncTime,
   syncHistory = [],
 }: SettingsComponentProps) {
+  const [authMode, setAuthMode] = useState<AuthMode>(settings.authMode);
   const [apiToken, setApiToken] = useState(settings.apiToken);
   const [clientId, setClientId] = useState(settings.clientId);
+  const [webCsrfToken, setWebCsrfToken] = useState(settings.webCsrfToken);
   const [showApiToken, setShowApiToken] = useState(false);
   const [folderName, setFolderName] = useState(settings.folderName);
   const [filenamePrefix, setFilenamePrefix] = useState(settings.filenamePrefix);
@@ -103,6 +105,14 @@ export function SettingsComponent({
     return () => suggest.close();
   }, [app]);
 
+  const handleAuthModeChange = useCallback(
+    (value: AuthMode) => {
+      setAuthMode(value);
+      updateSetting('authMode', value);
+    },
+    [updateSetting]
+  );
+
   const handleApiTokenChange = useCallback(
     (value: string) => {
       setApiToken(value);
@@ -115,6 +125,14 @@ export function SettingsComponent({
     (value: string) => {
       setClientId(value);
       updateSetting('clientId', value.trim());
+    },
+    [updateSetting]
+  );
+
+  const handleWebCsrfTokenChange = useCallback(
+    (value: string) => {
+      setWebCsrfToken(value);
+      updateSetting('webCsrfToken', value.trim());
     },
     [updateSetting]
   );
@@ -176,7 +194,14 @@ export function SettingsComponent({
     setConnectionStatus('idle');
     setConnectionErrorMsg('');
     try {
-      await fetchNotes({ token: apiToken.trim(), clientId: clientId.trim(), sinceId: '0', limit: 1 });
+      await fetchNotes({
+        token: apiToken.trim(),
+        clientId: clientId.trim(),
+        authMode,
+        webCsrfToken: webCsrfToken.trim(),
+        sinceId: '0',
+        limit: 1,
+      });
       setConnectionStatus('success');
       window.setTimeout(() => setConnectionStatus('idle'), 3000);
     } catch (err) {
@@ -191,7 +216,9 @@ export function SettingsComponent({
     }
   };
 
-  const hasCredentials = Boolean(apiToken.trim() && clientId.trim());
+  const hasCredentials = authMode === 'web'
+    ? Boolean(apiToken.trim())
+    : Boolean(apiToken.trim() && clientId.trim());
   const { scheduledSync } = settings;
   const currentSyncHistory = syncHistory.length > 0 ? syncHistory : settings.syncHistory;
 
@@ -230,22 +257,32 @@ export function SettingsComponent({
       {/* 凭证设置 */}
       <SettingItem
         name={t('settings.credentials.label')}
-        description={t('settings.credentials.tip')}
+        description={authMode === 'web' ? t('settings.credentials.webTip') : t('settings.credentials.tip')}
       >
         <div className="getnote-credentials-control">
           <div className="getnote-primary-input-stack">
-            <input
-              type="text"
+            <select
               className="getnote-input"
-              placeholder={t('settings.clientId.placeholder')}
-              value={clientId}
-              onInput={(e) => handleClientIdChange((e.target as HTMLInputElement).value)}
-            />
+              value={authMode}
+              onChange={(e) => handleAuthModeChange((e.target as HTMLSelectElement).value as AuthMode)}
+            >
+              <option value="openapi">{t('settings.authMode.openapi')}</option>
+              <option value="web">{t('settings.authMode.web')}</option>
+            </select>
+            {authMode !== 'web' && (
+              <input
+                type="text"
+                className="getnote-input"
+                placeholder={t('settings.clientId.placeholder')}
+                value={clientId}
+                onInput={(e) => handleClientIdChange((e.target as HTMLInputElement).value)}
+              />
+            )}
             <div className="getnote-input-row">
               <input
                 type={showApiToken ? 'text' : 'password'}
                 className="getnote-input"
-                placeholder={t('settings.apiToken.placeholder')}
+                placeholder={authMode === 'web' ? t('settings.webToken.placeholder') : t('settings.apiToken.placeholder')}
                 value={apiToken}
                 onInput={(e) => handleApiTokenChange((e.target as HTMLInputElement).value)}
               />
@@ -258,16 +295,27 @@ export function SettingsComponent({
                 {showApiToken ? '🔒' : '👁'}
               </button>
             </div>
+            {authMode === 'web' && (
+              <input
+                type="text"
+                className="getnote-input"
+                placeholder={t('settings.webCsrf.placeholder')}
+                value={webCsrfToken}
+                onInput={(e) => handleWebCsrfTokenChange((e.target as HTMLInputElement).value)}
+              />
+            )}
           </div>
           <div className="getnote-credentials-actions">
-            <OAuthButton
-              onAuthorize={(token, cid) => {
-                setApiToken(token);
-                setClientId(cid);
-                updateSetting('apiToken', token);
-                updateSetting('clientId', cid);
-              }}
-            />
+            {authMode !== 'web' && (
+              <OAuthButton
+                onAuthorize={(token, cid) => {
+                  setApiToken(token);
+                  setClientId(cid);
+                  updateSetting('apiToken', token);
+                  updateSetting('clientId', cid);
+                }}
+              />
+            )}
             <button
               className="mod-secondary getnote-credential-action-button"
               disabled={testingConnection}

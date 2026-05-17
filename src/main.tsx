@@ -203,7 +203,7 @@ export default class GetNoteSyncPlugin extends Plugin {
     selectedIds?: string[]
   ): Promise<void> {
     if (this.isSyncing) return;
-    if (!this.settings.apiToken || !this.settings.clientId) {
+    if (!this.settings.apiToken || (this.settings.authMode !== 'web' && !this.settings.clientId)) {
       showError(t('notice.fillCredentials'));
       return;
     }
@@ -372,6 +372,8 @@ class NotePickerModalWrapper extends Modal {
       <NotePickerModal
         token={this.plugin.settings.apiToken}
         clientId={this.plugin.settings.clientId}
+        authMode={this.plugin.settings.authMode}
+        webCsrfToken={this.plugin.settings.webCsrfToken}
         abortSignal={this.abortController.signal}
         onConfirm={(noteIds) => {
           this.abortController.abort();

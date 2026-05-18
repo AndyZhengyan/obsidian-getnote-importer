@@ -67,9 +67,14 @@ export function SettingsComponent({
   syncHistory = [],
 }: SettingsComponentProps) {
   const [authMode, setAuthMode] = useState<AuthMode>(settings.authMode);
-  const [apiTokenOpenapi, setApiTokenOpenapi] = useState(settings.apiToken);
-  const [clientIdOpenapi, setClientIdOpenapi] = useState(settings.clientId);
-  const [apiTokenWeb, setApiTokenWeb] = useState(settings.apiToken);
+  const initialOpenApiToken = settings.openApiToken || (settings.authMode === 'openapi' ? settings.apiToken : '');
+  const initialOpenApiClientId = settings.openApiClientId || settings.clientId;
+  const initialWebApiToken = settings.webApiToken || (settings.authMode === 'web' ? settings.apiToken : '');
+  const [apiTokenOpenapi, setApiTokenOpenapi] = useState(initialOpenApiToken);
+  const [clientIdOpenapi, setClientIdOpenapi] = useState(initialOpenApiClientId);
+  const [apiTokenWeb, setApiTokenWeb] = useState(initialWebApiToken);
+  const apiTokenOpenapiRef = useRef(initialOpenApiToken);
+  const apiTokenWebRef = useRef(initialWebApiToken);
   const [showApiToken, setShowApiToken] = useState(false);
   const [folderName, setFolderName] = useState(settings.folderName);
   const [filenamePrefix, setFilenamePrefix] = useState(settings.filenamePrefix);
@@ -110,21 +115,26 @@ export function SettingsComponent({
     (value: AuthMode) => {
       setAuthMode(value);
       updateSetting('authMode', value);
+      updateSetting('apiToken', (value === 'web' ? apiTokenWebRef.current : apiTokenOpenapiRef.current).trim());
+      if (value === 'openapi') updateSetting('clientId', clientIdOpenapi.trim());
     },
-    [updateSetting]
+    [clientIdOpenapi, updateSetting]
   );
 
   const handleApiTokenOpenapiChange = useCallback(
     (value: string) => {
+      apiTokenOpenapiRef.current = value;
       setApiTokenOpenapi(value);
-      updateSetting('apiToken', value.trim());
+      updateSetting('openApiToken', value.trim());
+      if (authMode === 'openapi') updateSetting('apiToken', value.trim());
     },
-    [updateSetting]
+    [authMode, updateSetting]
   );
 
   const handleClientIdOpenapiChange = useCallback(
     (value: string) => {
       setClientIdOpenapi(value);
+      updateSetting('openApiClientId', value.trim());
       updateSetting('clientId', value.trim());
     },
     [updateSetting]
@@ -132,10 +142,12 @@ export function SettingsComponent({
 
   const handleApiTokenWebChange = useCallback(
     (value: string) => {
+      apiTokenWebRef.current = value;
       setApiTokenWeb(value);
-      updateSetting('apiToken', value.trim());
+      updateSetting('webApiToken', value.trim());
+      if (authMode === 'web') updateSetting('apiToken', value.trim());
     },
-    [updateSetting]
+    [authMode, updateSetting]
   );
 
   const handleFolderChange = useCallback(
@@ -354,6 +366,9 @@ export function SettingsComponent({
                 onAuthorize={(token, cid) => {
                   setApiTokenOpenapi(token);
                   setClientIdOpenapi(cid);
+                  apiTokenOpenapiRef.current = token;
+                  updateSetting('openApiToken', token);
+                  updateSetting('openApiClientId', cid);
                   updateSetting('apiToken', token);
                   updateSetting('clientId', cid);
                 }}

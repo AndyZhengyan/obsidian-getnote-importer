@@ -235,7 +235,7 @@ describe('web auth mode', () => {
 
   it('reads web API list format { h, c: { list, has_more } }', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      mockFetchResponse({ h: {}, c: { list: [{ note_id: 'n1', id: 'n1' }], has_more: true } }) as Response
+      mockFetchResponse({ h: {}, c: { list: [{ note_id: 'n1', id: 'n1', prime_id: 'prime-1' }], has_more: true } }) as Response
     );
 
     try {
@@ -248,6 +248,7 @@ describe('web auth mode', () => {
 
       expect(result.hasMore).toBe(true);
       expect(result.notes[0].note_id).toBe('n1');
+      expect((result.notes[0] as { prime_id?: string }).prime_id).toBe('prime-1');
       expect(globalThis.fetch).toHaveBeenCalledWith(
         expect.stringContaining('since_id=cursor-1'),
         expect.objectContaining({

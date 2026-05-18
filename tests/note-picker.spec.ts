@@ -1,6 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { h, render } from 'preact';
+import { act } from 'preact/test-utils';
+import { fetchNotes } from '../src/api';
 import { generateDisplayTitle } from '../src/note-parser';
+import { NotePickerModal } from '../src/ui/note-picker-modal';
 import type { GetNoteNote } from '../src/types';
+
+vi.mock('../src/api', () => ({
+  fetchNotes: vi.fn().mockResolvedValue({ notes: [], hasMore: false }),
+}));
 
 function makeNote(overrides: Partial<GetNoteNote> = {}): GetNoteNote {
   return {
@@ -16,6 +24,12 @@ function makeNote(overrides: Partial<GetNoteNote> = {}): GetNoteNote {
     ...overrides,
   };
 }
+
+afterEach(() => {
+  vi.mocked(fetchNotes).mockClear();
+  render(null, document.body);
+  document.body.innerHTML = '';
+});
 
 function filterNotes(notes: GetNoteNote[], query: string): GetNoteNote[] {
   if (!query) return notes;
@@ -58,5 +72,53 @@ describe('filterNotes (note picker search)', () => {
     const result = filterNotes(notes, '周报');
     // Note 4 has no title, generateDisplayTitle falls back to content first 20 chars
     expect(result.some(n => n.note_id === '4')).toBe(true);
+  });
+});
+
+describe('NotePickerModal auth chains', () => {
+  async function renderPicker(props: { token: string; clientId: string; authMode: 'openapi' | 'web' }) {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    await act(async () => {
+      render(
+        h(NotePickerModal, {
+          ...props,
+          onConfirm: vi.fn(),
+          onCancel: vi.fn(),
+        }),
+        container
+      );
+      await Promise.resolve();
+    });
+  }
+
+  it('loads the first page with OpenAPI credentials', async () => {
+    await renderPicker({
+      token: 'openapi-token',
+      clientId: 'openapi-client',
+      authMode: 'openapi',
+    });
+
+    expect(fetchNotes).toHaveBeenCalledWith(expect.objectContaining({
+      token: 'openapi-token',
+      clientId: 'openapi-client',
+      authMode: 'openapi',
+      sinceId: '0',
+    }));
+  });
+
+  it('loads the first page with Web Token credentials', async () => {
+    await renderPicker({
+      token: 'web-token',
+      clientId: '',
+      authMode: 'web',
+    });
+
+    expect(fetchNotes).toHaveBeenCalledWith(expect.objectContaining({
+      token: 'web-token',
+      clientId: '',
+      authMode: 'web',
+      sinceId: '0',
+    }));
   });
 });

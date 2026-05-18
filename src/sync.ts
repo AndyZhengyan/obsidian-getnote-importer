@@ -2,7 +2,7 @@ import { App, TFile } from 'obsidian';
 import { fetchAllNotes, fetchNoteDetail } from './api';
 import { formatDateTime, formatTimestampPrefix, renderNote, generateDisplayTitle } from './note-parser';
 import { getCategoryDir } from './types';
-import type { GetNoteNote, Settings, SyncResult, SyncResultItem, SyncScopeOptions } from './types';
+import { getAuthCredentials, type GetNoteNote, type Settings, type SyncResult, type SyncResultItem, type SyncScopeOptions } from './types';
 import type { SyncModal } from './ui/sync-modal';
 import { t } from './i18n';
 
@@ -357,12 +357,13 @@ export class SyncEngine {
     try {
       // For Web API, use prime_id (not id/note_id) for the detail URL
       const detailId = (note as { prime_id?: string }).prime_id ?? note.note_id;
+      const credentials = getAuthCredentials(this.settings);
       const noteDetail = await fetchNoteDetail(
         detailId,
-        this.settings.apiToken,
-        this.settings.clientId,
+        credentials.token,
+        credentials.clientId,
         signal,
-        this.settings.authMode
+        credentials.authMode
       );
       const enrichedNote: GetNoteNote = {
         ...note,
@@ -447,7 +448,8 @@ export class SyncEngine {
     modal?.setOnCancel(cleanup);
 
     try {
-      for await (const notes of fetchAllNotes(this.settings.apiToken, this.settings.clientId, controller.signal, null, this.settings.authMode)) {
+      const credentials = getAuthCredentials(this.settings);
+      for await (const notes of fetchAllNotes(credentials.token, credentials.clientId, controller.signal, null, credentials.authMode)) {
         if (this.cancelled || modal?.isCancelled()) throw new SyncCancelledError();
         pageCount++;
         this.onProgress?.({ page: pageCount, percent: 0 });
@@ -532,7 +534,8 @@ export class SyncEngine {
     modal?.setOnCancel(cleanup);
 
     try {
-      for await (const batch of fetchAllNotes(this.settings.apiToken, this.settings.clientId, controller.signal, null, this.settings.authMode)) {
+      const credentials = getAuthCredentials(this.settings);
+      for await (const batch of fetchAllNotes(credentials.token, credentials.clientId, controller.signal, null, credentials.authMode)) {
         if (this.cancelled || modal?.isCancelled()) throw new SyncCancelledError();
 
         const matched = batch.filter(n => idSet.has(n.note_id));

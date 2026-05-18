@@ -101,7 +101,7 @@ export interface FetchNotesOptions {
 }
 
 export async function fetchNotes(options: FetchNotesOptions): Promise<{ notes: GetNoteNote[]; hasMore: boolean }> {
-  const { token, clientId, sinceId = '0', limit, signal } = options;
+  const { token, clientId, sinceId = '0', signal } = options;
   const params = new URLSearchParams();
   params.set('since_id', sinceId);
   const url = `https://openapi.biji.com/open/api/v1/resource/note/list?${params.toString()}`;

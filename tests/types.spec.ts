@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getCategoryDir, DEFAULT_SETTINGS, NOTE_CATEGORIES } from '../src/types';
+import { getCategoryDir, DEFAULT_SETTINGS, NOTE_CATEGORIES, getAuthCredentials } from '../src/types';
 
 describe('getCategoryDir', () => {
   it('plain_text → 纯文本', () => {
@@ -64,7 +64,48 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.authMode).toBe('openapi');
     expect(DEFAULT_SETTINGS.apiToken).toBe('');
     expect(DEFAULT_SETTINGS.clientId).toBe('');
+    expect(DEFAULT_SETTINGS.openApiToken).toBe('');
+    expect(DEFAULT_SETTINGS.openApiClientId).toBe('');
+    expect(DEFAULT_SETTINGS.webApiToken).toBe('');
     expect(DEFAULT_SETTINGS.webCsrfToken).toBe('');
+  });
+});
+
+describe('getAuthCredentials', () => {
+  it('OpenAPI 模式使用 OpenAPI 专用凭证', () => {
+    const credentials = getAuthCredentials({
+      ...DEFAULT_SETTINGS,
+      authMode: 'openapi',
+      apiToken: 'legacy-active-token',
+      clientId: 'legacy-client',
+      openApiToken: 'openapi-token',
+      openApiClientId: 'openapi-client',
+      webApiToken: 'web-token',
+    });
+
+    expect(credentials).toEqual({
+      token: 'openapi-token',
+      clientId: 'openapi-client',
+      authMode: 'openapi',
+    });
+  });
+
+  it('Web 模式使用 Web 专用 token 且不需要 clientId', () => {
+    const credentials = getAuthCredentials({
+      ...DEFAULT_SETTINGS,
+      authMode: 'web',
+      apiToken: 'legacy-active-token',
+      clientId: 'legacy-client',
+      openApiToken: 'openapi-token',
+      openApiClientId: 'openapi-client',
+      webApiToken: 'web-token',
+    });
+
+    expect(credentials).toEqual({
+      token: 'web-token',
+      clientId: '',
+      authMode: 'web',
+    });
   });
 });
 

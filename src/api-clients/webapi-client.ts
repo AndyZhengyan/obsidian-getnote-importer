@@ -37,6 +37,7 @@ function parseWebApiListResponse(value: unknown): { notes: GetNoteNote[]; hasMor
     updated_at: (n.updated_at as string) ?? '',
     attachments: (n.attachments as Attachment[]) ?? [],
     audio: (n.audio as string) ?? undefined,
+    prime_id: (n.prime_id as string) ?? undefined,
   }));
   return { notes, hasMore };
 }

@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 
 interface SettingItemProps {
   name: string;
-  description?: string;
+  description?: string | ComponentChildren;
   heading?: boolean;
   children: ComponentChildren;
 }

@@ -8,8 +8,6 @@ import { App, AbstractInputSuggest } from 'obsidian';
 import { fetchNotes } from '../api';
 import { t } from '../i18n';
 
-const GITHUB_URL = 'https://github.com/AndyZhengyan/obsidian-getnote-importer#about-the-author';
-
 class FolderSuggest extends AbstractInputSuggest<string> {
   private el: HTMLInputElement;
 
@@ -67,9 +65,14 @@ export function SettingsComponent({
   syncHistory = [],
 }: SettingsComponentProps) {
   const [authMode, setAuthMode] = useState<AuthMode>(settings.authMode);
-  const [apiTokenOpenapi, setApiTokenOpenapi] = useState(settings.apiToken);
-  const [clientIdOpenapi, setClientIdOpenapi] = useState(settings.clientId);
-  const [apiTokenWeb, setApiTokenWeb] = useState(settings.apiToken);
+  const initialOpenApiToken = settings.openApiToken || (settings.authMode === 'openapi' ? settings.apiToken : '');
+  const initialOpenApiClientId = settings.openApiClientId || settings.clientId;
+  const initialWebApiToken = settings.webApiToken || (settings.authMode === 'web' ? settings.apiToken : '');
+  const [apiTokenOpenapi, setApiTokenOpenapi] = useState(initialOpenApiToken);
+  const [clientIdOpenapi, setClientIdOpenapi] = useState(initialOpenApiClientId);
+  const [apiTokenWeb, setApiTokenWeb] = useState(initialWebApiToken);
+  const apiTokenOpenapiRef = useRef(initialOpenApiToken);
+  const apiTokenWebRef = useRef(initialWebApiToken);
   const [showApiToken, setShowApiToken] = useState(false);
   const [folderName, setFolderName] = useState(settings.folderName);
   const [filenamePrefix, setFilenamePrefix] = useState(settings.filenamePrefix);
@@ -110,21 +113,26 @@ export function SettingsComponent({
     (value: AuthMode) => {
       setAuthMode(value);
       updateSetting('authMode', value);
+      updateSetting('apiToken', (value === 'web' ? apiTokenWebRef.current : apiTokenOpenapiRef.current).trim());
+      if (value === 'openapi') updateSetting('clientId', clientIdOpenapi.trim());
     },
-    [updateSetting]
+    [clientIdOpenapi, updateSetting]
   );
 
   const handleApiTokenOpenapiChange = useCallback(
     (value: string) => {
+      apiTokenOpenapiRef.current = value;
       setApiTokenOpenapi(value);
-      updateSetting('apiToken', value.trim());
+      updateSetting('openApiToken', value.trim());
+      if (authMode === 'openapi') updateSetting('apiToken', value.trim());
     },
-    [updateSetting]
+    [authMode, updateSetting]
   );
 
   const handleClientIdOpenapiChange = useCallback(
     (value: string) => {
       setClientIdOpenapi(value);
+      updateSetting('openApiClientId', value.trim());
       updateSetting('clientId', value.trim());
     },
     [updateSetting]
@@ -132,10 +140,12 @@ export function SettingsComponent({
 
   const handleApiTokenWebChange = useCallback(
     (value: string) => {
+      apiTokenWebRef.current = value;
       setApiTokenWeb(value);
-      updateSetting('apiToken', value.trim());
+      updateSetting('webApiToken', value.trim());
+      if (authMode === 'web') updateSetting('apiToken', value.trim());
     },
-    [updateSetting]
+    [authMode, updateSetting]
   );
 
   const handleFolderChange = useCallback(
@@ -259,7 +269,7 @@ export function SettingsComponent({
       <div className="getnote-settings-header">
         <h2>{t('settings.title')} <span className="getnote-settings-author">by 关山的月儿</span></h2>
         <p className="getnote-settings-desc">
-          {t('settings.desc')} <a href={GITHUB_URL} target="_blank" rel="noopener">{t('settings.community')}</a>
+          {t('settings.desc')} <a href={t('settings.communityUrl')} target="_blank" rel="noopener">{t('settings.community')}</a>
         </p>
       </div>
 
@@ -268,7 +278,11 @@ export function SettingsComponent({
       {/* 凭证设置 */}
       <SettingItem
         name={t('settings.credentials.label')}
-        description={authMode === 'web' ? t('settings.credentials.webTip') : t('settings.credentials.tip')}
+        description={
+          authMode === 'web'
+            ? <span>{t('settings.credentials.webTip')} <a href={t('settings.webTipHelpUrl')} target="_blank" rel="noopener">{t('settings.webTipHelp')}</a></span>
+            : t('settings.credentials.tip')
+        }
       >
         <div className="getnote-credentials-control">
           <div className="getnote-primary-input-stack">
@@ -350,6 +364,9 @@ export function SettingsComponent({
                 onAuthorize={(token, cid) => {
                   setApiTokenOpenapi(token);
                   setClientIdOpenapi(cid);
+                  apiTokenOpenapiRef.current = token;
+                  updateSetting('openApiToken', token);
+                  updateSetting('openApiClientId', cid);
                   updateSetting('apiToken', token);
                   updateSetting('clientId', cid);
                 }}
@@ -360,14 +377,7 @@ export function SettingsComponent({
                   } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     const isMemberError = msg.includes('10201') || msg.includes('仅对会员开放') || msg.includes('not_member');
-                    if (isMemberError) {
-                      // Auto-switch to web auth mode
-                      setAuthMode('web');
-                      setApiTokenWeb(token);
-                      updateSetting('authMode', 'web');
-                      updateSetting('apiToken', token);
-                    }
-                    return { isMemberError, message: msg };
+                    return { isMemberError, message: isMemberError ? t('settings.connectionErrorMemberHint') : msg };
                   }
                 }}
               />

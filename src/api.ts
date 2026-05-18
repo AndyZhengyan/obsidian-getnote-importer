@@ -97,10 +97,13 @@ export async function fetchOAuthDeviceCode(signal?: AbortSignal): Promise<OAuthD
   }
   const text = await res.text();
   const json = safeJsonParse(text) as Record<string, unknown>;
-  const source = (json.data ?? json) as Record<string, unknown>;
   if (json.success === false) {
+    const err = (json.error ?? json) as Record<string, unknown>;
+    const code = err?.code as number | undefined;
+    if (code === 10201) throw new Error(t('error.openApiNotMember'));
     throw new Error(t('error.oauthDeviceCodeFailed', { status: res.status, msg: (json.message as string) ?? 'unknown' }));
   }
+  const source = (json.data ?? json) as Record<string, unknown>;
   if (!source.code && !source.verification_uri) {
     throw new Error(t('error.oauthDeviceCodeFailed', { status: res.status, msg: (json.message as string) ?? 'unknown' }));
   }
@@ -143,6 +146,18 @@ export async function pollOAuthToken(code: string, interval: number, signal?: Ab
     }
     const text = await res.text();
     const json = safeJsonParse(text) as Record<string, unknown>;
+    if (json.success === false) {
+      const err = (json.error ?? json) as Record<string, unknown>;
+      const code = err?.code as number | undefined;
+      if (code === 10201) throw new Error(t('error.openApiNotMember'));
+      if (code === 10202) {
+        await new Promise<void>((resolve, reject) => {
+          const timer = window.setTimeout(() => resolve(), 3000);
+          signal?.addEventListener('abort', () => { window.clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
+        });
+        continue;
+      }
+    }
     const parsed = parseOAuthTokenResponse(json);
     if (parsed.isSuccess) return { api_key: parsed.apiKey, client_id: parsed.clientId };
     if (parsed.status === 10012) {
@@ -155,7 +170,9 @@ export async function pollOAuthToken(code: string, interval: number, signal?: Ab
     if (parsed.status === 10013) throw new Error(t('error.oauthExpired'));
     if (parsed.status === 10014) throw new Error(t('error.oauthRejected'));
     const rawMsg = JSON.stringify(json).slice(0, 200);
-    throw new Error((parsed.message ? parsed.message + ' ' : '') + t('error.oauthUnknown', { status: parsed.status }) + ` (${rawMsg})`);
+    const baseErr = t('error.oauthUnknown', { status: parsed.status });
+    const withMsg = parsed.message ? `${parsed.message} ${baseErr}` : baseErr;
+    throw new Error(`${withMsg} (${rawMsg})`);
   }
   throw new Error(t('error.oauthTimeout'));
 }

@@ -13,6 +13,7 @@ export interface GetNoteNote {
   attachments?: Attachment[];  // 详情接口返回的附件列表
   audio?: string;             // 详情接口返回的原始转写文本
   assetFileName?: string;     // 内部使用：音频/转写文件的文件名（含前缀）
+  prime_id?: string;          // Web API detail identifier
 }
 
 export interface Tag {
@@ -50,6 +51,9 @@ export type AuthMode = 'openapi' | 'web';
 
 export interface Settings {
   authMode: AuthMode;
+  openApiToken: string;
+  openApiClientId: string;
+  webApiToken: string;
   apiToken: string;
   clientId: string;
   webCsrfToken: string;
@@ -76,6 +80,9 @@ export interface SyncHistoryScope {
 
 export const DEFAULT_SETTINGS: Settings = {
   authMode: 'openapi',
+  openApiToken: '',
+  openApiClientId: '',
+  webApiToken: '',
   apiToken: '',
   clientId: '',
   webCsrfToken: '',
@@ -91,6 +98,28 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   syncHistory: [],
 };
+
+export interface AuthCredentials {
+  token: string;
+  clientId: string;
+  authMode: AuthMode;
+}
+
+export function getAuthCredentials(settings: Settings): AuthCredentials {
+  if (settings.authMode === 'web') {
+    return {
+      token: settings.webApiToken || settings.apiToken,
+      clientId: '',
+      authMode: 'web',
+    };
+  }
+
+  return {
+    token: settings.openApiToken || settings.apiToken,
+    clientId: settings.openApiClientId || settings.clientId,
+    authMode: 'openapi',
+  };
+}
 
 export interface SyncHistoryEntry {
   id: string;

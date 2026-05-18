@@ -30,7 +30,7 @@ function openVerificationPage(uri: string) {
   window.open(uri, '_blank');
 }
 
-export function OAuthButton({ onAuthorize }: OAuthButtonProps) {
+export function OAuthButton({ onAuthorize, onTestConnection }: OAuthButtonProps) {
   const [step, setStep] = useState<OAuthStep>('idle');
   const [userCode, setUserCode] = useState('');
   const [verificationUri, setVerificationUri] = useState('');
@@ -98,9 +98,8 @@ export function OAuthButton({ onAuthorize }: OAuthButtonProps) {
       const testResult = await onTestConnection(token.api_key, token.client_id);
 
       if (testResult.isMemberError) {
-        // 10201: not a member, switch to web auth mode
-        setStep('success');
-        window.setTimeout(() => setStep('idle'), 4000);
+        setStep('error');
+        setErrorMsg(testResult.message);
       } else {
         setStep('success');
         window.setTimeout(() => setStep('idle'), 3000);

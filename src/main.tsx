@@ -1,6 +1,6 @@
 import { App, Modal, Plugin, getLanguage } from 'obsidian';
 import ReactDOM from 'react-dom';
-import { DEFAULT_SETTINGS, type Settings, type SyncHistoryScope, type SyncProgressDetail, type SyncHistoryEntry, type SyncResult, type SyncScopeOptions } from './types';
+import { DEFAULT_SETTINGS, getAuthCredentials, type Settings, type SyncHistoryScope, type SyncProgressDetail, type SyncHistoryEntry, type SyncResult, type SyncScopeOptions } from './types';
 import { GetNoteSettingsTab } from './settings-tab';
 import { SyncEngine, SyncCancelledError } from './sync';
 import { showError, showNotice, showSuccess } from './ui/notice';
@@ -85,9 +85,15 @@ export default class GetNoteSyncPlugin extends Plugin {
     initI18n(getLanguage());
 
     const loaded = (await this.loadData()) as Partial<Settings> | null;
+    const migratedOpenApiToken = loaded?.openApiToken ?? (loaded?.authMode === 'openapi' ? loaded?.apiToken : '') ?? '';
+    const migratedWebApiToken = loaded?.webApiToken ?? (loaded?.authMode === 'web' ? loaded?.apiToken : '') ?? '';
+    const migratedOpenApiClientId = loaded?.openApiClientId ?? loaded?.clientId ?? '';
     this.settings = {
       ...DEFAULT_SETTINGS,
       ...loaded,
+      openApiToken: migratedOpenApiToken,
+      openApiClientId: migratedOpenApiClientId,
+      webApiToken: migratedWebApiToken,
       scheduledSync: { ...DEFAULT_SETTINGS.scheduledSync, ...loaded?.scheduledSync },
       syncHistory: normalizeSyncHistory(loaded?.syncHistory),
     };
@@ -203,7 +209,8 @@ export default class GetNoteSyncPlugin extends Plugin {
     selectedIds?: string[]
   ): Promise<void> {
     if (this.isSyncing) return;
-    if (!this.settings.apiToken || (this.settings.authMode !== 'web' && !this.settings.clientId)) {
+    const credentials = getAuthCredentials(this.settings);
+    if (!credentials.token || (credentials.authMode !== 'web' && !credentials.clientId)) {
       showError(t('notice.fillCredentials'));
       return;
     }
@@ -261,16 +268,16 @@ export default class GetNoteSyncPlugin extends Plugin {
         if (type === 'auto') {
           this.autoSyncFailCount++;
           const isQuotaExceeded = error.includes('配额') || error.includes('quota') || error.includes('429');
+          const isAuthError = error.includes('401') || error.includes('鉴权') || error.includes('Token 无效') || error.includes('Invalid') || error.includes('unauthorized') || error.includes('expired');
           if (isQuotaExceeded) {
             this.stopAutoSync();
             this.settings.scheduledSync.enabled = false;
             await this.saveSettings();
-            showNotice(t('notice.quotaExceededStop'), 20000);
+            showError(t('notice.quotaExceededStop'));
+          } else if (isAuthError) {
+            showError(t('notice.autoSyncAuthFailed', { msg: error }));
           } else {
-            const msg = this.autoSyncFailCount >= 3
-              ? t('sync.autoFailRepeated', { count: this.autoSyncFailCount })
-              : t('notice.autoSyncFailed');
-            showNotice(msg, 15000);
+            showError(t('notice.autoSyncFailedWithMsg', { msg: error }));
           }
         } else {
           this.syncProgress = { message: t('notice.syncFailed', { msg: error }), count: '', percent: 0 };
@@ -370,10 +377,9 @@ class NotePickerModalWrapper extends Modal {
   onOpen() {
     ReactDOM.render(
       <NotePickerModal
-        token={this.plugin.settings.apiToken}
-        clientId={this.plugin.settings.clientId}
-        authMode={this.plugin.settings.authMode}
-        webCsrfToken={this.plugin.settings.webCsrfToken}
+        token={getAuthCredentials(this.plugin.settings).token}
+        clientId={getAuthCredentials(this.plugin.settings).clientId}
+        authMode={getAuthCredentials(this.plugin.settings).authMode}
         abortSignal={this.abortController.signal}
         onConfirm={(noteIds) => {
           this.abortController.abort();

@@ -1,4 +1,5 @@
 import type { GetNoteNote, Attachment } from '../types';
+import { t } from '../i18n';
 
 export const GETNOTE_LIST_LIMIT = 20;
 
@@ -29,6 +30,10 @@ function buildHeaders(token: string, clientId: string): Record<string, string> {
 function normalizeListData(value: unknown): { notes: GetNoteNote[]; hasMore: boolean } {
   if (!isRecord(value)) return { notes: [], hasMore: false };
   const data = isRecord(value.data) ? value.data : value;
+  // Handle not_member error: server returns { success: true, data: { msg: "rejected" } }
+  if (data.msg === 'rejected') {
+    throw new Error(t('error.openApiNotMember'));
+  }
   const notes = Array.isArray(data.notes) ? data.notes as GetNoteNote[] : [];
   const hasMore = Boolean(data.has_more ?? data.hasMore);
   return { notes, hasMore };
@@ -57,14 +62,34 @@ async function apiRequest<T>(url: string, options: RequestInit, retries = 1, sig
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   const res = await fetch(url, { ...options, signal });
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-  if (res.status === 401) throw new Error('API Token 或 Client ID 无效，请检查设置');
-  if (res.status === 429) throw new Error('API 配额已用完，请明天再试');
+  if (res.status === 401) throw new Error(t('error.invalidCredentials'));
+  if (res.status === 429) throw new Error(t('error.quotaExceeded'));
   if (res.status < 200 || res.status >= 300) {
     const text = await res.text();
-    throw new Error(`API 错误 ${res.status}: ${text}`);
+    const json = safeJsonParse(text) as Record<string, unknown>;
+    if (res.status === 403 && json.success === false) {
+      const errObj = (json.error ?? json) as Record<string, unknown>;
+      const code = errObj?.code as number | undefined;
+      if (code === 10201) throw new Error(t('error.openApiNotMember'));
+    }
+    throw new Error(t('error.apiServerError', { status: res.status }));
   }
   const text = await res.text();
-  return safeJsonParse(text) as T;
+  const json = safeJsonParse(text) as Record<string, unknown>;
+  // Handle HTTP 200 with business-level errors
+  if (json.success === false) {
+    const errObj = (json.error ?? json) as Record<string, unknown>;
+    const code = errObj?.code as number | undefined;
+    if (code === 10201) throw new Error(t('error.openApiNotMember'));
+    if (code === 10202 && retries > 0) {
+      await new Promise(r => window.setTimeout(r, 3000));
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      return apiRequest(url, options, retries - 1, signal);
+    }
+    const rawMsg = (errObj?.message as string) ?? '';
+    throw new Error(rawMsg ? t('error.apiGenericWithMsg', { msg: rawMsg }) : t('error.apiGeneric'));
+  }
+  return json as T;
 }
 
 export interface FetchNotesOptions {
@@ -76,7 +101,7 @@ export interface FetchNotesOptions {
 }
 
 export async function fetchNotes(options: FetchNotesOptions): Promise<{ notes: GetNoteNote[]; hasMore: boolean }> {
-  const { token, clientId, sinceId = '0', limit, signal } = options;
+  const { token, clientId, sinceId = '0', signal } = options;
   const params = new URLSearchParams();
   params.set('since_id', sinceId);
   const url = `https://openapi.biji.com/open/api/v1/resource/note/list?${params.toString()}`;
@@ -100,9 +125,9 @@ export async function fetchNoteDetail(
   }>(url, { method: 'GET', headers: buildHeaders(token, clientId) }, 2, signal);
   const detailData = (data.data ?? data) as Record<string, unknown>;
   if (data.success === false || !detailData) {
-    throw new Error((data.error as { message?: string })?.message ?? 'Failed to fetch note detail');
+    throw new Error((data.error as { message?: string })?.message ?? t('error.fetchNoteDetailFailed'));
   }
   const noteDetail = normalizeNoteDetailData(detailData);
-  if (!noteDetail) throw new Error('Failed to parse note detail');
+  if (!noteDetail) throw new Error(t('error.fetchNoteDetailFailed'));
   return noteDetail;
 }

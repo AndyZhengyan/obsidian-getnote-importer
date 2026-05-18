@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SyncEngine } from '../src/sync';
 import type { Settings, GetNoteNote } from '../src/types';
 
@@ -57,12 +57,20 @@ function makeMockApp() {
 
 function makeSettings(overrides: Partial<Settings> = {}): Settings {
   return {
+    authMode: 'openapi',
+    openApiToken: '',
+    openApiClientId: '',
+    webApiToken: '',
     apiToken: 'test-token',
     clientId: 'test-client',
+    webCsrfToken: '',
     folderName: 'Get笔记',
     maxDays: 30,
+    syncStartDate: '',
+    lastSyncEndTimestamp: '',
     filenamePrefix: '',
     scheduledSync: { enabled: false, intervalMinutes: 30, syncOnStart: false },
+    syncHistory: [],
     ...overrides,
   };
 }
@@ -1140,5 +1148,122 @@ describe('SyncEngine — selective sync cancellation', () => {
     } finally {
       vi.mocked(globalThis.fetch).mockRestore();
     }
+  });
+});
+
+describe('SyncEngine auth credential chains', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function expectLastFetchHeaders(expected: Record<string, string>) {
+    const call = vi.mocked(globalThis.fetch).mock.calls.at(-1);
+    expect(call).toBeTruthy();
+    const options = call![1] as RequestInit;
+    expect(options.headers).toEqual(expect.objectContaining(expected));
+  }
+
+  it('sync() uses OpenAPI credentials for the full/manual/auto engine chain', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({ data: { notes: [], has_more: false, next_cursor: '' } }) as Response
+    );
+
+    const engine = new SyncEngine(makeMockApp() as any, makeSettings({
+      authMode: 'openapi',
+      apiToken: 'active-web-token',
+      clientId: 'legacy-client',
+      openApiToken: 'openapi-token',
+      openApiClientId: 'openapi-client',
+      webApiToken: 'web-token',
+    }));
+
+    await engine.sync();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://openapi.biji.com/open/api/v1/resource/note/list?since_id=0',
+      expect.any(Object)
+    );
+    expectLastFetchHeaders({
+      Authorization: 'Bearer openapi-token',
+      'X-Client-ID': 'openapi-client',
+    });
+  });
+
+  it('sync() uses Web credentials for the full/manual/auto engine chain', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({ h: {}, c: { list: [], has_more: false } }) as Response
+    );
+
+    const engine = new SyncEngine(makeMockApp() as any, makeSettings({
+      authMode: 'web',
+      apiToken: 'active-openapi-token',
+      clientId: 'openapi-client',
+      openApiToken: 'openapi-token',
+      openApiClientId: 'openapi-client',
+      webApiToken: 'web-token',
+    }));
+
+    await engine.sync();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://get-notes.luojilab.com/voicenotes/web/notes?limit=20&since_id=&sort=create_desc',
+      expect.any(Object)
+    );
+    expectLastFetchHeaders({
+      Authorization: 'Bearer web-token',
+      'x-request-id': expect.any(String) as unknown as string,
+    });
+  });
+
+  it('syncNoteIds() uses OpenAPI credentials for selected-note sync', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({ data: { notes: [], has_more: false, next_cursor: '' } }) as Response
+    );
+
+    const engine = new SyncEngine(makeMockApp() as any, makeSettings({
+      authMode: 'openapi',
+      apiToken: 'active-web-token',
+      clientId: 'legacy-client',
+      openApiToken: 'openapi-token',
+      openApiClientId: 'openapi-client',
+      webApiToken: 'web-token',
+    }));
+
+    await engine.syncNoteIds(['note-1']);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://openapi.biji.com/open/api/v1/resource/note/list?since_id=0',
+      expect.any(Object)
+    );
+    expectLastFetchHeaders({
+      Authorization: 'Bearer openapi-token',
+      'X-Client-ID': 'openapi-client',
+    });
+  });
+
+  it('syncNoteIds() uses Web credentials for selected-note sync', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({ h: {}, c: { list: [], has_more: false } }) as Response
+    );
+
+    const engine = new SyncEngine(makeMockApp() as any, makeSettings({
+      authMode: 'web',
+      apiToken: 'active-openapi-token',
+      clientId: 'openapi-client',
+      openApiToken: 'openapi-token',
+      openApiClientId: 'openapi-client',
+      webApiToken: 'web-token',
+    }));
+
+    await engine.syncNoteIds(['note-1']);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://get-notes.luojilab.com/voicenotes/web/notes?limit=20&since_id=&sort=create_desc',
+      expect.any(Object)
+    );
+    expectLastFetchHeaders({
+      Authorization: 'Bearer web-token',
+      'x-request-id': expect.any(String) as unknown as string,
+    });
   });
 });

@@ -22,6 +22,16 @@ function mockFetchResponse(body: unknown, status = 200) {
   } as unknown as Response;
 }
 
+function mockTextFetchResponse(text: string, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Headers({ 'content-type': 'text/html' }),
+    text: () => Promise.resolve(text),
+    arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+  } as unknown as Response;
+}
+
 describe('safeJsonParse', () => {
   it('将大整数 id 字段转为字符串以防止精度丢失', () => {
     const input = '{"id":9007199254740999,"note_id":123456789012345678,"title":"test"}';
@@ -235,7 +245,7 @@ describe('web auth mode', () => {
 
   it('reads web API list format { h, c: { list, has_more } }', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      mockFetchResponse({ h: {}, c: { list: [{ note_id: 'n1', id: 'n1' }], has_more: true } }) as Response
+      mockFetchResponse({ h: {}, c: { list: [{ note_id: 'n1', id: 'n1', prime_id: 'prime-1' }], has_more: true } }) as Response
     );
 
     try {
@@ -248,6 +258,7 @@ describe('web auth mode', () => {
 
       expect(result.hasMore).toBe(true);
       expect(result.notes[0].note_id).toBe('n1');
+      expect((result.notes[0] as { prime_id?: string }).prime_id).toBe('prime-1');
       expect(globalThis.fetch).toHaveBeenCalledWith(
         expect.stringContaining('since_id=cursor-1'),
         expect.objectContaining({
@@ -291,6 +302,23 @@ describe('web auth mode', () => {
         'https://get-notes.luojilab.com/voicenotes/web/notes/1909428570156704824',
         expect.objectContaining({ method: 'GET' })
       );
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
+  it('surfaces a friendly web auth error when 403 body is not JSON', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockTextFetchResponse('<html>Forbidden</html>', 403) as Response
+    );
+
+    try {
+      await expect(fetchNotes({
+        token: 'web-token',
+        clientId: '',
+        authMode: 'web',
+        sinceId: '0',
+      })).rejects.toThrow('Web Token 无效，请检查设置');
     } finally {
       vi.mocked(globalThis.fetch).mockRestore();
     }

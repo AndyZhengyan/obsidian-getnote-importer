@@ -49,7 +49,12 @@ describe('t() - Chinese translations', () => {
   });
 
   it('returns Chinese for settings.community', () => {
-    expect(i18n.t('settings.community')).toBe('欢迎交流');
+    expect(i18n.t('settings.community')).toBe('欢迎交流、留下star');
+  });
+
+  it('returns Chinese GitHub documentation links', () => {
+    expect(i18n.t('settings.communityUrl')).toContain('README_zh.md');
+    expect(i18n.t('settings.webTipHelpUrl')).toContain('README_zh.md#web-模式手动-token');
   });
 
   it('returns Chinese for sync.start', () => {
@@ -73,7 +78,7 @@ describe('t() - Chinese translations', () => {
   });
 
   it('returns Chinese for notice.autoSyncFailed', () => {
-    expect(i18n.t('notice.autoSyncFailed')).toBe('[GetNote] 自动同步失败');
+    expect(i18n.t('notice.autoSyncFailed')).toBe('自动同步失败');
   });
 
   it('returns Chinese for error.invalidCredentials', () => {
@@ -91,7 +96,12 @@ describe('t() - English translations', () => {
   });
 
   it('returns English for settings.community', () => {
-    expect(i18n.t('settings.community')).toBe('Welcome to discuss');
+    expect(i18n.t('settings.community')).toBe('Welcome, leave a star');
+  });
+
+  it('returns English GitHub documentation links', () => {
+    expect(i18n.t('settings.communityUrl')).toContain('README.md');
+    expect(i18n.t('settings.webTipHelpUrl')).toContain('README.md#web-mode-manual-token');
   });
 
   it('returns English for sync.start', () => {
@@ -115,7 +125,7 @@ describe('t() - English translations', () => {
   });
 
   it('returns English for notice.autoSyncFailed', () => {
-    expect(i18n.t('notice.autoSyncFailed')).toBe('[GetNote] Auto sync failed');
+    expect(i18n.t('notice.autoSyncFailed')).toBe('Auto sync failed');
   });
 
   it('returns English for error.invalidCredentials', () => {
@@ -293,7 +303,7 @@ describe('t() - New sync keys', () => {
   });
 
   it('sync.started', () => {
-    expect(i18n.t('sync.started')).toBe('Get笔记同步开始...');
+    expect(i18n.t('sync.started')).toBe('同步开始...');
   });
 
   it('sync.autoComplete', () => {
@@ -308,7 +318,7 @@ describe('t() - New sync keys', () => {
 
   it('sync keys in English', () => {
     i18n.initI18n('en');
-    expect(i18n.t('sync.started')).toBe('GetNote sync started...');
+    expect(i18n.t('sync.started')).toBe('Sync started...');
     expect(i18n.t('sync.autoFailRepeated', { count: 3 }))
       .toBe('Auto sync failed 3 times, please check settings');
   });

@@ -71,6 +71,6 @@ jobs:
 
       - name: Attest Build Artifacts
         if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: "main.js,manifest.json,styles.css"

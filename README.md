@@ -41,17 +41,17 @@ If you've ever tried to find that one note in a 10,000-note HTML file, you know 
 
 ## Screenshots
 
-Settings page — credentials, filename format, scheduled sync toggle and interval.
+Settings page — API credentials, target folder, filename format, and scheduled sync toggle.
 
 ![Settings](docs/screenshots/settings.png)
 
-Sync history modal — shows filter criteria, parameters, and per-note results (created, updated, skipped, failed) for each sync run.
-
-![Sync History](docs/screenshots/sync-history.png)
-
-Manual sync modal — specify a start date to sync by time range, with note details displayed in collapsible groups.
+Manual sync modal — select a start date to sync notes by time range.
 
 ![Manual Sync](docs/screenshots/manual-sync.png)
+
+Sync history modal — per-note results for each sync run: created, updated, skipped, failed.
+
+![Sync History](docs/screenshots/sync-history.png)
 
 Synced recording note — includes audio file, transcript text, and AI summary, with metadata (uid, tags, source) recorded in frontmatter.
 

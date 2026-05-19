@@ -10,10 +10,22 @@ interface ManualSyncModalProps {
   onCancel: () => void;
 }
 
+function resolveInitialSyncMode(initialOptions: SyncScopeOptions): SyncMode {
+  const hasDate = Boolean(initialOptions.syncStartDate);
+  const hasDays = initialOptions.maxDays > 0;
+  if (!hasDate && !hasDays) return 'days';
+  if (hasDate && !hasDays) return 'date';
+  if (!hasDate && hasDays) return 'days';
+
+  const startTime = Date.parse(initialOptions.syncStartDate);
+  if (Number.isNaN(startTime)) return 'days';
+
+  const daysCutoff = Date.now() - initialOptions.maxDays * 24 * 60 * 60 * 1000;
+  return daysCutoff >= startTime ? 'days' : 'date';
+}
+
 export function ManualSyncModal({ initialOptions, onConfirm, onCancel }: ManualSyncModalProps) {
-  const [syncMode, setSyncMode] = useState<SyncMode>(
-    initialOptions.maxDays > 0 ? 'days' : initialOptions.syncStartDate ? 'date' : 'days'
-  );
+  const [syncMode, setSyncMode] = useState<SyncMode>(resolveInitialSyncMode(initialOptions));
   const [syncStartDate, setSyncStartDate] = useState(initialOptions.syncStartDate);
   const [maxDays, setMaxDays] = useState(String(initialOptions.maxDays));
 

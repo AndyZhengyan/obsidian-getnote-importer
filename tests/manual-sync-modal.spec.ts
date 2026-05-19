@@ -61,7 +61,8 @@ describe('ManualSyncModal filters', () => {
     expect(onConfirm).toHaveBeenCalledWith({ syncStartDate: '2026-05-09', maxDays: 0 });
   });
 
-  it('prefers days mode when maxDays is configured even if syncStartDate also exists', async () => {
+  it('prefers the stricter filter when both date and days are present: days', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-05-19T00:00:00Z').getTime());
     const { container, onConfirm } = renderModal({ syncStartDate: '2026-05-09', maxDays: 7 });
 
     const daysInput = container.querySelector('input[type="number"]') as HTMLInputElement;
@@ -73,5 +74,20 @@ describe('ManualSyncModal filters', () => {
     });
 
     expect(onConfirm).toHaveBeenCalledWith({ syncStartDate: '', maxDays: 7 });
+  });
+
+  it('prefers the stricter filter when both date and days are present: date', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-05-19T00:00:00Z').getTime());
+    const { container, onConfirm } = renderModal({ syncStartDate: '2026-05-18', maxDays: 7 });
+
+    const dateInput = container.querySelector('input[type="date"]') as HTMLInputElement;
+    expect(dateInput).toBeTruthy();
+    expect(dateInput.value).toBe('2026-05-18');
+
+    await act(() => {
+      container.querySelector('.mod-cta')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onConfirm).toHaveBeenCalledWith({ syncStartDate: '2026-05-18', maxDays: 0 });
   });
 });

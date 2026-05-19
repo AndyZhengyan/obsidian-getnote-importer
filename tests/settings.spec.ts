@@ -172,6 +172,19 @@ describe('SettingsComponent auth credentials', () => {
     }));
   });
 
+  it('shows actionable Web Token capture guidance in Web auth mode', () => {
+    initI18n('en-US');
+    const { container } = renderSettings(makeSettings({
+      authMode: 'web',
+      webApiToken: '',
+    }));
+
+    expect(container.textContent).toContain('DevTools');
+    expect(container.textContent).toContain('Network');
+    expect(container.textContent).toContain('Authorization');
+    expect(container.textContent).toContain('Fetch/XHR');
+  });
+
   it('uses Chinese README links in Chinese locale', () => {
     initI18n('zh-CN');
     const { container } = renderSettings(makeSettings({
@@ -181,7 +194,7 @@ describe('SettingsComponent auth credentials', () => {
 
     const links = Array.from(container.querySelectorAll('a')).map((link) => link.href);
     expect(links.some((href) => href.includes('README_zh.md#%E5%85%B3%E4%BA%8E%E4%BD%9C%E8%80%85') || href.includes('README_zh.md#关于作者'))).toBe(true);
-    expect(links.some((href) => href.includes('README_zh.md#web-%E6%A8%A1%E5%BC%8F%E6%89%8B%E5%8A%A8-token') || href.includes('README_zh.md#web-模式手动-token'))).toBe(true);
+    expect(links.some((href) => href.includes('docs/web-mode-manual-token_zh.md'))).toBe(true);
   });
 
   it('uses English README links in English locale', () => {
@@ -193,6 +206,6 @@ describe('SettingsComponent auth credentials', () => {
 
     const links = Array.from(container.querySelectorAll('a')).map((link) => link.href);
     expect(links.some((href) => href.includes('README.md#about-the-author'))).toBe(true);
-    expect(links.some((href) => href.includes('README.md#web-mode-manual-token'))).toBe(true);
+    expect(links.some((href) => href.includes('docs/web-mode-manual-token.md'))).toBe(true);
   });
 });

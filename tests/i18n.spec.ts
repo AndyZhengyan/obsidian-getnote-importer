@@ -54,7 +54,9 @@ describe('t() - Chinese translations', () => {
 
   it('returns Chinese GitHub documentation links', () => {
     expect(i18n.t('settings.communityUrl')).toContain('README_zh.md');
-    expect(i18n.t('settings.webTipHelpUrl')).toContain('README_zh.md#web-模式手动-token');
+    expect(i18n.t('settings.webTipHelpUrl')).toContain('docs/web-mode-manual-token_zh.md');
+    expect(i18n.t('settings.credentials.webTip')).toContain('开发者工具');
+    expect(i18n.t('settings.credentials.webTip')).toContain('Authorization');
   });
 
   it('returns Chinese for sync.start', () => {
@@ -101,7 +103,7 @@ describe('t() - English translations', () => {
 
   it('returns English GitHub documentation links', () => {
     expect(i18n.t('settings.communityUrl')).toContain('README.md');
-    expect(i18n.t('settings.webTipHelpUrl')).toContain('README.md#web-mode-manual-token');
+    expect(i18n.t('settings.webTipHelpUrl')).toContain('docs/web-mode-manual-token.md');
   });
 
   it('returns English for sync.start', () => {

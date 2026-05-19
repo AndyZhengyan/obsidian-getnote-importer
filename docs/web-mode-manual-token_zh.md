@@ -20,10 +20,12 @@ Web 模式适合无法使用 Get笔记 OpenAPI 的用户。它复用浏览器里
    - Mac：`⌘ + ⌥ + I`（`Command + Option + I`）
 3. 切到 `Network` 面板。
 4. 选择 `Fetch/XHR` 过滤。
-5. 刷新 Get笔记网页版，或打开笔记列表 / 任意一篇笔记，让页面发起接口请求。
+5. 保持在 Get笔记首页，刷新一下页面让页面发起接口请求（不需要点进笔记列表或打开具体笔记）。
 6. 在请求列表里点开名称类似 `notes?...` 或 `list?...` 的请求。
 7. 看右侧 `Headers` 面板；这个请求的 `Host` 通常是 `get-notes.luojilab.com`。
 8. 在 `Request Headers` 下面复制完整的 `Authorization` 值。
+
+![Network 面板 Authorization header 位置](web-token-network-panel.jpg)
 
 这个值通常以 `Bearer eyJ...` 开头。如果复制时带了 `Bearer ` 前缀，可以直接一起粘贴；插件也支持只粘贴后面的 JWT token。
 

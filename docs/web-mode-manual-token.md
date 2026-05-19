@@ -20,10 +20,12 @@ Use OpenAPI mode instead if you already have a working `gk_...` OpenAPI token an
    - Mac: `⌘ + ⌥ + I` (`Command + Option + I`)
 3. Select the `Network` tab.
 4. Select the `Fetch/XHR` filter.
-5. Refresh GetNote Web, open the note list, or open any note so the page sends API requests.
+5. Stay on the GetNote homepage and refresh the page so it sends API requests (no need to open the note list or any specific note).
 6. Click a request whose name looks like `notes?...` or `list?...`.
 7. Check the right-side `Headers` panel. The `Host` is usually `get-notes.luojilab.com`.
 8. Under `Request Headers`, copy the full `Authorization` value.
+
+![Network panel — locating the Authorization header](web-token-network-panel.jpg)
 
 The value usually starts with `Bearer eyJ...`. Keep the `Bearer ` prefix if it is copied with the token; the plugin also accepts the JWT token without the prefix.
 

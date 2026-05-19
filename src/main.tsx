@@ -350,7 +350,10 @@ class ManualSyncModalWrapper extends Modal {
   onOpen() {
     ReactDOM.render(
       <ManualSyncModal
-        initialOptions={{ syncStartDate: '', maxDays: 0 }}
+        initialOptions={{
+          syncStartDate: this.plugin.settings.syncStartDate,
+          maxDays: this.plugin.settings.maxDays,
+        }}
         onConfirm={(options) => {
           this.close();
           this.plugin.startSync(options);

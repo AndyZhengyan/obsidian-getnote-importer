@@ -1,7 +1,7 @@
 {
   "id": "getnote-importer",
   "name": "GetNote Importer",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Sync notes, links, recordings, and AI summaries from GetNote into your local vault.",
   "author": "Andy Zheng",
   "isDesktopOnly": false,

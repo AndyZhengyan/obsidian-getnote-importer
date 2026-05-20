@@ -105,22 +105,27 @@ export class SyncEngine {
     const rawTitle = generateDisplayTitle(note);
     const displayTitle = rawTitle || t('picker.noTitle');
     const prefix = this.settings.filenamePrefix?.trim();
-    if (!prefix) {
-      return displayTitle;
-    }
+    const baseName = (() => {
+      if (!prefix) return displayTitle;
 
-    const hasTimestampTokens = /YYYY|MM|DD|HH|mm|ss/.test(prefix);
-    if (hasTimestampTokens) {
-      const formattedPrefix = formatTimestampPrefix(prefix, note.created_at);
-      if (!formattedPrefix) {
-        return displayTitle;
+      const hasTimestampTokens = /YYYY|MM|DD|HH|mm|ss/.test(prefix);
+      if (hasTimestampTokens) {
+        const formattedPrefix = formatTimestampPrefix(prefix, note.created_at);
+        if (!formattedPrefix) {
+          return displayTitle;
+        }
+        const separator = formattedPrefix.endsWith('_') ? '' : '_';
+        return `${formattedPrefix}${separator}${displayTitle}`;
       }
-      const separator = formattedPrefix.endsWith('_') ? '' : '_';
-      return `${formattedPrefix}${separator}${displayTitle}`;
-    }
 
-    const separator = prefix.endsWith('_') ? '' : '_';
-    return `${prefix}${separator}${displayTitle}`;
+      const separator = prefix.endsWith('_') ? '' : '_';
+      return `${prefix}${separator}${displayTitle}`;
+    })();
+
+    if (note.is_child_note || note.parent_id) {
+      return `${baseName}__${note.note_id}`;
+    }
+    return baseName;
   }
 
   private getFilePath(categoryDir: string, note: GetNoteNote): string {
@@ -349,8 +354,42 @@ export class SyncEngine {
     });
   }
 
+  private applyWriteResult(result: SyncResult, writeResult: WriteNoteResult): void {
+    switch (writeResult.status) {
+      case 'created': result.created++; break;
+      case 'updated': result.updated++; break;
+      case 'skipped': result.skipped++; break;
+      case 'failed': result.failed++; break;
+    }
+  }
+
+  private mergeNoteDetail(note: GetNoteNote, detail: Partial<GetNoteNote>): GetNoteNote {
+    return {
+      ...note,
+      ...detail,
+      id: detail.id ?? note.id,
+      note_id: detail.note_id ?? note.note_id,
+      title: detail.title ?? note.title,
+      content: detail.content ?? note.content,
+      note_type: detail.note_type ?? note.note_type,
+      source: detail.source ?? note.source,
+      tags: detail.tags ?? note.tags,
+      created_at: detail.created_at ?? note.created_at,
+      updated_at: detail.updated_at ?? note.updated_at,
+      parent_id: detail.parent_id ?? note.parent_id,
+      children_count: detail.children_count ?? note.children_count,
+      children_ids: detail.children_ids ?? note.children_ids,
+      is_child_note: detail.is_child_note ?? note.is_child_note,
+    };
+  }
+
+  private needsRelationDetail(note: GetNoteNote): boolean {
+    return Boolean((note.children_count ?? 0) > 0 && !note.children_ids?.length);
+  }
+
   private async enrichAudioNote(note: GetNoteNote, signal: AbortSignal): Promise<GetNoteNote> {
-    if (!AUDIO_NOTE_TYPES.has(note.note_type)) {
+    const needsAudioDetail = AUDIO_NOTE_TYPES.has(note.note_type);
+    if (!needsAudioDetail && !this.needsRelationDetail(note)) {
       return note;
     }
 
@@ -365,19 +404,10 @@ export class SyncEngine {
         signal,
         credentials.authMode
       );
-      const enrichedNote: GetNoteNote = {
-        ...note,
-        ...noteDetail,
-        id: noteDetail.id ?? note.id,
-        note_id: noteDetail.note_id ?? note.note_id,
-        title: noteDetail.title ?? note.title,
-        content: noteDetail.content ?? note.content,
-        note_type: noteDetail.note_type ?? note.note_type,
-        source: noteDetail.source ?? note.source,
-        tags: noteDetail.tags ?? note.tags,
-        created_at: noteDetail.created_at ?? note.created_at,
-        updated_at: noteDetail.updated_at ?? note.updated_at,
-      };
+      const enrichedNote = this.mergeNoteDetail(note, noteDetail);
+      if (!needsAudioDetail) {
+        return enrichedNote;
+      }
       const attachment = enrichedNote.attachments?.find(a => a.type === 'audio');
       if (attachment) {
         await this.downloadAudioAsset(enrichedNote, attachment);
@@ -388,9 +418,48 @@ export class SyncEngine {
       enrichedNote.assetFileName = this.getFileName(enrichedNote);
       return enrichedNote;
     } catch (err) {
-      console.warn(`[GetNote] Failed to enrich audio note ${note.note_id}:`, err);
+      console.warn(`[GetNote] Failed to enrich note ${note.note_id}:`, err);
       return note;
     }
+  }
+
+  private async fetchAppendNotes(parent: GetNoteNote, signal: AbortSignal): Promise<GetNoteNote[]> {
+    const childIds = parent.children_ids ?? [];
+    if (!childIds.length) return [];
+
+    const credentials = getAuthCredentials(this.settings);
+    const appendNotes: GetNoteNote[] = [];
+    for (const childId of childIds) {
+      try {
+        const childDetail = await fetchNoteDetail(
+          childId,
+          credentials.token,
+          credentials.clientId,
+          signal,
+          credentials.authMode
+        );
+        const baseChild: GetNoteNote = {
+          id: childDetail.id ?? childId,
+          note_id: childDetail.note_id ?? childId,
+          title: childDetail.title ?? '',
+          content: childDetail.content ?? '',
+          note_type: childDetail.note_type ?? 'plain_text',
+          source: childDetail.source ?? parent.source,
+          tags: childDetail.tags ?? [],
+          created_at: childDetail.created_at ?? parent.created_at,
+          updated_at: childDetail.updated_at ?? parent.updated_at,
+          parent_id: childDetail.parent_id ?? parent.note_id,
+          children_count: childDetail.children_count,
+          children_ids: childDetail.children_ids,
+          is_child_note: childDetail.is_child_note ?? true,
+        };
+        const child = await this.enrichAudioNote(this.mergeNoteDetail(baseChild, childDetail), signal);
+        appendNotes.push(child);
+      } catch (err) {
+        console.warn(`[GetNote] Failed to fetch append note ${childId}:`, err);
+      }
+    }
+    return appendNotes;
   }
 
   private filterNotesByDateRange(notes: GetNoteNote[]): GetNoteNote[] {
@@ -464,13 +533,19 @@ export class SyncEngine {
           result.total++;
           const noteToWrite = await this.enrichAudioNote(note, controller.signal);
           const writeResult = await this.writeNote(noteToWrite, uidIndex);
-          switch (writeResult.status) {
-            case 'created': result.created++; break;
-            case 'updated': result.updated++; break;
-            case 'skipped': result.skipped++; break;
-            case 'failed': result.failed++; break;
-          }
+          this.applyWriteResult(result, writeResult);
           this.recordItem(result, noteToWrite, writeResult);
+
+          const appendNotes = await this.fetchAppendNotes(noteToWrite, controller.signal);
+          for (const appendNote of appendNotes) {
+            if (seenNoteIds.has(appendNote.note_id)) continue;
+            seenNoteIds.add(appendNote.note_id);
+            result.total++;
+            const appendWriteResult = await this.writeNote(appendNote, uidIndex);
+            this.applyWriteResult(result, appendWriteResult);
+            this.recordItem(result, appendNote, appendWriteResult);
+          }
+
           const updatedTime = parseNoteUpdatedTime(note);
           if (updatedTime !== null && (lastNoteTimestampTime === null || updatedTime > lastNoteTimestampTime)) {
             lastNoteTimestampTime = updatedTime;
@@ -559,17 +634,26 @@ export class SyncEngine {
           if (preCheck.exists) {
             result.skipped++;
             this.recordItem(result, note, { status: 'skipped' });
-            continue;
+            if (!this.needsRelationDetail(note)) {
+              continue;
+            }
           }
           const noteToWrite = await this.enrichAudioNote(note, controller.signal);
-          const writeResult = await this.writeNote(noteToWrite, uidIndex);
-          switch (writeResult.status) {
-            case 'created': result.created++; break;
-            case 'updated': result.updated++; break;
-            case 'skipped': result.skipped++; break;
-            case 'failed': result.failed++; break;
+          if (!preCheck.exists) {
+            const writeResult = await this.writeNote(noteToWrite, uidIndex);
+            this.applyWriteResult(result, writeResult);
+            this.recordItem(result, noteToWrite, writeResult);
           }
-          this.recordItem(result, noteToWrite, writeResult);
+
+          const appendNotes = await this.fetchAppendNotes(noteToWrite, controller.signal);
+          for (const appendNote of appendNotes) {
+            if (seenNoteIds.has(appendNote.note_id)) continue;
+            seenNoteIds.add(appendNote.note_id);
+            result.total++;
+            const appendWriteResult = await this.writeNote(appendNote, uidIndex);
+            this.applyWriteResult(result, appendWriteResult);
+            this.recordItem(result, appendNote, appendWriteResult);
+          }
         }
 
         if (fetchedCount >= noteIds.length) break;

@@ -4,10 +4,20 @@ import { t } from '../i18n';
 export const GETNOTE_LIST_LIMIT = 20;
 
 function safeJsonParse(text: string): unknown {
-  const safe = text.replace(
+  let safe = text.replace(
     /"(id|note_id|parent_id|follow_id|live_id)"\s*:\s*(\d+)/g,
     '"$1":"$2"'
   );
+  safe = safe.replace(/"children_ids"\s*:\s*\[([^\]]*)\]/g, (_match, body: string) => {
+    const normalized = body
+      .split(',')
+      .map(item => {
+        const trimmed = item.trim();
+        return /^\d{15,}$/.test(trimmed) ? `"${trimmed}"` : item;
+      })
+      .join(',');
+    return `"children_ids":[${normalized}]`;
+  });
   return JSON.parse(safe);
 }
 
@@ -55,7 +65,51 @@ function normalizeNoteDetailData(value: unknown): Partial<GetNoteNote> | null {
   const detail = { ...source } as Partial<GetNoteNote>;
   const attachments = (value.attachments ?? source.attachments) as Attachment[] | undefined;
   const audio = normalizeAudio(value.audio ?? source.audio);
-  return { ...detail, attachments, audio };
+  const childrenIds = Array.isArray(source.children_ids)
+    ? source.children_ids.map(id => String(id))
+    : undefined;
+  return { ...detail, attachments, audio, children_ids: childrenIds };
+}
+
+async function waitForRetry(signal?: AbortSignal): Promise<void> {
+  await new Promise<void>(resolve => {
+    const timer = window.setTimeout(() => resolve(), 3000);
+    signal?.addEventListener('abort', () => {
+      window.clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
+}
+
+function parseErrorBody(text: string): Record<string, unknown> {
+  try {
+    const value = safeJsonParse(text) as unknown;
+    return isRecord(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+async function handleRateLimit<T>(
+  url: string,
+  options: RequestInit,
+  res: Response,
+  retries: number,
+  signal?: AbortSignal
+): Promise<T> {
+  const text = await res.text().catch(() => '');
+  const json = parseErrorBody(text);
+  const errObj = (json.error ?? json) as Record<string, unknown>;
+  const reason = errObj.reason as string | undefined;
+  if (reason === 'quota_day' || reason === 'quota_month') {
+    throw new Error(t('error.quotaExceeded'));
+  }
+  if (retries > 0) {
+    await waitForRetry(signal);
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    return apiRequest(url, options, retries - 1, signal);
+  }
+  throw new Error(t('error.rateLimited'));
 }
 
 async function apiRequest<T>(url: string, options: RequestInit, retries = 1, signal?: AbortSignal): Promise<T> {
@@ -63,7 +117,7 @@ async function apiRequest<T>(url: string, options: RequestInit, retries = 1, sig
   const res = await fetch(url, { ...options, signal });
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   if (res.status === 401) throw new Error(t('error.invalidCredentials'));
-  if (res.status === 429) throw new Error(t('error.quotaExceeded'));
+  if (res.status === 429) return handleRateLimit<T>(url, options, res, retries, signal);
   if (res.status < 200 || res.status >= 300) {
     const text = await res.text();
     const json = safeJsonParse(text) as Record<string, unknown>;
@@ -82,7 +136,7 @@ async function apiRequest<T>(url: string, options: RequestInit, retries = 1, sig
     const code = errObj?.code as number | undefined;
     if (code === 10201) throw new Error(t('error.openApiNotMember'));
     if (code === 10202 && retries > 0) {
-      await new Promise(r => window.setTimeout(r, 3000));
+      await waitForRetry(signal);
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       return apiRequest(url, options, retries - 1, signal);
     }

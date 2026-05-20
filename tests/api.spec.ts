@@ -4,10 +4,20 @@ import type { ListResponse } from '../src/types';
 
 // Extract the internal safeJsonParse for direct testing
 function safeJsonParse(text: string): unknown {
-  const safe = text.replace(
+  let safe = text.replace(
     /"(id|note_id|parent_id|follow_id|live_id)"\s*:\s*(\d+)/g,
     '"$1":"$2"'
   );
+  safe = safe.replace(/"children_ids"\s*:\s*\[([^\]]*)\]/g, (_match, body: string) => {
+    const normalized = body
+      .split(',')
+      .map(item => {
+        const trimmed = item.trim();
+        return /^\d{15,}$/.test(trimmed) ? `"${trimmed}"` : item;
+      })
+      .join(',');
+    return `"children_ids":[${normalized}]`;
+  });
   return JSON.parse(safe);
 }
 
@@ -75,6 +85,12 @@ describe('safeJsonParse', () => {
     const data = result.data as { notes: Array<{ id: string; title: string }> };
     expect(data.notes[0].id).toBe('9999999999999999');
     expect(data.notes[1].id).toBe('8888888888888888');
+  });
+
+  it('children_ids 数组中的大整数也转为字符串', () => {
+    const input = '{"children_ids":[1909246675068292528,1908043831896764336]}';
+    const result = safeJsonParse(input) as { children_ids: string[] };
+    expect(result.children_ids).toEqual(['1909246675068292528', '1908043831896764336']);
   });
 
   it('处理空对象', () => {
@@ -160,6 +176,43 @@ describe('fetchNoteDetail', () => {
     }
   });
 
+  it('解析官方详情接口里的主子笔记关系字段', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockTextFetchResponse(JSON.stringify({
+        success: true,
+        data: {
+          note: {
+            id: 0,
+            note_id: 0,
+            title: '主笔记',
+            content: '正文',
+            note_type: 'plain_text',
+            source: 'app',
+            tags: [],
+            created_at: '2026-05-06 22:07:04',
+            updated_at: '2026-05-06 22:07:04',
+            children_count: 1,
+            children_ids: [0],
+            is_child_note: false,
+          },
+        },
+      })
+        .replace('"id":0', '"id":1909193892067130512')
+        .replace('"note_id":0', '"note_id":1909193892067130512')
+        .replace('[0]', '[1909246675068292528]')) as Response
+    );
+
+    try {
+      const result = await fetchNoteDetail('1909193892067130512', 'test-token', 'test-client');
+      expect(result.note_id).toBe('1909193892067130512');
+      expect(result.children_count).toBe(1);
+      expect(result.children_ids).toEqual(['1909246675068292528']);
+      expect(result.is_child_note).toBe(false);
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
   it('笔记不存在时抛出错误', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       mockFetchResponse({ success: false, error: { message: '笔记不存在' } }) as Response
@@ -208,6 +261,54 @@ describe('fetchNotes limit', () => {
         expect.any(Object)
       );
     } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
+  it('429 频率限制时等待 3 秒后重试', async () => {
+    const timeoutSpy = vi.spyOn(window, 'setTimeout').mockImplementation((fn: TimerHandler) => {
+      if (typeof fn === 'function') fn();
+      return 1;
+    });
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockFetchResponse({
+        success: false,
+        error: { code: 10203, message: 'too many requests', reason: 'qps' },
+      }, 429) as Response)
+      .mockResolvedValueOnce(mockFetchResponse({
+        data: { notes: [], has_more: false, next_cursor: '' },
+      }) as Response);
+
+    try {
+      const result = await fetchNotes({ token: 'test-token', clientId: 'test-client' });
+
+      expect(result.notes).toEqual([]);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+      expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 3000);
+    } finally {
+      timeoutSpy.mockRestore();
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
+  it('429 日配额耗尽时不重试', async () => {
+    const timeoutSpy = vi.spyOn(window, 'setTimeout').mockImplementation((fn: TimerHandler) => {
+      if (typeof fn === 'function') fn();
+      return 1;
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({
+        success: false,
+        error: { code: 10203, message: 'quota exhausted', reason: 'quota_day' },
+      }, 429) as Response
+    );
+
+    try {
+      await expect(fetchNotes({ token: 'test-token', clientId: 'test-client' })).rejects.toThrow('API 配额已用完');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(timeoutSpy).not.toHaveBeenCalled();
+    } finally {
+      timeoutSpy.mockRestore();
       vi.mocked(globalThis.fetch).mockRestore();
     }
   });

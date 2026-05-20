@@ -206,6 +206,7 @@ export const translations: Record<string, Record<string, string>> = {
     'error.oauthUnknown': 'OAuth 授权未知错误 {status}',
     'error.oauthCancelled': 'OAuth 授权已取消',
     'error.quotaExceeded': 'API 配额已用完，请明天再试',
+    'error.rateLimited': 'API 调用频率过高，请稍后再试',
     'error.webApiLoginRequired': 'Web Token 已过期，请刷新登录后重新复制 Token',
     'error.webApiForbidden': 'Web Token 无效，请检查设置',
 
@@ -425,6 +426,7 @@ export const translations: Record<string, Record<string, string>> = {
     'error.oauthUnknown': 'OAuth unknown error {status}',
     'error.oauthCancelled': 'OAuth authorization cancelled',
     'error.quotaExceeded': 'API quota exhausted, please try again tomorrow',
+    'error.rateLimited': 'API rate limit exceeded, please try again later',
     'error.webApiLoginRequired': 'Web Token expired, please refresh login and copy a new Token',
     'error.webApiForbidden': 'Web Token invalid, please check settings',
 

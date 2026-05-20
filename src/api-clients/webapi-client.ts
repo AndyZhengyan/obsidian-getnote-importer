@@ -28,6 +28,10 @@ function parseWebApiListResponse(value: unknown): { notes: GetNoteNote[]; hasMor
   const notes: GetNoteNote[] = list.map((n): GetNoteNote => ({
     id: n.id as string,
     note_id: n.note_id as string,
+    parent_id: (n.parent_id as string) ?? undefined,
+    children_count: typeof n.children_count === 'number' ? n.children_count : undefined,
+    children_ids: Array.isArray(n.children_ids) ? n.children_ids.map((id: unknown) => String(id)) : undefined,
+    is_child_note: typeof n.is_child_note === 'boolean' ? n.is_child_note : undefined,
     title: (n.title as string) ?? '',
     content: (n.content as string) ?? '',
     note_type: (n.note_type as string) ?? 'plain_text',
@@ -49,7 +53,10 @@ function normalizeNoteDetailData(value: unknown): Partial<GetNoteNote> | null {
   const detail = { ...source } as Partial<GetNoteNote>;
   const attachments = (value.attachments ?? source.attachments) as Attachment[] | undefined;
   const audio = typeof (value.audio ?? source.audio) === 'string' ? (value.audio ?? source.audio) as string : undefined;
-  return { ...detail, attachments, audio };
+  const childrenIds = Array.isArray(source.children_ids)
+    ? source.children_ids.map(id => String(id))
+    : undefined;
+  return { ...detail, attachments, audio, children_ids: childrenIds };
 }
 
 function tryParseJsonObject(text: string): Record<string, unknown> {
@@ -59,6 +66,38 @@ function tryParseJsonObject(text: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+async function waitForRetry(signal?: AbortSignal): Promise<void> {
+  await new Promise<void>(resolve => {
+    const timer = window.setTimeout(() => resolve(), 3000);
+    signal?.addEventListener('abort', () => {
+      window.clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
+}
+
+async function handleRateLimit<T>(
+  url: string,
+  options: RequestInit,
+  res: Response,
+  retries: number,
+  signal?: AbortSignal
+): Promise<T> {
+  const text = await res.text().catch(() => '');
+  const json = tryParseJsonObject(text);
+  const err = (json.error ?? json) as Record<string, unknown>;
+  const reason = err.reason as string | undefined;
+  if (reason === 'quota_day' || reason === 'quota_month') {
+    throw new Error(t('error.quotaExceeded'));
+  }
+  if (retries > 0) {
+    await waitForRetry(signal);
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    return apiRequest(url, options, retries - 1, signal);
+  }
+  throw new Error(t('error.rateLimited'));
 }
 
 async function apiRequest<T>(url: string, options: RequestInit, retries = 1, signal?: AbortSignal): Promise<T> {
@@ -72,10 +111,10 @@ async function apiRequest<T>(url: string, options: RequestInit, retries = 1, sig
     if (msg === 'LoginRequired') throw new Error(t('error.webApiLoginRequired'));
     throw new Error(t('error.webApiForbidden'));
   }
-  if (res.status === 429) throw new Error(t('error.quotaExceeded'));
+  if (res.status === 429) return handleRateLimit<T>(url, options, res, retries, signal);
   if (res.status < 200 || res.status >= 300) {
     if (res.status >= 500 && retries > 0) {
-      await new Promise(r => window.setTimeout(r, 3000));
+      await waitForRetry(signal);
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       return apiRequest(url, options, retries - 1, signal);
     }

@@ -74,6 +74,7 @@ export function formatTimestampPrefix(format: string, isoDate: string): string {
 function buildFrontmatter(note: GetNoteNote): string {
   const tags = note.tags.map(t => `"${t.name}"`).join(', ');
   const tagBlock = tags ? `[${tags}]` : '[]';
+  const childrenIds = note.children_ids?.map(id => `"${escapeYamlDoubleQuoted(id)}"`).join(', ');
 
   const title = sanitizeTitle(note.title) ||
     escapeYamlDoubleQuoted((note.content || '').slice(0, 10));
@@ -87,10 +88,22 @@ function buildFrontmatter(note: GetNoteNote): string {
     `source: Get笔记`,
     `note_type: ${note.note_type}`,
     `tags: ${tagBlock}`,
-    '---',
-    '',
   ];
 
+  if (note.parent_id) {
+    lines.push(`parent_id: "${escapeYamlDoubleQuoted(note.parent_id)}"`);
+  }
+  if (typeof note.is_child_note === 'boolean') {
+    lines.push(`is_child_note: ${note.is_child_note}`);
+  }
+  if (typeof note.children_count === 'number') {
+    lines.push(`children_count: ${note.children_count}`);
+  }
+  if (note.children_ids) {
+    lines.push(`children_ids: [${childrenIds ?? ''}]`);
+  }
+
+  lines.push('---', '');
   return lines.join('\n');
 }
 

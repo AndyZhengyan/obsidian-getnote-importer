@@ -59,6 +59,27 @@ describe('renderNote', () => {
     expect(result).toContain('tags: []');
   });
 
+  it('附加笔记输出 parent_id 与 child 标识', () => {
+    const result = renderNote(makeNote({
+      note_id: '1909246675068292528',
+      parent_id: '1909193892067130512',
+      is_child_note: true,
+    }));
+
+    expect(result).toContain('parent_id: "1909193892067130512"');
+    expect(result).toContain('is_child_note: true');
+  });
+
+  it('主笔记输出 children_ids', () => {
+    const result = renderNote(makeNote({
+      children_count: 1,
+      children_ids: ['1909246675068292528'],
+    }));
+
+    expect(result).toContain('children_count: 1');
+    expect(result).toContain('children_ids: ["1909246675068292528"]');
+  });
+
   it('正文为空时只输出 frontmatter', () => {
     const result = renderNote(makeNote({ content: '' }));
     expect(result.endsWith('---\n')).toBe(true);

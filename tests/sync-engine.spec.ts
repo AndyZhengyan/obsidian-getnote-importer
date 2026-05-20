@@ -639,6 +639,91 @@ describe('SyncEngine — getFileName', () => {
     // @ts-ignore
     expect(engine['getFileName'](note)).toBe('我的笔记');
   });
+
+  it('附加笔记在文件名末尾追加 __note_id', () => {
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({ filenamePrefix: 'getnote' }));
+    const note = makeNote({
+      title: '原笔记标题',
+      note_id: '1909246675068292528',
+      parent_id: '1909193892067130512',
+      is_child_note: true,
+    });
+
+    // @ts-ignore
+    expect(engine['getFileName'](note)).toBe('getnote_原笔记标题__1909246675068292528');
+  });
+});
+
+describe('SyncEngine — append note sync', () => {
+  it('同步主笔记时通过官方详情接口拉取并写入附加笔记', async () => {
+    const parentNote = makeNote({
+      note_id: '1909193892067130512',
+      title: '主笔记',
+      content: '主笔记正文',
+      children_count: 1,
+      updated_at: '2026-05-06 22:07:04',
+    });
+    const childNote = makeNote({
+      note_id: '1909246675068292528',
+      title: '',
+      content: '附加笔记正文',
+      parent_id: parentNote.note_id,
+      is_child_note: true,
+      updated_at: '2026-05-07 19:19:30',
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url: unknown) => {
+      const urlStr = typeof url === 'string' ? url : (url as Request).url;
+      if (urlStr.includes('/resource/note/list')) {
+        return Promise.resolve(mockFetchResponse({
+          data: { notes: [parentNote], has_more: false, cursor: '' },
+        }) as Response);
+      }
+      if (urlStr.includes(`/resource/note/detail?id=${parentNote.note_id}`)) {
+        return Promise.resolve(mockFetchResponse({
+          success: true,
+          data: {
+            note: {
+              ...parentNote,
+              children_ids: [childNote.note_id],
+              is_child_note: false,
+            },
+          },
+        }) as Response);
+      }
+      if (urlStr.includes(`/resource/note/detail?id=${childNote.note_id}`)) {
+        return Promise.resolve(mockFetchResponse({
+          success: true,
+          data: { note: childNote },
+        }) as Response);
+      }
+      throw new Error(`Unexpected request: ${urlStr}`);
+    });
+
+    const app = makeMockApp();
+
+    try {
+      const engine = new SyncEngine(app as any, makeSettings({ maxDays: 0 }));
+      const result = await engine.sync();
+
+      expect(result.created).toBe(2);
+      expect(result.items).toEqual([
+        expect.objectContaining({ noteId: parentNote.note_id, status: 'created' }),
+        expect.objectContaining({ noteId: childNote.note_id, status: 'created' }),
+      ]);
+      const createdPaths = vi.mocked(app.vault.create).mock.calls.map(([path]) => path);
+      expect(createdPaths).toContain('Get笔记/纯文本/主笔记.md');
+      expect(createdPaths).toContain('Get笔记/纯文本/附加笔记正文__1909246675068292528.md');
+      const childContent = vi.mocked(app.vault.create).mock.calls.find(([path]) =>
+        path === 'Get笔记/纯文本/附加笔记正文__1909246675068292528.md'
+      )?.[1] as string;
+      expect(childContent).toContain('parent_id: "1909193892067130512"');
+      expect(childContent).toContain('is_child_note: true');
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
 });
 
 describe('SyncEngine — audio note sync', () => {

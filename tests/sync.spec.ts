@@ -104,6 +104,42 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     });
   });
 
+  it('manual sync days scope passes maxDays through engine', async () => {
+    const syncScopeOptions: unknown[] = [];
+    vi.spyOn(SyncEngine.prototype, 'sync').mockImplementation(function (this: SyncEngine) {
+      syncScopeOptions.push(this['scopeOptions']);
+      return Promise.resolve({ created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] });
+    });
+    const plugin = makePlugin();
+
+    await plugin['runSync']('full', { maxDays: 7, syncStartDate: '' });
+
+    expect(syncScopeOptions).toEqual([
+      {
+        maxDays: 7,
+        syncStartDate: '',
+      },
+    ]);
+  });
+
+  it('manual sync date scope disables maxDays in engine', async () => {
+    const syncScopeOptions: unknown[] = [];
+    vi.spyOn(SyncEngine.prototype, 'sync').mockImplementation(function (this: SyncEngine) {
+      syncScopeOptions.push(this['scopeOptions']);
+      return Promise.resolve({ created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] });
+    });
+    const plugin = makePlugin();
+
+    await plugin['runSync']('full', { maxDays: 7, syncStartDate: '2026-05-09' });
+
+    expect(syncScopeOptions).toEqual([
+      {
+        maxDays: 0,
+        syncStartDate: '2026-05-09',
+      },
+    ]);
+  });
+
   it('registers scheduled sync interval with Obsidian lifecycle', () => {
     vi.useFakeTimers();
     const plugin = makePlugin();

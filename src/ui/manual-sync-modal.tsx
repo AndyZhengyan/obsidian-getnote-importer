@@ -10,8 +10,22 @@ interface ManualSyncModalProps {
   onCancel: () => void;
 }
 
+function resolveInitialSyncMode(initialOptions: SyncScopeOptions): SyncMode {
+  const hasDate = Boolean(initialOptions.syncStartDate);
+  const hasDays = initialOptions.maxDays > 0;
+  if (!hasDate && !hasDays) return 'days';
+  if (hasDate && !hasDays) return 'date';
+  if (!hasDate && hasDays) return 'days';
+
+  const startTime = Date.parse(initialOptions.syncStartDate);
+  if (Number.isNaN(startTime)) return 'days';
+
+  const daysCutoff = Date.now() - initialOptions.maxDays * 24 * 60 * 60 * 1000;
+  return daysCutoff >= startTime ? 'days' : 'date';
+}
+
 export function ManualSyncModal({ initialOptions, onConfirm, onCancel }: ManualSyncModalProps) {
-  const [syncMode, setSyncMode] = useState<SyncMode>('date');
+  const [syncMode, setSyncMode] = useState<SyncMode>(resolveInitialSyncMode(initialOptions));
   const [syncStartDate, setSyncStartDate] = useState(initialOptions.syncStartDate);
   const [maxDays, setMaxDays] = useState(String(initialOptions.maxDays));
 
@@ -22,7 +36,7 @@ export function ManualSyncModal({ initialOptions, onConfirm, onCancel }: ManualS
       const parsedMaxDays = parseInt(maxDays, 10);
       onConfirm({
         syncStartDate: '',
-        maxDays: Number.isNaN(parsedMaxDays) || parsedMaxDays < 0 ? 0 : parsedMaxDays,
+        maxDays: Number.isNaN(parsedMaxDays) || parsedMaxDays < 1 ? 1 : parsedMaxDays,
       });
     }
   };

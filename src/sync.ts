@@ -33,10 +33,15 @@ function parseNoteUpdatedTime(note: GetNoteNote): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-function isSortedByUpdatedDesc(notes: GetNoteNote[]): boolean {
+function parseNoteCreatedTime(note: GetNoteNote): number | null {
+  const parsed = Date.parse(note.created_at);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function isSortedByCreatedDesc(notes: GetNoteNote[]): boolean {
   let previous: number | null = null;
   for (const note of notes) {
-    const current = parseNoteUpdatedTime(note);
+    const current = parseNoteCreatedTime(note);
     if (current === null) return false;
     if (previous !== null && current > previous) return false;
     previous = current;
@@ -478,12 +483,12 @@ export class SyncEngine {
           }
         }
 
-        // Notes are sorted by updated_at DESC. Once the oldest note in this page
+        // List APIs page by created_at DESC. Once the oldest created note in this page
         // is older than the cutoff, later pages can be skipped after this page's
         // still-valid notes have been processed.
-        if (cutoffTime !== null && notes.length > 0 && isSortedByUpdatedDesc(notes)) {
+        if (cutoffTime !== null && notes.length > 0 && isSortedByCreatedDesc(notes)) {
           const oldestNote = notes[notes.length - 1];
-          const oldestTime = parseNoteUpdatedTime(oldestNote);
+          const oldestTime = parseNoteCreatedTime(oldestNote);
           if (oldestTime !== null && oldestTime < cutoffTime) {
             break;
           }

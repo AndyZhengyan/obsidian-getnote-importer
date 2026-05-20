@@ -243,6 +243,147 @@ describe('SyncEngine — page cutoff', () => {
       vi.useRealTimers();
     }
   });
+
+  it('stops OpenAPI pagination when maxDays reaches a stale created_at tail page', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-11T12:00:00+08:00'));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes('since_id=old_tail')) {
+        return mockFetchResponse({
+          data: {
+            notes: [
+              makeNote({
+                note_id: 'should_not_fetch_page_2',
+                title: '不应该翻到第二页',
+                created_at: '2026-05-11T10:00:00+08:00',
+                updated_at: '2026-05-11T10:00:00+08:00',
+              }),
+            ],
+            has_more: false,
+            next_cursor: '',
+          },
+        }) as Response;
+      }
+
+      return mockFetchResponse({
+        data: {
+          notes: [
+            makeNote({
+              note_id: 'fresh',
+              title: '一天内',
+              created_at: '2026-05-11T11:30:00+08:00',
+              updated_at: '2026-05-11T11:30:00+08:00',
+            }),
+            makeNote({
+              note_id: 'old_created_recently_updated',
+              title: '旧创建但刚更新',
+              created_at: '2026-05-09T12:00:00+08:00',
+              updated_at: '2026-05-11T11:00:00+08:00',
+            }),
+            makeNote({
+              note_id: 'old_tail',
+              title: '超过一天',
+              created_at: '2026-05-09T11:30:00+08:00',
+              updated_at: '2026-05-09T11:30:00+08:00',
+            }),
+          ],
+          has_more: true,
+          next_cursor: 'old_tail',
+        },
+      }) as Response;
+    });
+
+    try {
+      const app = makeMockApp();
+      const engine = new SyncEngine(app as any, makeSettings({
+        authMode: 'openapi',
+        openApiToken: 'openapi-token',
+        openApiClientId: 'openapi-client',
+        maxDays: 1,
+      }));
+
+      const result = await engine.sync();
+
+      expect(result.items?.map(item => item.noteId)).toEqual(['fresh', 'old_created_recently_updated']);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(String(vi.mocked(globalThis.fetch).mock.calls[0][0])).toBe(
+        'https://openapi.biji.com/open/api/v1/resource/note/list?since_id=0'
+      );
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops Web API pagination when maxDays reaches a stale created_at tail page', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-11T12:00:00+08:00'));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes('since_id=old_tail')) {
+        return mockFetchResponse({
+          h: {},
+          c: {
+            list: [
+              makeNote({
+                note_id: 'should_not_fetch_page_2',
+                title: '不应该翻到第二页',
+                created_at: '2026-05-11T10:00:00+08:00',
+                updated_at: '2026-05-11T10:00:00+08:00',
+              }),
+            ],
+            has_more: false,
+          },
+        }) as Response;
+      }
+
+      return mockFetchResponse({
+        h: {},
+        c: {
+          list: [
+            makeNote({
+              note_id: 'fresh',
+              title: '一天内',
+              created_at: '2026-05-11T11:30:00+08:00',
+              updated_at: '2026-05-11T11:30:00+08:00',
+            }),
+            makeNote({
+              note_id: 'old_created_recently_updated',
+              title: '旧创建但刚更新',
+              created_at: '2026-05-09T12:00:00+08:00',
+              updated_at: '2026-05-11T11:00:00+08:00',
+            }),
+            makeNote({
+              note_id: 'old_tail',
+              title: '超过一天',
+              created_at: '2026-05-09T11:30:00+08:00',
+              updated_at: '2026-05-09T11:30:00+08:00',
+            }),
+          ],
+          has_more: true,
+        },
+      }) as Response;
+    });
+
+    try {
+      const app = makeMockApp();
+      const engine = new SyncEngine(app as any, makeSettings({
+        authMode: 'web',
+        webApiToken: 'web-token',
+        maxDays: 1,
+      }));
+
+      const result = await engine.sync();
+
+      expect(result.items?.map(item => item.noteId)).toEqual(['fresh', 'old_created_recently_updated']);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(String(vi.mocked(globalThis.fetch).mock.calls[0][0])).toContain('sort=create_desc');
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('SyncEngine — filterNotesByDateRange', () => {

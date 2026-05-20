@@ -423,7 +423,11 @@ export class SyncEngine {
     }
   }
 
-  private async fetchAppendNotes(parent: GetNoteNote, signal: AbortSignal): Promise<GetNoteNote[]> {
+  private async fetchAppendNotes(
+    parent: GetNoteNote,
+    signal: AbortSignal,
+    result: SyncResult
+  ): Promise<GetNoteNote[]> {
     const childIds = parent.children_ids ?? [];
     if (!childIds.length) return [];
 
@@ -431,8 +435,11 @@ export class SyncEngine {
     const appendNotes: GetNoteNote[] = [];
     for (const childId of childIds) {
       try {
+        // Web API may require prime_id (not note_id) to locate child note details.
+        // Use prime_id when available, mirroring enrichAudioNote's detailId pattern.
+        const detailId = (parent as { prime_id?: string }).prime_id ?? childId;
         const childDetail = await fetchNoteDetail(
-          childId,
+          detailId,
           credentials.token,
           credentials.clientId,
           signal,
@@ -456,6 +463,24 @@ export class SyncEngine {
         const child = await this.enrichAudioNote(this.mergeNoteDetail(baseChild, childDetail), signal);
         appendNotes.push(child);
       } catch (err) {
+        result.failed++;
+        const failedNote: GetNoteNote = {
+          id: childId,
+          note_id: childId,
+          title: '',
+          content: '',
+          note_type: 'plain_text',
+          source: parent.source,
+          tags: [],
+          created_at: parent.created_at,
+          updated_at: parent.updated_at,
+          parent_id: parent.note_id,
+          is_child_note: true,
+        };
+        this.recordItem(result, failedNote, {
+          status: 'failed',
+          error: err instanceof Error ? err.message : String(err),
+        });
         console.warn(`[GetNote] Failed to fetch append note ${childId}:`, err);
       }
     }
@@ -536,7 +561,7 @@ export class SyncEngine {
           this.applyWriteResult(result, writeResult);
           this.recordItem(result, noteToWrite, writeResult);
 
-          const appendNotes = await this.fetchAppendNotes(noteToWrite, controller.signal);
+          const appendNotes = await this.fetchAppendNotes(noteToWrite, controller.signal, result);
           for (const appendNote of appendNotes) {
             if (seenNoteIds.has(appendNote.note_id)) continue;
             seenNoteIds.add(appendNote.note_id);
@@ -645,7 +670,7 @@ export class SyncEngine {
             this.recordItem(result, noteToWrite, writeResult);
           }
 
-          const appendNotes = await this.fetchAppendNotes(noteToWrite, controller.signal);
+          const appendNotes = await this.fetchAppendNotes(noteToWrite, controller.signal, result);
           for (const appendNote of appendNotes) {
             if (seenNoteIds.has(appendNote.note_id)) continue;
             seenNoteIds.add(appendNote.note_id);

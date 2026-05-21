@@ -1600,14 +1600,16 @@ describe('SyncEngine — fixture-based sync integration', () => {
 
     const result = await engine.sync();
 
-    expect(result.created).toBe(2);
+    expect(result.created).toBe(3);
     expect(result.items).toEqual([
       expect.objectContaining({ noteId: '1909193892067130512', status: 'created' }),
       expect.objectContaining({ noteId: '1909246675068292528', status: 'created' }),
+      expect.objectContaining({ noteId: '1909246675068292529', status: 'created' }),
     ]);
     const createdPaths = vi.mocked(app.vault.create).mock.calls.map(([path]) => path);
     expect(createdPaths).toContain('Get笔记/纯文本/主笔记.md');
     expect(createdPaths).toContain('Get笔记/纯文本/主笔记__附加笔记正文.md');
+    expect(createdPaths).toContain('Get笔记/纯文本/主笔记__第二条附加笔记正文.md');
     const childContent = vi.mocked(app.vault.create).mock.calls.find(([path]) =>
       path === 'Get笔记/纯文本/主笔记__附加笔记正文.md'
     )?.[1] as string;

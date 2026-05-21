@@ -24,8 +24,8 @@
                 "tags": [],
                 "created_at": "2026-05-06 22:07:04",
                 "updated_at": "2026-05-06 22:07:04",
-                "children_count": 1,
-                "children_ids": [],
+                "children_count": 2,
+                "children_ids": ["1909246675068292528"],
                 "is_child_note": false
               }
             ],
@@ -54,8 +54,8 @@
               "tags": [],
               "created_at": "2026-05-06 22:07:04",
               "updated_at": "2026-05-06 22:07:04",
-              "children_ids": ["1909246675068292528"],
-              "children_count": 1,
+              "children_ids": ["1909246675068292528", "1909246675068292529"],
+              "children_count": 2,
               "is_child_note": false
             }
           }
@@ -82,6 +82,33 @@
               "tags": [],
               "created_at": "2026-05-07 19:19:30",
               "updated_at": "2026-05-07 19:19:30",
+              "parent_id": "1909193892067130512",
+              "is_child_note": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "url": "https://openapi.biji.com/open/api/v1/resource/note/detail",
+        "params": { "id": "1909246675068292529" }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "note": {
+              "id": "1909246675068292529",
+              "note_id": "1909246675068292529",
+              "title": "",
+              "content": "第二条附加笔记正文",
+              "note_type": "plain_text",
+              "source": "app",
+              "tags": [],
+              "created_at": "2026-05-07 20:19:30",
+              "updated_at": "2026-05-07 20:19:30",
               "parent_id": "1909193892067130512",
               "is_child_note": true
             }

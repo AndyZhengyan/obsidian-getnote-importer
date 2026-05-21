@@ -30,6 +30,9 @@
                 "updated_at": "2026-05-06 22:07:04",
                 "prime_id": "prime_1909193892067130512",
                 "sub_note_count": 1,
+                "children_ids": [
+                  "1909246675068292528"
+                ],
                 "is_child_note": false
               }
             ],

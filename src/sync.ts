@@ -364,6 +364,7 @@ export class SyncEngine {
   }
 
   private mergeNoteDetail(note: GetNoteNote, detail: Partial<GetNoteNote>): GetNoteNote {
+    const childrenIds = note.children_ids?.length ? note.children_ids : detail.children_ids;
     return {
       ...note,
       ...detail,
@@ -380,8 +381,8 @@ export class SyncEngine {
       children_count: detail.children_count ?? note.children_count,
       // Don't overwrite relation fields that were already populated by list data;
       // some detail responses omit them.
-      children_ids: note.children_ids ?? detail.children_ids,
-      is_child_note: note.is_child_note,
+      children_ids: childrenIds,
+      is_child_note: note.is_child_note ?? detail.is_child_note,
     };
   }
 
@@ -434,7 +435,7 @@ export class SyncEngine {
     result: SyncResult
   ): Promise<GetNoteNote[]> {
     const credentials = getAuthCredentials(this.settings);
-    if (credentials.authMode === 'web' && (parent.children_count ?? 0) > 0 && !parent.children_ids?.length) {
+    if (credentials.authMode === 'web' && (parent.children_count ?? 0) > 0) {
       const parentDetailId = (parent as { prime_id?: string }).prime_id ?? parent.note_id;
       try {
         const children = await fetchNoteChildren(

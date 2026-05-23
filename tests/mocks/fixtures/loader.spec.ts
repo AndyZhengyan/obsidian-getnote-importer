@@ -93,6 +93,28 @@ describe('fixture loader', () => {
       expect(response.status).toBe(500);
     });
 
+    it('consumes matched fixtures so repeated URLs can return sequential responses', async () => {
+      registerFixture({
+        url: 'https://api.example.com/retry',
+        method: 'GET',
+        response: { status: 500, body: { error: 'temporary' } },
+      });
+      registerFixture({
+        url: 'https://api.example.com/retry',
+        method: 'GET',
+        response: { status: 200, body: { ok: true } },
+      });
+
+      const firstResponse = await fetch('https://api.example.com/retry');
+      const secondResponse = await fetch('https://api.example.com/retry');
+
+      expect(firstResponse.status).toBe(500);
+      await expect(firstResponse.json()).resolves.toEqual({ error: 'temporary' });
+      expect(secondResponse.status).toBe(200);
+      await expect(secondResponse.json()).resolves.toEqual({ ok: true });
+      await expect(fetch('https://api.example.com/retry')).rejects.toThrow();
+    });
+
     it('throws for unmatched URL when no fallback', async () => {
       resetFixtures(); // ensure no fixtures
       await expect(fetch('https://unmatched.example.com/test')).rejects.toThrow();

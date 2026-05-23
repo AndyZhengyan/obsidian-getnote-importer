@@ -802,6 +802,24 @@ describe('SyncEngine — getFileName', () => {
 });
 
 describe('SyncEngine — append note sync', () => {
+  it('详情关系字段覆盖列表里的 stale is_child_note', () => {
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({ maxDays: 0 }));
+    const listNote = makeNote({
+      note_id: '1909246675068292528',
+      parent_id: '1909193892067130512',
+      is_child_note: false,
+    });
+    const detailNote = {
+      note_id: '1909246675068292528',
+      parent_id: '1909193892067130512',
+      is_child_note: true,
+    };
+
+    // @ts-ignore private helper is tested directly to lock relation merge behavior.
+    expect(engine['mergeNoteDetail'](listNote, detailNote).is_child_note).toBe(true);
+  });
+
   it('同步主笔记时通过官方详情接口拉取并写入附加笔记', async () => {
     const parentNote = makeNote({
       note_id: '1909193892067130512',

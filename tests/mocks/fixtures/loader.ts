@@ -45,12 +45,13 @@ async function mockFetch(url: URL | Request | string, options?: RequestInit): Pr
   const method = (options?.method ?? 'GET').toUpperCase();
   requests.push({ method, url: urlStr });
 
-  const matched = fixtures.find(f => {
+  const matchedIndex = fixtures.findIndex(f => {
     if (f.method && f.method.toUpperCase() !== method) return false;
     return urlsMatch(f.url, f.query, urlStr);
   });
 
-  if (matched) {
+  if (matchedIndex >= 0) {
+    const [matched] = fixtures.splice(matchedIndex, 1);
     return makeResponse(matched.response.status ?? 200, matched.response.body);
   }
 

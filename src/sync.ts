@@ -376,6 +376,9 @@ export class SyncEngine {
     const childrenIds = detail.children_ids
       ? detail.children_ids
       : note.children_ids;
+    const isChildNote = Object.prototype.hasOwnProperty.call(detail, 'is_child_note')
+      ? detail.is_child_note
+      : note.is_child_note;
     return {
       ...note,
       ...detail,
@@ -393,7 +396,7 @@ export class SyncEngine {
       // Don't overwrite relation fields that were already populated by list data;
       // some detail responses omit them.
       children_ids: childrenIds,
-      is_child_note: note.is_child_note ?? detail.is_child_note,
+      is_child_note: isChildNote,
     };
   }
 

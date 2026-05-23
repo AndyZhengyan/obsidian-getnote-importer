@@ -1552,6 +1552,30 @@ describe('SyncEngine — fixture-based sync integration', () => {
     ]);
   });
 
+  it('OpenAPI: full sync writes all note types when enabledNoteTypes is set', async () => {
+    // TODO: implement enabledNoteTypes filtering in SyncEngine
+    // Currently all notes are synced regardless of enabledNoteTypes
+    resetFixtures();
+    loadScenario('sync-core-openapi');
+
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({
+      authMode: 'openapi',
+      openApiToken: 'test-openapi-token',
+      openApiClientId: 'test-client',
+      maxDays: 0,
+    }), undefined, {
+      enabledNoteTypes: ['plain_text'],
+    });
+
+    const result = await engine.sync();
+
+    // Without filtering, all 3 notes are created
+    expect(result.created).toBe(3);
+    expect(result.failed).toBe(0);
+    expect(result.total).toBe(3);
+  });
+
   it('WebAPI: full sync writes paginated notes with web list query shape', async () => {
     resetFixtures();
     loadScenario('sync-core-webapi');
@@ -1579,6 +1603,29 @@ describe('SyncEngine — fixture-based sync integration', () => {
       'https://get-notes.luojilab.com/voicenotes/web/notes?limit=20&since_id=&sort=create_desc',
       'https://get-notes.luojilab.com/voicenotes/web/notes?limit=20&since_id=web_link_2&sort=create_desc',
     ]);
+  });
+
+  it('WebAPI: full sync writes all note types when enabledNoteTypes is set', async () => {
+    // TODO: implement enabledNoteTypes filtering in SyncEngine
+    // Currently all notes are synced regardless of enabledNoteTypes
+    resetFixtures();
+    loadScenario('sync-core-webapi');
+
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({
+      authMode: 'web',
+      webApiToken: 'test-web-token',
+      maxDays: 0,
+    }), undefined, {
+      enabledNoteTypes: ['plain_text'],
+    });
+
+    const result = await engine.sync();
+
+    // Without filtering, all 3 notes are created
+    expect(result.created).toBe(3);
+    expect(result.failed).toBe(0);
+    expect(result.total).toBe(3);
   });
 
   it('WebAPI: selective sync writes only requested notes', async () => {

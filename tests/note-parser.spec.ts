@@ -38,9 +38,16 @@ describe('renderNote', () => {
     expect(result).toContain('title: "一段比较长的正文开头"');
   });
 
-  it('正文回退 title 会转义反斜杠和双引号', () => {
-    const result = renderNote(makeNote({ title: '', content: 'a\\b"c\ndefghijkl' }));
-    expect(result).toContain('title: "a\\\\b\\"c defg"');
+  it('正文回退 title 会转义反斜杠和双引号，并移除非法文件名字符', () => {
+    const result = renderNote(makeNote({ title: '', content: 'a\\b"c|defghij' }));
+    // sanitizeTitle 移除 \\ / : * ? " < > | 后再取前10字
+    expect(result).toContain('title: "abcdefghij"');
+  });
+
+  it('内容含管道符时过滤管道符后取前10字（修复追加笔记 title 被截断的 bug）', () => {
+    // 例如追加笔记正文为 "|hihi 18 plus"，| 过滤后取前10字
+    const result = renderNote(makeNote({ title: '', content: '|hihi 18 plus extra content here' }));
+    expect(result).toContain('title: "hihi 18 pl"');
   });
 
   it('标题含双引号时被过滤（双引号是非法文件名字符）', () => {

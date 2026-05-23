@@ -32,22 +32,21 @@ describe('renderNote', () => {
     expect(result).toContain('这是正文内容');
   });
 
-  it('标题为空时用正文前10字作为 title', () => {
-    const result = renderNote(makeNote({ title: '', content: '一段比较长的正文开头部分' }));
-    // content.slice(0, 10) = '一段比较长的正文开头' (10个字符)
+  it('标题为空时用正文生成 title（不过截断）', () => {
+    const result = renderNote(makeNote({ title: '', content: '一段比较长的正文开头' }));
     expect(result).toContain('title: "一段比较长的正文开头"');
   });
 
   it('正文回退 title 会转义反斜杠和双引号，并移除非法文件名字符', () => {
+    // sanitizeTitle 移除 \ / : * ? " < > |，escapeYamlDoubleQuoted 处理剩余引号
     const result = renderNote(makeNote({ title: '', content: 'a\\b"c|defghij' }));
-    // sanitizeTitle 移除 \\ / : * ? " < > | 后再取前10字
     expect(result).toContain('title: "abcdefghij"');
   });
 
-  it('内容含管道符时过滤管道符后取前10字（修复追加笔记 title 被截断的 bug）', () => {
-    // 例如追加笔记正文为 "|hihi 18 plus"，| 过滤后取前10字
+  it('内容含管道符时完整保留（管道符被过滤），不再硬截断前10字', () => {
+    // frontmatter title 没有 10 字限制，内容 "|hihi 18 plus" 过滤 | 后保留完整
     const result = renderNote(makeNote({ title: '', content: '|hihi 18 plus extra content here' }));
-    expect(result).toContain('title: "hihi 18 pl"');
+    expect(result).toContain('title: "hihi 18 plus extra content here"');
   });
 
   it('标题含双引号时被过滤（双引号是非法文件名字符）', () => {
@@ -121,9 +120,9 @@ describe('getNoteTitle', () => {
 
 // ---- sanitizeTitle (private, tested via renderNote) ----
 describe('sanitizeTitle (via renderNote)', () => {
-  it('空标题时用正文前10字', () => {
+  it('空标题时用正文生成 title（不过截断）', () => {
     const result = renderNote(makeNote({ title: '', content: '1234567890123' }));
-    expect(result).toContain('title: "1234567890"');
+    expect(result).toContain('title: "1234567890123"');
   });
 
   it('过滤 Windows 非法文件名字符', () => {

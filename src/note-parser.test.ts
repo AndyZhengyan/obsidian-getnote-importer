@@ -26,9 +26,9 @@ describe('renderNote', () => {
     expect(md).toContain('正文内容');
   });
 
-  it('falls back to content preview for empty title', () => {
+  it('falls back to content for empty title', () => {
     const md = renderNote(makeNote({ title: '', content: '1234567890内容' }));
-    expect(md).toContain('title: "1234567890"');
+    expect(md).toContain('title: "1234567890内容"');
   });
 
   it('handles notes with tags', () => {

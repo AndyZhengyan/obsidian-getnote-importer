@@ -77,7 +77,7 @@ function buildFrontmatter(note: GetNoteNote): string {
   const childrenIds = note.children_ids?.map(id => `"${escapeYamlDoubleQuoted(id)}"`).join(', ');
 
   const title = sanitizeTitle(note.title) ||
-    escapeYamlDoubleQuoted(sanitizeTitle(note.content || '').slice(0, 10));
+    escapeYamlDoubleQuoted(sanitizeTitle(note.content || ''));
 
   const lines = [
     '---',

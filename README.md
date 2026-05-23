@@ -12,8 +12,6 @@ Bring your GetNote ideas, highlights, links, recordings, and AI summaries into O
 
 GetNote Importer is an Obsidian plugin for people who capture in GetNote but think, connect, and build in Obsidian. It keeps imports readable from day one: title-based filenames, type-based folders, source metadata in frontmatter, incremental updates, selective sync, scheduled sync, and detailed sync history.
 
-[中文版说明](./README_zh.md)
-
 ## Why It Feels Good
 
 - **Readable files, not dumped data**: notes are named from their titles and organized by note type.

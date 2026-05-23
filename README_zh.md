@@ -12,8 +12,6 @@
 
 GetNote Importer 适合把 Get笔记作为快速捕捉入口、把 Obsidian 作为长期知识库的人。插件会用可读文件名、分类目录、frontmatter、增量更新、选择性同步和同步历史，尽量让导入内容从第一天就能融入你的 vault。
 
-[English version](./README.md)
-
 ## 为什么好用
 
 - **文件可读，不是数据堆**：笔记按标题命名、按类型归档。

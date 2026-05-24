@@ -213,7 +213,6 @@ describe('SettingsComponent auth credentials', () => {
     const scheduledSync = {
       ...DEFAULT_SETTINGS.scheduledSync,
       enabled: true,
-      enabledNoteTypes: [],
     };
     const { container, updateSetting } = renderSettings(makeSettings({
       scheduledSync,

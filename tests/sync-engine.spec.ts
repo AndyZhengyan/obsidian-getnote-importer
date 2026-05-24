@@ -69,7 +69,7 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
     syncStartDate: '',
     lastSyncEndTimestamp: '',
     filenamePrefix: '',
-    scheduledSync: { enabled: false, intervalMinutes: 30, syncOnStart: false, enabledNoteTypes: [] },
+    scheduledSync: { enabled: false, intervalMinutes: 30, syncOnStart: false },
     syncHistory: [],
     ...overrides,
   };
@@ -110,7 +110,6 @@ describe('SyncEngine — filterRecentNotes', () => {
     expect(engine['scopeOptions']).toEqual({
       maxDays: 0,
       syncStartDate: '2026-05-09',
-      enabledNoteTypes: [],
     });
   });
 

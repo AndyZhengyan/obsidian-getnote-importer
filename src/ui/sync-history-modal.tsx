@@ -29,8 +29,9 @@ export function formatHistoryScope(entry: SyncHistoryEntry): string {
 }
 
 export function formatHistoryFilter(entry: SyncHistoryEntry): string {
-  const enabledNoteTypes = entry.scope?.enabledNoteTypes ?? [];
-  if (enabledNoteTypes.length === 0) return t('syncHistory.filter.default');
+  if (!entry.scope || entry.scope.enabledNoteTypes === undefined) return t('syncHistory.filter.default');
+  const enabledNoteTypes = entry.scope.enabledNoteTypes;
+  if (enabledNoteTypes.length === 0) return t('syncHistory.filter.noNoteTypes');
   return t('syncHistory.filter.noteTypes', {
     types: enabledNoteTypes.map(formatHistoryNoteType).join(t('syncHistory.filter.noteTypes.separator')),
   });

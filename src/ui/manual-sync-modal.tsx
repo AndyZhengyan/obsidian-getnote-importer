@@ -29,17 +29,17 @@ export function ManualSyncModal({ initialOptions, onConfirm, onCancel }: ManualS
   const [syncMode, setSyncMode] = useState<SyncMode>(resolveInitialSyncMode(initialOptions));
   const [syncStartDate, setSyncStartDate] = useState(initialOptions.syncStartDate);
   const [maxDays, setMaxDays] = useState(String(initialOptions.maxDays));
-  const [enabledNoteTypes, setEnabledNoteTypes] = useState(initialOptions.enabledNoteTypes ?? []);
+  const [enabledNoteTypes, setEnabledNoteTypes] = useState<string[] | undefined>(initialOptions.enabledNoteTypes);
 
   const handleConfirm = () => {
     if (syncMode === 'date') {
-      onConfirm({ syncStartDate, maxDays: 0, enabledNoteTypes });
+      onConfirm({ syncStartDate, maxDays: 0, ...(enabledNoteTypes !== undefined ? { enabledNoteTypes } : {}) });
     } else {
       const parsedMaxDays = parseInt(maxDays, 10);
       onConfirm({
         syncStartDate: '',
         maxDays: Number.isNaN(parsedMaxDays) || parsedMaxDays < 1 ? 1 : parsedMaxDays,
-        enabledNoteTypes,
+        ...(enabledNoteTypes !== undefined ? { enabledNoteTypes } : {}),
       });
     }
   };

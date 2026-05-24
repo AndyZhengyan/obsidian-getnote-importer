@@ -99,7 +99,6 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     expect(plugin.syncHistory.at(-1)?.scope).toEqual({
       maxDays: 0,
       syncStartDate: '2026-05-09',
-      enabledNoteTypes: undefined,
       selectedCount: undefined,
       selectedIds: undefined,
     });
@@ -141,7 +140,6 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
       {
         maxDays: 7,
         syncStartDate: '',
-        enabledNoteTypes: [],
       },
     ]);
   });
@@ -160,7 +158,6 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
       {
         maxDays: 0,
         syncStartDate: '2026-05-09',
-        enabledNoteTypes: [],
       },
     ]);
   });
@@ -172,7 +169,6 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
       enabled: true,
       intervalMinutes: 5,
       syncOnStart: true,
-      enabledNoteTypes: [],
     };
     const registerInterval = vi.fn();
     Object.assign(plugin, { registerInterval });

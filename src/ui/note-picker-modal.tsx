@@ -6,7 +6,7 @@ import { t } from '../i18n';
 import { NoteTypeSelect } from './note-type-select';
 
 interface NotePickerModalProps {
-  onConfirm: (selectedNoteIds: string[], enabledNoteTypes: string[]) => void;
+  onConfirm: (selectedNoteIds: string[], enabledNoteTypes?: string[]) => void;
   onCancel: () => void;
   token: string;
   clientId: string;
@@ -63,7 +63,7 @@ export function NotePickerModal({ token, clientId, authMode, onConfirm, onCancel
   const [cursor, setCursor] = useState('0');
   const [hasMore, setHasMore] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [enabledNoteTypes, setEnabledNoteTypes] = useState<string[]>([]);
+  const [enabledNoteTypes, setEnabledNoteTypes] = useState<string[] | undefined>(undefined);
 
   const loadFirstPage = useCallback(() => {
     setLoading(true);
@@ -114,9 +114,11 @@ export function NotePickerModal({ token, clientId, authMode, onConfirm, onCancel
     });
   };
 
-  const typeFilteredNotes = enabledNoteTypes.length > 0
+  const typeFilteredNotes = enabledNoteTypes === undefined
+    ? notes
+    : enabledNoteTypes.length > 0
     ? notes.filter(note => enabledNoteTypes.includes(note.note_type))
-    : notes;
+    : [];
   const filteredNotes = searchQuery
     ? typeFilteredNotes.filter(n => generateDisplayTitle(n).toLowerCase().includes(searchQuery.toLowerCase()))
     : typeFilteredNotes;

@@ -89,11 +89,11 @@ export class SyncEngine {
     this.app = app;
     this.settings = settings;
     const syncStartDate = scopeOptions?.syncStartDate ?? settings.syncStartDate;
-    const enabledNoteTypes = scopeOptions?.enabledNoteTypes ?? [];
+    const enabledNoteTypes = scopeOptions?.enabledNoteTypes;
     this.scopeOptions = {
       maxDays: syncStartDate ? 0 : scopeOptions?.maxDays ?? settings.maxDays,
       syncStartDate,
-      enabledNoteTypes,
+      ...(enabledNoteTypes !== undefined ? { enabledNoteTypes } : {}),
     };
     this.onProgress = onProgress;
   }
@@ -565,8 +565,9 @@ export class SyncEngine {
   }
 
   private filterNotesByType(notes: GetNoteNote[]): GetNoteNote[] {
-    const enabledNoteTypes = this.scopeOptions.enabledNoteTypes ?? [];
-    if (enabledNoteTypes.length === 0) return notes;
+    const enabledNoteTypes = this.scopeOptions.enabledNoteTypes;
+    if (enabledNoteTypes === undefined) return notes;
+    if (enabledNoteTypes.length === 0) return [];
     return notes.filter(note => enabledNoteTypes.includes(note.note_type));
   }
 

@@ -80,7 +80,7 @@ export function SettingsComponent({
   // Only show actual lastSyncEndTimestamp — do NOT fallback to syncStartDate
   const lastSyncedTo = settings.lastSyncEndTimestamp || '';
   const [scheduledEnabled, setScheduledEnabled] = useState(settings.scheduledSync.enabled);
-  const [scheduledNoteTypes, setScheduledNoteTypes] = useState(settings.scheduledSync.enabledNoteTypes ?? []);
+  const [scheduledNoteTypes, setScheduledNoteTypes] = useState<string[] | undefined>(settings.scheduledSync.enabledNoteTypes);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [connectionErrorMsg, setConnectionErrorMsg] = useState('');
@@ -204,7 +204,7 @@ export function SettingsComponent({
     updateSetting('scheduledSync', { ...settings.scheduledSync, enabledNoteTypes: scheduledNoteTypes, syncOnStart: checked });
   };
 
-  const handleScheduledNoteTypes = (value: string[]) => {
+  const handleScheduledNoteTypes = (value: string[] | undefined) => {
     setScheduledNoteTypes(value);
     updateSetting('scheduledSync', { ...settings.scheduledSync, enabledNoteTypes: value });
   };

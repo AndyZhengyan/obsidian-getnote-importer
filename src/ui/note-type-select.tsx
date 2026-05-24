@@ -11,31 +11,29 @@ function getTypeLabel(noteType: string): string {
 }
 
 function summarizeTypes(value: string[]): string {
-  if (value.length === 0) return t('noteTypes.all');
+  if (value.length === 0) return t('noteTypes.none');
   if (value.length === 1) return getTypeLabel(value[0]);
   return t('noteTypes.selected', { count: value.length });
 }
 
 interface NoteTypeSelectProps {
-  value: string[];
-  onChange: (value: string[]) => void;
+  value?: string[];
+  onChange: (value: string[] | undefined) => void;
 }
 
 export function NoteTypeSelect({ value, onChange }: NoteTypeSelectProps) {
   const [open, setOpen] = useState(false);
   const allNoteTypes = NOTE_TYPE_OPTIONS.map(option => option.noteType);
+  const selectedTypes = value ?? allNoteTypes;
+  const allSelected = value === undefined || selectedTypes.length === allNoteTypes.length;
 
   const handleTypeToggle = (noteType: string, checked: boolean) => {
-    const current = value.length > 0 ? value : allNoteTypes;
+    const current = value ?? allNoteTypes;
     const next = checked
       ? Array.from(new Set([...current, noteType]))
       : current.filter(type => type !== noteType);
 
-    if (next.length === 0) {
-      onChange([noteType]);
-      return;
-    }
-    onChange(next.length === allNoteTypes.length ? [] : next);
+    onChange(next.length === allNoteTypes.length ? undefined : next);
   };
 
   return (
@@ -45,7 +43,7 @@ export function NoteTypeSelect({ value, onChange }: NoteTypeSelectProps) {
         className="getnote-note-type-select-trigger"
         onClick={() => setOpen(value => !value)}
       >
-        <span>{summarizeTypes(value)}</span>
+        <span>{value === undefined ? t('noteTypes.all') : summarizeTypes(value)}</span>
         <span
           aria-hidden="true"
           className={`getnote-note-type-select-caret${open ? ' is-open' : ''}`}
@@ -56,8 +54,8 @@ export function NoteTypeSelect({ value, onChange }: NoteTypeSelectProps) {
           <label className="getnote-note-type-select-option">
             <input
               type="checkbox"
-              checked={value.length === 0}
-              onChange={() => onChange([])}
+              checked={allSelected}
+              onChange={(event) => onChange((event.target as HTMLInputElement).checked ? undefined : [])}
             />
             <span>{t('noteTypes.all')}</span>
           </label>
@@ -65,7 +63,7 @@ export function NoteTypeSelect({ value, onChange }: NoteTypeSelectProps) {
             <label className="getnote-note-type-select-option" key={option.noteType}>
               <input
                 type="checkbox"
-                checked={value.length === 0 || value.includes(option.noteType)}
+                checked={selectedTypes.includes(option.noteType)}
                 onChange={(event) => handleTypeToggle(option.noteType, (event.target as HTMLInputElement).checked)}
               />
               <span>{getTypeLabel(option.noteType)}</span>

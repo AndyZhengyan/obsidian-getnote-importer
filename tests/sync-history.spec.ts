@@ -197,6 +197,18 @@ describe('sync history scope display', () => {
     }))).toBe('仅同步：纯文本、链接笔记');
   });
 
+  it('shows an explicit empty filter when no note types are selected', () => {
+    initI18n('zh-CN');
+
+    expect(formatHistoryFilter(makeEntry({
+      scope: {
+        syncStartDate: '',
+        maxDays: 0,
+        enabledNoteTypes: [],
+      },
+    }))).toBe('未选择任何笔记类型');
+  });
+
   it('uses English separators for note type filters in English', () => {
     initI18n('en');
 

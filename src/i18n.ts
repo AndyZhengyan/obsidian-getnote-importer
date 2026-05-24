@@ -198,6 +198,9 @@ export const translations: Record<string, Record<string, string>> = {
     'notice.syncComplete': '同步完成：新增 {created} · 更新 {updated} · 跳过 {skipped}{failed}',
     'notice.syncFailed': '同步失败：{msg}',
     'notice.quotaExceededStop': 'API 配额已用完，定时同步已暂停。请明天再试。',
+    'reverseSync.running': '正在写回 Get笔记...',
+    'reverseSync.complete': '写回完成：新增 {created} · 跳过 {skipped} · 失败 {failed}',
+    'reverseSync.failed': '写回失败：{msg}',
 
     // === API Errors ===
     'error.invalidCredentials': 'API Token 或 Client ID 无效，请检查设置',
@@ -218,6 +221,8 @@ export const translations: Record<string, Record<string, string>> = {
     'error.rateLimited': 'API 调用频率过高，请稍后再试',
     'error.webApiLoginRequired': 'Web Token 已过期，请刷新登录后重新复制 Token',
     'error.webApiForbidden': 'Web Token 无效，请检查设置',
+    'error.reverseSyncOpenApiOnly': '反向写回仅支持 OpenAPI，请填写会员 OpenAPI Token 和 Client ID',
+    'error.createNoteFailed': '创建 Get笔记失败',
 
     // === Console (English only) ===
     'console.loaded': '[GetNote Importer] 插件已加载',
@@ -225,6 +230,7 @@ export const translations: Record<string, Record<string, string>> = {
 
     // === Command / Ribbon ===
     'command.sync': '同步笔记',
+    'command.reverseSync': '写回 Get笔记',
     'ribbon.tooltip': '同步 Get笔记',
   },
 
@@ -427,6 +433,9 @@ export const translations: Record<string, Record<string, string>> = {
     'notice.syncComplete': 'Sync complete: {created} created · {updated} updated · {skipped} skipped{failed}',
     'notice.syncFailed': 'Sync failed: {msg}',
     'notice.quotaExceededStop': 'API quota exhausted. Scheduled sync has been paused. Please try again tomorrow.',
+    'reverseSync.running': 'Writing back to GetNote...',
+    'reverseSync.complete': 'Write-back complete: {created} created · {skipped} skipped · {failed} failed',
+    'reverseSync.failed': 'Write-back failed: {msg}',
 
     // === API Errors ===
     'error.invalidCredentials': 'Invalid API Token or Client ID, please check settings',
@@ -447,6 +456,8 @@ export const translations: Record<string, Record<string, string>> = {
     'error.rateLimited': 'API rate limit exceeded, please try again later',
     'error.webApiLoginRequired': 'Web Token expired, please refresh login and copy a new Token',
     'error.webApiForbidden': 'Web Token invalid, please check settings',
+    'error.reverseSyncOpenApiOnly': 'Reverse write-back only supports OpenAPI. Please enter a PRO OpenAPI Token and Client ID.',
+    'error.createNoteFailed': 'Failed to create GetNote note',
 
     // === Console (English only) ===
     'console.loaded': '[GetNote Importer] Plugin loaded',
@@ -454,6 +465,7 @@ export const translations: Record<string, Record<string, string>> = {
 
     // === Command / Ribbon ===
     'command.sync': 'Sync Notes',
+    'command.reverseSync': 'Write Back to GetNote',
     'ribbon.tooltip': 'Sync GetNote',
   },
 };

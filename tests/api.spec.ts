@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fetchNoteChildren, fetchNotes, fetchNoteDetail } from '../src/api';
+import { createNote, fetchNoteChildren, fetchNotes, fetchNoteDetail } from '../src/api';
 import type { ListResponse } from '../src/types';
 
 // Extract the internal safeJsonParse for direct testing
@@ -513,5 +513,66 @@ describe('web auth mode', () => {
     } finally {
       vi.mocked(globalThis.fetch).mockRestore();
     }
+  });
+});
+
+describe('createNote', () => {
+  it('creates an OpenAPI note and preserves a large returned note_id as a string', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockTextFetchResponse(
+        JSON.stringify({
+          success: true,
+          data: {
+            note: {
+              note_id: 0,
+            },
+          },
+        }).replace('"note_id":0', '"note_id":1909999999999999999')
+      ) as Response
+    );
+
+    try {
+      const result = await createNote({
+        token: 'test-token',
+        clientId: 'test-client',
+        authMode: 'openapi',
+        title: 'Local title',
+        content: 'Local body',
+        noteType: 'plain_text',
+      });
+
+      expect(result.noteId).toBe('1909999999999999999');
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'https://openapi.biji.com/open/api/v1/resource/note/save',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer test-token',
+            'X-Client-ID': 'test-client',
+            'Content-Type': 'application/json',
+          }),
+          body: JSON.stringify({
+            title: 'Local title',
+            content: 'Local body',
+            note_type: 'plain_text',
+            source: 'app',
+            tags: [],
+          }),
+        })
+      );
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
+  it('rejects reverse writes in Web API mode', async () => {
+    await expect(createNote({
+      token: 'web-token',
+      clientId: '',
+      authMode: 'web',
+      title: 'Local title',
+      content: 'Local body',
+      noteType: 'plain_text',
+    })).rejects.toThrow('OpenAPI');
   });
 });

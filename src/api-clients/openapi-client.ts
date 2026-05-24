@@ -154,6 +154,16 @@ export interface FetchNotesOptions {
   signal?: AbortSignal;
 }
 
+export interface CreateNoteOptions {
+  token: string;
+  clientId: string;
+  title: string;
+  content: string;
+  noteType: string;
+  tags?: string[];
+  signal?: AbortSignal;
+}
+
 export async function fetchNotes(options: FetchNotesOptions): Promise<{ notes: GetNoteNote[]; hasMore: boolean }> {
   const { token, clientId, sinceId = '0', signal } = options;
   const params = new URLSearchParams();
@@ -184,4 +194,38 @@ export async function fetchNoteDetail(
   const noteDetail = normalizeNoteDetailData(detailData);
   if (!noteDetail) throw new Error(t('error.fetchNoteDetailFailed'));
   return noteDetail;
+}
+
+function extractCreatedNoteId(value: unknown): string {
+  if (!isRecord(value)) return '';
+  const data = isRecord(value.data) ? value.data : value;
+  const note = isRecord(data.note) ? data.note : data;
+  const id = note.note_id ?? note.id;
+  return typeof id === 'string' || typeof id === 'number' ? String(id) : '';
+}
+
+export async function createNote(options: CreateNoteOptions): Promise<{ noteId: string }> {
+  const url = 'https://openapi.biji.com/open/api/v1/resource/note/save';
+  const data = await apiRequest<Record<string, unknown>>(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        ...buildHeaders(options.token, options.clientId),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: options.title,
+        content: options.content,
+        note_type: options.noteType,
+        source: 'app',
+        tags: options.tags ?? [],
+      }),
+    },
+    1,
+    options.signal
+  );
+  const noteId = extractCreatedNoteId(data);
+  if (!noteId) throw new Error(t('error.createNoteFailed'));
+  return { noteId };
 }

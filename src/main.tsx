@@ -7,6 +7,7 @@ import { showError, showNotice, showSuccess } from './ui/notice';
 import { NotePickerModal } from './ui/note-picker-modal';
 import { ManualSyncModal } from './ui/manual-sync-modal';
 import { initI18n, t } from './i18n';
+import { ReverseSyncEngine } from './reverse-sync';
 
 const MAX_SYNC_HISTORY = 20;
 
@@ -116,6 +117,12 @@ export default class GetNoteSyncPlugin extends Plugin {
       id: 'sync-notes',
       name: t('command.sync'),
       callback: () => this.openManualSyncModal(),
+    });
+
+    this.addCommand({
+      id: 'reverse-sync-notes',
+      name: t('command.reverseSync'),
+      callback: () => { void this.reverseSyncToGetNote(); },
     });
 
     this.addRibbonIcon('book-lock', t('ribbon.tooltip'), () => this.openManualSyncModal());
@@ -350,6 +357,32 @@ export default class GetNoteSyncPlugin extends Plugin {
 
   syncSelectedNotes(noteIds: string[], enabledNoteTypes?: string[]): void {
     void this.runSync('selective', { maxDays: 0, syncStartDate: '', ...(enabledNoteTypes !== undefined ? { enabledNoteTypes } : {}) }, noteIds);
+  }
+
+  private async reverseSyncToGetNote(): Promise<void> {
+    if (this.isSyncing) return;
+    this.isSyncing = true;
+    this.syncProgress = { message: t('reverseSync.running'), count: '', percent: 0 };
+    this.refreshSettingsTab();
+
+    try {
+      const result = await new ReverseSyncEngine(this.app, this.settings).syncBack();
+      showSuccess(t('reverseSync.complete', {
+        created: result.created,
+        skipped: result.skipped,
+        failed: result.failed,
+      }), 8000);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.syncProgress = { message: t('reverseSync.failed', { msg: message }), count: '', percent: 0 };
+      showError(t('reverseSync.failed', { msg: message }));
+      return;
+    } finally {
+      this.isSyncing = false;
+      this.currentSyncEngine = null;
+      this.syncProgress = { message: '', count: '', percent: 0 };
+      this.refreshSettingsTab();
+    }
   }
 }
 

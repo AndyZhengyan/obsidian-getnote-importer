@@ -172,17 +172,20 @@ describe('SettingsComponent auth credentials', () => {
     }));
   });
 
-  it('shows actionable Web Token capture guidance in Web auth mode', () => {
+  it('shows concise temporary-auth guidance in Web auth mode', () => {
     initI18n('en-US');
     const { container } = renderSettings(makeSettings({
       authMode: 'web',
       webApiToken: '',
     }));
 
-    expect(container.textContent).toContain('DevTools');
-    expect(container.textContent).toContain('Network');
-    expect(container.textContent).toContain('Authorization');
-    expect(container.textContent).toContain('Fetch/XHR');
+    expect(container.textContent).toContain('Temporary Auth');
+    expect(container.textContent).toContain('about 30 minutes');
+    expect(container.textContent).toContain('PRO');
+    expect(container.textContent).toContain('OpenAPI');
+    expect(container.textContent).not.toContain('DevTools');
+    expect(container.textContent).not.toContain('Network');
+    expect(container.textContent).not.toContain('Fetch/XHR');
   });
 
   it('uses Chinese README links in Chinese locale', () => {

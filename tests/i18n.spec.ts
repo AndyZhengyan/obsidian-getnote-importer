@@ -55,8 +55,10 @@ describe('t() - Chinese translations', () => {
   it('returns Chinese GitHub documentation links', () => {
     expect(i18n.t('settings.communityUrl')).toContain('README_zh.md');
     expect(i18n.t('settings.webTipHelpUrl')).toContain('docs/web-mode-manual-token_zh.md');
-    expect(i18n.t('settings.credentials.webTip')).toContain('开发者工具');
-    expect(i18n.t('settings.credentials.webTip')).toContain('Authorization');
+    expect(i18n.t('settings.credentials.webTip')).toContain('临时鉴权');
+    expect(i18n.t('settings.credentials.webTip')).toContain('约 30 分钟');
+    expect(i18n.t('settings.credentials.webTip')).toContain('PRO 会员');
+    expect(i18n.t('settings.credentials.webTip')).not.toContain('开发者工具');
   });
 
   it('returns Chinese for sync.start', () => {
@@ -104,6 +106,10 @@ describe('t() - English translations', () => {
   it('returns English GitHub documentation links', () => {
     expect(i18n.t('settings.communityUrl')).toContain('README.md');
     expect(i18n.t('settings.webTipHelpUrl')).toContain('docs/web-mode-manual-token.md');
+    expect(i18n.t('settings.credentials.webTip')).toContain('Temporary Auth');
+    expect(i18n.t('settings.credentials.webTip')).toContain('about 30 minutes');
+    expect(i18n.t('settings.credentials.webTip')).toContain('PRO');
+    expect(i18n.t('settings.credentials.webTip')).not.toContain('DevTools');
   });
 
   it('returns English for sync.start', () => {

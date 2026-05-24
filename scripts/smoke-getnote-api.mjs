@@ -41,6 +41,7 @@ function getConfig() {
   const token = process.env.GETNOTE_TOKEN || '';
   const clientId = process.env.GETNOTE_CLIENT_ID || '';
   const limit = Number(process.env.GETNOTE_SMOKE_LIMIT || 1);
+  const reverse = process.env.GETNOTE_SMOKE_REVERSE === '1';
   if (authMode !== 'openapi' && authMode !== 'web') {
     throw new Error('GETNOTE_AUTH_MODE must be openapi or web.');
   }
@@ -52,7 +53,10 @@ function getConfig() {
   if (authMode === 'web' && !looksLikeWebToken(token)) {
     throw new Error('Web smoke needs a Web Bearer/JWT token.');
   }
-  return { authMode, token, clientId: authMode === 'web' ? '' : clientId, limit };
+  if (reverse && authMode !== 'openapi') {
+    throw new Error('Reverse smoke writes to GetNote and only supports OpenAPI.');
+  }
+  return { authMode, token, clientId: authMode === 'web' ? '' : clientId, limit, reverse };
 }
 
 async function importSourceApi() {
@@ -86,6 +90,30 @@ async function importSourceSync() {
   });
   const mod = await import(pathToFileURL(outfile).href);
   return { sync: mod, cleanup: () => rm(tempDir, { recursive: true, force: true }) };
+}
+
+async function importSourceReverseSync() {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'getnote-reverse-smoke-bundle-'));
+  const outfile = path.join(tempDir, 'reverse-smoke.mjs');
+  await esbuild.build({
+    stdin: {
+      contents: [
+        "export { ReverseSyncEngine } from './src/reverse-sync';",
+        "export { fetchNoteDetail } from './src/api';",
+      ].join('\n'),
+      resolveDir: process.cwd(),
+      sourcefile: 'reverse-smoke-entry.ts',
+      loader: 'ts',
+    },
+    outfile,
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    target: 'es2022',
+    logLevel: 'silent',
+  });
+  const mod = await import(pathToFileURL(outfile).href);
+  return { reverse: mod, cleanup: () => rm(tempDir, { recursive: true, force: true }) };
 }
 
 function summarizeNote(note) {
@@ -157,19 +185,23 @@ function createTempVaultApp(root) {
       getAllFolders: () => [...folders].map((folderPath) => ({ path: folderPath })),
       getMarkdownFiles: () => [...files.values()].filter((file) => file.path.endsWith('.md')),
       getAbstractFileByPath: (filePath) => files.get(filePath) || (folders.has(filePath) ? { path: filePath } : null),
+      read: async (file) => {
+        const found = files.get(file.path);
+        return found?.content ?? '';
+      },
       createFolder: async (folderPath) => {
         folders.add(folderPath);
         await mkdir(path.join(root, folderPath), { recursive: true });
       },
       create: async (filePath, content) => {
         const file = new SmokeTFile(filePath);
-        files.set(filePath, file);
+        files.set(filePath, { ...file, content });
         frontmatter.set(filePath, parseFrontmatter(content));
         await persistText(filePath, content);
         return file;
       },
       modify: async (file, content) => {
-        files.set(file.path, file);
+        files.set(file.path, { ...file, content });
         frontmatter.set(file.path, parseFrontmatter(content));
         await persistText(file.path, content);
       },
@@ -180,7 +212,7 @@ function createTempVaultApp(root) {
       },
       createBinary: async (filePath, data) => {
         const file = new SmokeTFile(filePath);
-        files.set(filePath, file);
+        files.set(filePath, { ...file, content: `[binary:${data.byteLength}]` });
         await persistBinary(filePath, data);
         return file;
       },
@@ -256,6 +288,61 @@ async function runSyncSmoke(config, firstNote) {
   }
 }
 
+async function runReverseSyncSmoke(config, api) {
+  const tempVault = await mkdtemp(path.join(tmpdir(), 'getnote-reverse-smoke-vault-'));
+  const { reverse, cleanup: cleanupBundle } = await importSourceReverseSync();
+  try {
+    const app = createTempVaultApp(tempVault);
+    const now = new Date().toISOString().replace(/[:.]/g, '-');
+    const title = `Codex reverse sync smoke ${now}`;
+    const body = `This note was created by a Codex reverse-sync smoke test at ${now}.`;
+    const filePath = `GetNoteSmoke/${title}.md`;
+    await app.vault.create(filePath, [
+      '---',
+      `title: "${title}"`,
+      'note_type: plain_text',
+      '---',
+      body,
+    ].join('\n'));
+
+    const settings = {
+      authMode: 'openapi',
+      openApiToken: config.token,
+      openApiClientId: config.clientId,
+      webApiToken: '',
+      apiToken: '',
+      clientId: '',
+      webCsrfToken: '',
+      folderName: 'GetNoteSmoke',
+      filenamePrefix: '',
+      maxDays: 0,
+      syncStartDate: '',
+      lastSyncEndTimestamp: '',
+      scheduledSync: { enabled: false, intervalMinutes: 30, syncOnStart: false },
+      syncHistory: [],
+    };
+
+    const started = Date.now();
+    const result = await new reverse.ReverseSyncEngine(app, settings).syncBack();
+    const uid = app.metadataCache.getFileCache({ path: filePath })?.frontmatter?.uid;
+    console.log(`[GetNote smoke] reverse sync ok: total=${result.total}, created=${result.created}, skipped=${result.skipped}, failed=${result.failed}, ${Date.now() - started}ms`);
+    console.log('[GetNote smoke] reverse local uid:', uid ? mask(String(uid)) : '<missing>');
+
+    const detail = await api.fetchNoteDetail(String(uid), config.token, config.clientId, undefined, 'openapi');
+    console.log('[GetNote smoke] reverse detail:', JSON.stringify({
+      note_id: String(detail.note_id ?? ''),
+      title: String(detail.title ?? ''),
+      note_type: String(detail.note_type ?? ''),
+      contentMatches: String(detail.content ?? '') === body,
+    }));
+    console.log('[GetNote smoke] reverse created remote note; delete it manually if this was only a smoke run.');
+  } finally {
+    await cleanupBundle();
+    await rm(tempVault, { recursive: true, force: true });
+    console.log('[GetNote smoke] reverse temp vault cleaned');
+  }
+}
+
 async function main() {
   globalThis.window ??= globalThis;
 
@@ -270,6 +357,10 @@ async function main() {
     if (firstNote && process.env.GETNOTE_SMOKE_SYNC === '1') {
       console.log('[GetNote smoke] source: src/sync.ts');
       await runSyncSmoke(config, firstNote);
+    }
+    if (config.reverse) {
+      console.log('[GetNote smoke] source: src/reverse-sync.ts');
+      await runReverseSyncSmoke(config, api);
     }
   } finally {
     await cleanup();

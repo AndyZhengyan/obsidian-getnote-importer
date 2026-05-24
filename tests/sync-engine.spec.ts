@@ -1694,6 +1694,55 @@ describe('SyncEngine — fixture-based sync integration', () => {
     expect(createdPaths).toEqual(['Get笔记/纯文本/WebAPI 被选择.md']);
   });
 
+  it('OpenAPI: selective sync skips selected notes outside the enabled type filter', async () => {
+    resetFixtures();
+    loadScenario('selective-sync-openapi');
+
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({
+      authMode: 'openapi',
+      openApiToken: 'test-openapi-token',
+      openApiClientId: 'test-client',
+      maxDays: 0,
+      enabledNoteTypes: ['link'],
+    }));
+
+    const result = await engine.syncNoteIds(['1909193892067130512']);
+
+    expect(result.created).toBe(0);
+    expect(result.failed).toBe(0);
+    expect(result.total).toBe(0);
+    expect(result.items).toEqual([]);
+    expect(app.vault.create).not.toHaveBeenCalled();
+    expect(getFixtureRequests().map(request => request.url)).toEqual([
+      'https://openapi.biji.com/open/api/v1/resource/note/list?since_id=0',
+    ]);
+  });
+
+  it('WebAPI: selective sync skips selected notes outside the enabled type filter', async () => {
+    resetFixtures();
+    loadScenario('selective-sync-webapi');
+
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({
+      authMode: 'web',
+      webApiToken: 'test-web-token',
+      maxDays: 0,
+      enabledNoteTypes: ['link'],
+    }));
+
+    const result = await engine.syncNoteIds(['web_selected']);
+
+    expect(result.created).toBe(0);
+    expect(result.failed).toBe(0);
+    expect(result.total).toBe(0);
+    expect(result.items).toEqual([]);
+    expect(app.vault.create).not.toHaveBeenCalled();
+    expect(getFixtureRequests().map(request => request.url)).toEqual([
+      'https://get-notes.luojilab.com/voicenotes/web/notes?limit=20&since_id=&sort=create_desc',
+    ]);
+  });
+
   it('OpenAPI: parent + child notes both created', async () => {
     resetFixtures();
     loadScenario('sync-parent-and-children-openapi');

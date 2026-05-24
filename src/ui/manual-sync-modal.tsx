@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { SyncScopeOptions } from '../types';
 import { t } from '../i18n';
+import { NoteTypeSelect } from './note-type-select';
 
 type SyncMode = 'date' | 'days';
 
@@ -28,15 +29,17 @@ export function ManualSyncModal({ initialOptions, onConfirm, onCancel }: ManualS
   const [syncMode, setSyncMode] = useState<SyncMode>(resolveInitialSyncMode(initialOptions));
   const [syncStartDate, setSyncStartDate] = useState(initialOptions.syncStartDate);
   const [maxDays, setMaxDays] = useState(String(initialOptions.maxDays));
+  const [enabledNoteTypes, setEnabledNoteTypes] = useState(initialOptions.enabledNoteTypes ?? []);
 
   const handleConfirm = () => {
     if (syncMode === 'date') {
-      onConfirm({ syncStartDate, maxDays: 0 });
+      onConfirm({ syncStartDate, maxDays: 0, enabledNoteTypes });
     } else {
       const parsedMaxDays = parseInt(maxDays, 10);
       onConfirm({
         syncStartDate: '',
         maxDays: Number.isNaN(parsedMaxDays) || parsedMaxDays < 1 ? 1 : parsedMaxDays,
+        enabledNoteTypes,
       });
     }
   };
@@ -87,6 +90,10 @@ export function ManualSyncModal({ initialOptions, onConfirm, onCancel }: ManualS
             />
           </label>
         )}
+        <label className="getnote-manual-sync-field">
+          <span>{t('settings.noteTypes.label')}</span>
+          <NoteTypeSelect value={enabledNoteTypes} onChange={setEnabledNoteTypes} />
+        </label>
         <div className="getnote-input-hint">{t('manualSync.hint')}</div>
       </div>
       <div className="getnote-picker-footer">

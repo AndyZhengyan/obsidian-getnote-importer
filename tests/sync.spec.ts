@@ -105,7 +105,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     });
   });
 
-  it('records enabled note types in sync history scope', async () => {
+  it('manual sync records the note type filter from its own scope', async () => {
     vi.spyOn(SyncEngine.prototype, 'sync').mockResolvedValue({
       created: 0,
       updated: 0,
@@ -115,9 +115,8 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
       items: [],
     });
     const plugin = makePlugin();
-    plugin.settings.enabledNoteTypes = ['link'];
 
-    await plugin['runSync']('full', { maxDays: 0, syncStartDate: '' });
+    await plugin['runSync']('full', { maxDays: 0, syncStartDate: '', enabledNoteTypes: ['link'] });
 
     expect(plugin.syncHistory.at(-1)?.scope).toEqual({
       maxDays: 0,
@@ -173,6 +172,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
       enabled: true,
       intervalMinutes: 5,
       syncOnStart: true,
+      enabledNoteTypes: [],
     };
     const registerInterval = vi.fn();
     Object.assign(plugin, { registerInterval });
@@ -192,6 +192,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     const plugin = makePlugin();
     plugin.settings.maxDays = 30;
     plugin.settings.lastSyncEndTimestamp = '2026-05-09T10:00:00+08:00';
+    plugin.settings.scheduledSync.enabledNoteTypes = ['link'];
 
     plugin['doAutoSync']();
 
@@ -200,7 +201,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
         {
           maxDays: 0,
           syncStartDate: '2026-05-09T10:00:00+08:00',
-          enabledNoteTypes: [],
+          enabledNoteTypes: ['link'],
         },
       ]);
     });
@@ -216,6 +217,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     plugin.settings.maxDays = 30;
     plugin.settings.syncStartDate = '2026-05-09';
     plugin.settings.lastSyncEndTimestamp = '';
+    plugin.settings.scheduledSync.enabledNoteTypes = ['link'];
 
     plugin['doAutoSync']();
 
@@ -224,13 +226,13 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
         {
           maxDays: 0,
           syncStartDate: '2026-05-09',
-          enabledNoteTypes: [],
+          enabledNoteTypes: ['link'],
         },
       ]);
       expect(plugin.syncHistory.at(-1)?.scope).toEqual({
         maxDays: 0,
         syncStartDate: '2026-05-09',
-        enabledNoteTypes: undefined,
+        enabledNoteTypes: ['link'],
         selectedCount: undefined,
         selectedIds: undefined,
       });
@@ -257,5 +259,27 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
 
     // checkpoint advances because created > 0, even though failed = 1
     expect(plugin.settings.lastSyncEndTimestamp).toBe('2026-05-10T12:00:00+08:00');
+  });
+
+  it('selected sync records the note type filter from the picker scope', async () => {
+    vi.spyOn(SyncEngine.prototype, 'syncNoteIds').mockResolvedValue({
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      total: 0,
+      items: [],
+    });
+    const plugin = makePlugin();
+
+    await plugin['runSync']('selective', { maxDays: 0, syncStartDate: '', enabledNoteTypes: ['link'] }, ['note-1']);
+
+    expect(plugin.syncHistory.at(-1)?.scope).toEqual({
+      maxDays: 0,
+      syncStartDate: '',
+      enabledNoteTypes: ['link'],
+      selectedCount: 1,
+      selectedIds: ['note-1'],
+    });
   });
 });

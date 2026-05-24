@@ -76,14 +76,14 @@ describe('filterNotes (note picker search)', () => {
 });
 
 describe('NotePickerModal auth chains', () => {
-  async function renderPicker(props: { token: string; clientId: string; authMode: 'openapi' | 'web'; enabledNoteTypes?: string[] }) {
+  async function renderPicker(props: { token: string; clientId: string; authMode: 'openapi' | 'web' }, onConfirm = vi.fn()) {
     const container = document.createElement('div');
     document.body.appendChild(container);
     await act(async () => {
       render(
         h(NotePickerModal, {
           ...props,
-          onConfirm: vi.fn(),
+          onConfirm,
           onCancel: vi.fn(),
         }),
         container
@@ -123,7 +123,8 @@ describe('NotePickerModal auth chains', () => {
     }));
   });
 
-  it('hides notes outside the enabled type filter', async () => {
+  it('filters the picker list with its own dropdown and submits that scope', async () => {
+    const onConfirm = vi.fn();
     vi.mocked(fetchNotes).mockResolvedValueOnce({
       notes: [
         makeNote({ note_id: 'plain', title: '纯文本笔记', note_type: 'plain_text' }),
@@ -136,10 +137,36 @@ describe('NotePickerModal auth chains', () => {
       token: 'web-token',
       clientId: '',
       authMode: 'web',
-      enabledNoteTypes: ['link'],
+    }, onConfirm);
+
+    const trigger = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent === '全部类型');
+    expect(trigger).toBeTruthy();
+    await act(() => {
+      trigger!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const plainTextOption = Array.from(container.querySelectorAll('label'))
+      .find(label => label.textContent === '纯文本');
+    expect(plainTextOption).toBeTruthy();
+    const plainTextCheckbox = plainTextOption!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    await act(() => {
+      plainTextCheckbox.checked = false;
+      plainTextCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
     expect(container.textContent).not.toContain('纯文本笔记');
     expect(container.textContent).toContain('链接笔记');
+
+    const linkRowCheckbox = Array.from(container.querySelectorAll('.getnote-picker-row input[type="checkbox"]'))[0] as HTMLInputElement;
+    await act(() => {
+      linkRowCheckbox.checked = true;
+      linkRowCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(() => {
+      container.querySelector('.mod-cta')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onConfirm).toHaveBeenCalledWith(['link'], ['link', 'immediate_audio', 'recorder_audio', 'recorder_flash_audio', 'audio_long', 'local_audio']);
   });
 });

@@ -49,6 +49,7 @@ export interface ScheduledSyncSettings {
   enabled: boolean;
   intervalMinutes: number;
   syncOnStart: boolean;
+  enabledNoteTypes: string[];  // empty = all types
 }
 
 export type AuthMode = 'openapi' | 'web';
@@ -68,7 +69,6 @@ export interface Settings {
   lastSyncEndTimestamp: string;  // ISO datetime of last synced note's updated_at
   scheduledSync: ScheduledSyncSettings;
   syncHistory: SyncHistoryEntry[];
-  enabledNoteTypes: string[];  // empty = all types
 }
 
 export interface SyncScopeOptions {
@@ -102,9 +102,9 @@ export const DEFAULT_SETTINGS: Settings = {
     enabled: false,
     intervalMinutes: 30,
     syncOnStart: true,
+    enabledNoteTypes: [],
   },
   syncHistory: [],
-  enabledNoteTypes: [],
 };
 
 export interface AuthCredentials {

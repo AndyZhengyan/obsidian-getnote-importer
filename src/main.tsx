@@ -95,9 +95,14 @@ export default class GetNoteSyncPlugin extends Plugin {
       openApiToken: migratedOpenApiToken,
       openApiClientId: migratedOpenApiClientId,
       webApiToken: migratedWebApiToken,
-      scheduledSync: { ...DEFAULT_SETTINGS.scheduledSync, ...loaded?.scheduledSync },
+      scheduledSync: {
+        ...DEFAULT_SETTINGS.scheduledSync,
+        ...loaded?.scheduledSync,
+        enabledNoteTypes: Array.isArray(loaded?.scheduledSync?.enabledNoteTypes)
+          ? loaded.scheduledSync.enabledNoteTypes.filter((type): type is string => typeof type === 'string')
+          : [],
+      },
       syncHistory: normalizeSyncHistory(loaded?.syncHistory),
-      enabledNoteTypes: Array.isArray(loaded?.enabledNoteTypes) ? loaded.enabledNoteTypes.filter((type): type is string => typeof type === 'string') : [],
     };
     this.syncHistory = this.settings.syncHistory;
     this.lastSyncResult = this.syncHistory.at(-1) ?? null;
@@ -219,7 +224,7 @@ export default class GetNoteSyncPlugin extends Plugin {
 
     const startedAt = Date.now();
     const resolvedSyncStartDate = scopeOptions?.syncStartDate ?? this.settings.syncStartDate;
-    const resolvedEnabledNoteTypes = scopeOptions?.enabledNoteTypes ?? this.settings.enabledNoteTypes ?? [];
+    const resolvedEnabledNoteTypes = scopeOptions?.enabledNoteTypes ?? [];
     const resolvedScope: SyncHistoryScope = {
       maxDays: resolvedSyncStartDate ? 0 : scopeOptions?.maxDays ?? this.settings.maxDays,
       syncStartDate: resolvedSyncStartDate,
@@ -305,7 +310,7 @@ export default class GetNoteSyncPlugin extends Plugin {
     // Auto sync uses lastSyncEndTimestamp as cutoff: skip notes already synced last time.
     // This IS the early-exit mechanism — no separate lastSyncEndTimestamp logic needed in engine.
     const syncStartDate = this.settings.lastSyncEndTimestamp || this.settings.syncStartDate;
-    const enabledNoteTypes = this.settings.enabledNoteTypes ?? [];
+    const enabledNoteTypes = this.settings.scheduledSync.enabledNoteTypes ?? [];
     const scopeOptions: Partial<SyncScopeOptions> = syncStartDate
       ? { syncStartDate, maxDays: 0, enabledNoteTypes }
       : { enabledNoteTypes };
@@ -341,8 +346,8 @@ export default class GetNoteSyncPlugin extends Plugin {
     wrapper.open();
   }
 
-  syncSelectedNotes(noteIds: string[]): void {
-    void this.runSync('selective', undefined, noteIds);
+  syncSelectedNotes(noteIds: string[], enabledNoteTypes: string[] = []): void {
+    void this.runSync('selective', { maxDays: 0, syncStartDate: '', enabledNoteTypes }, noteIds);
   }
 }
 
@@ -358,6 +363,7 @@ class ManualSyncModalWrapper extends Modal {
         initialOptions={{
           syncStartDate: this.plugin.settings.syncStartDate,
           maxDays: this.plugin.settings.maxDays,
+          enabledNoteTypes: [],
         }}
         onConfirm={(options) => {
           this.close();
@@ -388,12 +394,11 @@ class NotePickerModalWrapper extends Modal {
         token={getAuthCredentials(this.plugin.settings).token}
         clientId={getAuthCredentials(this.plugin.settings).clientId}
         authMode={getAuthCredentials(this.plugin.settings).authMode}
-        enabledNoteTypes={this.plugin.settings.enabledNoteTypes}
         abortSignal={this.abortController.signal}
-        onConfirm={(noteIds) => {
+        onConfirm={(noteIds, enabledNoteTypes) => {
           this.abortController.abort();
           this.close();
-          this.plugin.syncSelectedNotes(noteIds);
+          this.plugin.syncSelectedNotes(noteIds, enabledNoteTypes);
         }}
         onCancel={() => {
           this.abortController.abort();

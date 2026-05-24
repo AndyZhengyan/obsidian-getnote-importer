@@ -69,9 +69,8 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
     syncStartDate: '',
     lastSyncEndTimestamp: '',
     filenamePrefix: '',
-    scheduledSync: { enabled: false, intervalMinutes: 30, syncOnStart: false },
+    scheduledSync: { enabled: false, intervalMinutes: 30, syncOnStart: false, enabledNoteTypes: [] },
     syncHistory: [],
-    enabledNoteTypes: [],
     ...overrides,
   };
 }
@@ -131,7 +130,7 @@ describe('SyncEngine — filterRecentNotes', () => {
 
     try {
       const app = makeMockApp();
-      const engine = new SyncEngine(app as any, makeSettings({ enabledNoteTypes: ['link'] }));
+      const engine = new SyncEngine(app as any, makeSettings(), undefined, { enabledNoteTypes: ['link'] });
 
       const result = await engine.sync();
 
@@ -1704,8 +1703,9 @@ describe('SyncEngine — fixture-based sync integration', () => {
       openApiToken: 'test-openapi-token',
       openApiClientId: 'test-client',
       maxDays: 0,
+    }), undefined, {
       enabledNoteTypes: ['link'],
-    }));
+    });
 
     const result = await engine.syncNoteIds(['1909193892067130512']);
 
@@ -1728,8 +1728,9 @@ describe('SyncEngine — fixture-based sync integration', () => {
       authMode: 'web',
       webApiToken: 'test-web-token',
       maxDays: 0,
+    }), undefined, {
       enabledNoteTypes: ['link'],
-    }));
+    });
 
     const result = await engine.syncNoteIds(['web_selected']);
 

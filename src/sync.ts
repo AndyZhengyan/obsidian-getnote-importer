@@ -89,7 +89,7 @@ export class SyncEngine {
     this.app = app;
     this.settings = settings;
     const syncStartDate = scopeOptions?.syncStartDate ?? settings.syncStartDate;
-    const enabledNoteTypes = scopeOptions?.enabledNoteTypes ?? settings.enabledNoteTypes ?? [];
+    const enabledNoteTypes = scopeOptions?.enabledNoteTypes ?? [];
     this.scopeOptions = {
       maxDays: syncStartDate ? 0 : scopeOptions?.maxDays ?? settings.maxDays,
       syncStartDate,

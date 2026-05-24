@@ -56,8 +56,8 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.syncHistory).toEqual([]);
   });
 
-  it('enabledNoteTypes 默认空数组表示同步全部类型', () => {
-    expect(DEFAULT_SETTINGS.enabledNoteTypes).toEqual([]);
+  it('scheduledSync.enabledNoteTypes 默认空数组表示定时同步全部类型', () => {
+    expect(DEFAULT_SETTINGS.scheduledSync.enabledNoteTypes).toEqual([]);
   });
 
   it('scheduledSync 默认间隔 30 分钟', () => {

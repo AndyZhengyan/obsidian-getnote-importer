@@ -47,53 +47,57 @@ export function ManualSyncModal({ initialOptions, onConfirm, onCancel }: ManualS
   return (
     <div className="getnote-manual-sync-modal">
       <div className="getnote-manual-sync-body">
-        <div className="getnote-sync-mode-selector">
-          <label className="getnote-sync-mode-option">
-            <input
-              type="radio"
-              name="syncMode"
-              checked={syncMode === 'date'}
-              onChange={() => setSyncMode('date')}
-            />
-            <span>{t('manualSync.mode.date')}</span>
-          </label>
-          <label className="getnote-sync-mode-option">
-            <input
-              type="radio"
-              name="syncMode"
-              checked={syncMode === 'days'}
-              onChange={() => setSyncMode('days')}
-            />
-            <span>{t('manualSync.mode.days')}</span>
-          </label>
-        </div>
+        <div className="getnote-manual-sync-card">
+          <div className="getnote-sync-mode-selector" role="group" aria-label={t('manualSync.title')}>
+            <label className={`getnote-sync-mode-option${syncMode === 'date' ? ' is-active' : ''}`}>
+              <input
+                type="radio"
+                name="syncMode"
+                checked={syncMode === 'date'}
+                onChange={() => setSyncMode('date')}
+              />
+              <span>{t('manualSync.mode.date')}</span>
+            </label>
+            <label className={`getnote-sync-mode-option${syncMode === 'days' ? ' is-active' : ''}`}>
+              <input
+                type="radio"
+                name="syncMode"
+                checked={syncMode === 'days'}
+                onChange={() => setSyncMode('days')}
+              />
+              <span>{t('manualSync.mode.days')}</span>
+            </label>
+          </div>
 
-        {syncMode === 'date' ? (
-          <label className="getnote-manual-sync-field">
-            <span>{t('manualSync.startDate')}</span>
-            <input
-              type="date"
-              className="getnote-input getnote-date-input"
-              value={syncStartDate}
-              onChange={(e) => setSyncStartDate((e.target as HTMLInputElement).value)}
-            />
-          </label>
-        ) : (
-          <label className="getnote-manual-sync-field">
-            <span>{t('manualSync.maxDays')}</span>
-            <input
-              type="number"
-              min="1"
-              className="getnote-input getnote-date-input"
-              value={maxDays}
-              onInput={(e) => setMaxDays((e.target as HTMLInputElement).value)}
-            />
-          </label>
-        )}
-        <label className="getnote-manual-sync-field">
-          <span>{t('settings.noteTypes.label')}</span>
-          <NoteTypeSelect value={enabledNoteTypes} onChange={setEnabledNoteTypes} />
-        </label>
+          <div className="getnote-manual-sync-fields">
+            {syncMode === 'date' ? (
+              <label className="getnote-manual-sync-field">
+                <span>{t('manualSync.startDate')}</span>
+                <input
+                  type="date"
+                  className="getnote-input getnote-date-input"
+                  value={syncStartDate}
+                  onChange={(e) => setSyncStartDate((e.target as HTMLInputElement).value)}
+                />
+              </label>
+            ) : (
+              <label className="getnote-manual-sync-field">
+                <span>{t('manualSync.maxDays')}</span>
+                <input
+                  type="number"
+                  min="1"
+                  className="getnote-input getnote-date-input"
+                  value={maxDays}
+                  onInput={(e) => setMaxDays((e.target as HTMLInputElement).value)}
+                />
+              </label>
+            )}
+            <label className="getnote-manual-sync-field">
+              <span>{t('settings.noteTypes.label')}</span>
+              <NoteTypeSelect value={enabledNoteTypes} onChange={setEnabledNoteTypes} />
+            </label>
+          </div>
+        </div>
         <div className="getnote-input-hint">{t('manualSync.hint')}</div>
       </div>
       <div className="getnote-picker-footer">

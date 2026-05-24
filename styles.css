@@ -580,46 +580,91 @@
 .getnote-manual-sync-modal {
   display: flex;
   flex-direction: column;
+  width: min(420px, 100%);
+  min-width: 0;
 }
 
 .getnote-manual-sync-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 4px 0 12px;
+  gap: 10px;
+  padding: 2px 0 14px;
+}
+
+.getnote-manual-sync-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.getnote-manual-sync-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .getnote-manual-sync-field {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(92px, 0.42fr) minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
 }
 
 .getnote-manual-sync-field > span {
-  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 500;
-  text-align: right;
+  color: var(--text-muted);
+}
+
+.getnote-manual-sync-field input,
+.getnote-manual-sync-field .getnote-note-type-select {
+  width: 100%;
+  max-width: none;
 }
 
 .getnote-sync-mode-selector {
   display: flex;
-  gap: 16px;
-  justify-content: center;
-  padding: 8px 0;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  background: var(--background-primary);
 }
 
 .getnote-sync-mode-option {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 5px;
   cursor: pointer;
   font-size: 13px;
   color: var(--text-muted);
 }
 
-.getnote-sync-mode-option input:checked + span {
-  color: var(--text-normal);
+.getnote-sync-mode-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.getnote-sync-mode-option.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.getnote-sync-mode-option.is-active span {
+  color: var(--text-on-accent);
   font-weight: 500;
 }
 

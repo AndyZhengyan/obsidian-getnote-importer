@@ -621,7 +621,7 @@
   color: var(--text-muted);
 }
 
-.getnote-manual-sync-field input,
+.getnote-manual-sync-field > input,
 .getnote-manual-sync-field .getnote-note-type-select {
   width: 100%;
   max-width: none;
@@ -629,42 +629,21 @@
 
 .getnote-sync-mode-selector {
   display: flex;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 7px;
-  background: var(--background-primary);
+  gap: 16px;
+  padding: 2px 0;
 }
 
 .getnote-sync-mode-option {
-  position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex: 1 1 0;
+  gap: 6px;
   min-width: 0;
-  padding: 6px 10px;
-  border-radius: 5px;
   cursor: pointer;
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--text-normal);
 }
 
-.getnote-sync-mode-option input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.getnote-sync-mode-option.is-active {
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-}
-
-.getnote-sync-mode-option.is-active span {
-  color: var(--text-on-accent);
+.getnote-sync-mode-option input:checked + span {
   font-weight: 500;
 }
 

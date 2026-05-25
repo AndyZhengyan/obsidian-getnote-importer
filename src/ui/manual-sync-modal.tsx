@@ -49,7 +49,7 @@ export function ManualSyncModal({ initialOptions, onConfirm, onCancel }: ManualS
       <div className="getnote-manual-sync-body">
         <div className="getnote-manual-sync-card">
           <div className="getnote-sync-mode-selector" role="group" aria-label={t('manualSync.title')}>
-            <label className={`getnote-sync-mode-option${syncMode === 'date' ? ' is-active' : ''}`}>
+            <label className="getnote-sync-mode-option">
               <input
                 type="radio"
                 name="syncMode"
@@ -58,7 +58,7 @@ export function ManualSyncModal({ initialOptions, onConfirm, onCancel }: ManualS
               />
               <span>{t('manualSync.mode.date')}</span>
             </label>
-            <label className={`getnote-sync-mode-option${syncMode === 'days' ? ' is-active' : ''}`}>
+            <label className="getnote-sync-mode-option">
               <input
                 type="radio"
                 name="syncMode"

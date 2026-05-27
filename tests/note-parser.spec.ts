@@ -32,6 +32,11 @@ describe('renderNote', () => {
     expect(result).toContain('这是正文内容');
   });
 
+  it('Web API 笔记写入 prime_id 供后续详情接口使用', () => {
+    const result = renderNote(makeNote({ prime_id: 'prime_web_123' }));
+    expect(result).toContain('prime_id: "prime_web_123"');
+  });
+
   it('标题为空时用正文生成 title（不过截断）', () => {
     const result = renderNote(makeNote({ title: '', content: '一段比较长的正文开头' }));
     expect(result).toContain('title: "一段比较长的正文开头"');

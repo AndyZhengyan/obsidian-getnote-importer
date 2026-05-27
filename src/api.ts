@@ -62,7 +62,12 @@ export interface CreateNoteOptions {
   signal?: AbortSignal;
 }
 
-export async function createNote(options: CreateNoteOptions): Promise<{ noteId: string }> {
+export interface CreateNoteResult {
+  noteId: string;
+  detailId?: string;
+}
+
+export async function createNote(options: CreateNoteOptions): Promise<CreateNoteResult> {
   if (options.authMode === 'web') {
     return webapiCreateNote({
       token: options.token,

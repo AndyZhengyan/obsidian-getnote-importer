@@ -93,6 +93,9 @@ function buildFrontmatter(note: GetNoteNote): string {
   if (note.parent_id) {
     lines.push(`parent_id: "${escapeYamlDoubleQuoted(note.parent_id)}"`);
   }
+  if (note.prime_id) {
+    lines.push(`prime_id: "${escapeYamlDoubleQuoted(note.prime_id)}"`);
+  }
   if (typeof note.is_child_note === 'boolean') {
     lines.push(`is_child_note: ${note.is_child_note}`);
   }

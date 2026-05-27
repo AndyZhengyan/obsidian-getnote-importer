@@ -204,7 +204,7 @@ function extractCreatedNoteId(value: unknown): string {
   return typeof id === 'string' || typeof id === 'number' ? String(id) : '';
 }
 
-export async function createNote(options: CreateNoteOptions): Promise<{ noteId: string }> {
+export async function createNote(options: CreateNoteOptions): Promise<{ noteId: string; detailId?: string }> {
   const url = 'https://openapi.biji.com/open/api/v1/resource/note/save';
   const data = await apiRequest<Record<string, unknown>>(
     url,

@@ -67,11 +67,19 @@ function normalizeNoteDetailData(value: unknown): Partial<GetNoteNote> | null {
 
 function tryParseJsonObject(text: string): Record<string, unknown> {
   try {
-    const value = JSON.parse(text || '{}') as unknown;
+    const value = safeJsonParse(text || '{}') as unknown;
     return isRecord(value) ? value : {};
   } catch {
     return {};
   }
+}
+
+function safeJsonParse(text: string): unknown {
+  const safe = text.replace(
+    /"(id|note_id|parent_id|follow_id|live_id)"\s*:\s*(\d+)/g,
+    '"$1":"$2"'
+  );
+  return JSON.parse(safe);
 }
 
 async function waitForRetry(signal?: AbortSignal): Promise<void> {
@@ -127,7 +135,7 @@ async function apiRequest<T>(url: string, options: RequestInit, retries = 1, sig
     throw new Error(t('error.apiServerError', { status: res.status }));
   }
   const text = await res.text();
-  const json = JSON.parse(text) as Record<string, unknown>;
+  const json = safeJsonParse(text) as Record<string, unknown>;
   if (json.success === false) {
     const err = (json.error ?? json) as Record<string, unknown>;
     const errMsg = (err?.message as string) ?? (json.message as string) ?? '';
@@ -240,18 +248,22 @@ function buildWebJsonContent(content: string): string {
   return JSON.stringify({ type: 'doc', content: paragraphs });
 }
 
-function extractCreatedNoteId(value: unknown): string {
-  if (!isRecord(value)) return '';
+function extractCreatedNoteIds(value: unknown): { noteId: string; detailId?: string } {
+  if (!isRecord(value)) return { noteId: '' };
   const source = isRecord(value.c)
     ? value.c
     : isRecord(value.data)
       ? value.data
       : value;
   const id = source.note_id ?? source.id;
-  return typeof id === 'string' || typeof id === 'number' ? String(id) : '';
+  const primeId = source.prime_id;
+  return {
+    noteId: typeof id === 'string' || typeof id === 'number' ? String(id) : '',
+    detailId: typeof primeId === 'string' || typeof primeId === 'number' ? String(primeId) : undefined,
+  };
 }
 
-export async function createNote(options: CreateNoteOptions): Promise<{ noteId: string }> {
+export async function createNote(options: CreateNoteOptions): Promise<{ noteId: string; detailId?: string }> {
   const content = normalizeCreateContent(options.content);
   const data = await apiRequest<{ h?: unknown; c?: unknown; data?: unknown }>(
     'https://get-notes.luojilab.com/voicenotes/web/notes',
@@ -274,7 +286,7 @@ export async function createNote(options: CreateNoteOptions): Promise<{ noteId: 
     1,
     options.signal
   );
-  const noteId = extractCreatedNoteId(data);
+  const { noteId, detailId } = extractCreatedNoteIds(data);
   if (!noteId) throw new Error(t('error.createNoteFailed'));
-  return { noteId };
+  return { noteId, detailId };
 }

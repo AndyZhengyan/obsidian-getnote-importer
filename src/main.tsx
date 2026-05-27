@@ -83,7 +83,7 @@ export default class GetNoteSyncPlugin extends Plugin {
   syncProgress: SyncProgressDetail = { message: '', count: '', percent: 0 };
   syncHistory: SyncHistoryEntry[] = [];
   lastSyncResult: SyncHistoryEntry | null = null;
-  private currentSyncEngine: SyncEngine | null = null;
+  private currentSyncEngine: { cancel(): void } | null = null;
   private autoSyncIntervalId: number | undefined;
   private settingsTab?: GetNoteSettingsTab;
   private lastProgressUpdate = 0;
@@ -387,6 +387,7 @@ export default class GetNoteSyncPlugin extends Plugin {
 
     try {
       const engine = new ReverseSyncEngine(this.app, this.settings);
+      this.currentSyncEngine = engine;
       const result = files ? await engine.syncFiles(files) : await engine.syncBack();
       await this.recordUploadHistory(result, startedAt, files?.map(file => file.path));
       showSuccess(t('reverseSync.complete', {
@@ -395,6 +396,17 @@ export default class GetNoteSyncPlugin extends Plugin {
         failed: result.failed,
       }), 8000);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        await this.recordUploadHistory({
+          created: 0,
+          skipped: 0,
+          failed: 0,
+          total: files?.length ?? 0,
+          items: [],
+        }, startedAt, files?.map(file => file.path), t('modal.cancelled'), 'cancelled');
+        this.syncProgress = { message: t('modal.cancelled'), count: '', percent: 0 };
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       await this.recordUploadHistory({
         created: 0,
@@ -425,7 +437,8 @@ export default class GetNoteSyncPlugin extends Plugin {
     result: ReverseSyncResult,
     startedAt: number,
     selectedIds?: string[],
-    error?: string
+    error?: string,
+    status?: SyncHistoryEntry['status']
   ): Promise<void> {
     const syncResult: SyncResult = {
       created: result.created,
@@ -445,7 +458,7 @@ export default class GetNoteSyncPlugin extends Plugin {
         selectedCount: selectedIds?.length,
         selectedIds,
       },
-      error || result.failed > 0 ? 'failed' : 'success',
+      status ?? (error || result.failed > 0 ? 'failed' : 'success'),
       error ?? (result.failed > 0 ? t('reverseSync.failedCount', { failed: result.failed }) : undefined)
     );
   }

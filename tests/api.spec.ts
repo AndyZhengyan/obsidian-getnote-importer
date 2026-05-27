@@ -588,6 +588,7 @@ describe('createNote', () => {
       });
 
       expect(result.noteId).toBe('1911000000000000000');
+      expect(result.detailId).toBe('prime-created');
       expect(globalThis.fetch).toHaveBeenCalledWith(
         'https://get-notes.luojilab.com/voicenotes/web/notes',
         expect.objectContaining({
@@ -621,6 +622,30 @@ describe('createNote', () => {
           }),
         })
       );
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
+  it('creates a Web API note and preserves unquoted large ids before returning them', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockTextFetchResponse(
+        '{"h":{},"c":{"note_id":1911000000000000000,"id":1911000000000000000,"prime_id":"prime-created"}}'
+      ) as Response
+    );
+
+    try {
+      const result = await createNote({
+        token: 'web-token',
+        clientId: '',
+        authMode: 'web',
+        title: '',
+        content: '19',
+        noteType: 'plain_text',
+      });
+
+      expect(result.noteId).toBe('1911000000000000000');
+      expect(result.detailId).toBe('prime-created');
     } finally {
       vi.mocked(globalThis.fetch).mockRestore();
     }

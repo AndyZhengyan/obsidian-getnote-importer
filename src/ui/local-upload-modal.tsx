@@ -32,7 +32,7 @@ function relativePath(file: TFile, folder: string): string {
 function folderOptions(files: TFile[], initialFolder: string): string[] {
   const options = new Set<string>();
   const initial = cleanFolder(initialFolder);
-  if (initial) options.add(initial);
+  options.add(initial);
   for (const file of files) {
     const parent = parentFolder(file.path);
     if (parent) {
@@ -42,7 +42,11 @@ function folderOptions(files: TFile[], initialFolder: string): string[] {
       }
     }
   }
-  return Array.from(options).sort((a, b) => a.localeCompare(b));
+  return Array.from(options).sort((a, b) => {
+    if (a === '') return -1;
+    if (b === '') return 1;
+    return a.localeCompare(b);
+  });
 }
 
 export function LocalUploadModal({ files, initialFolder, onConfirm, onCancel }: LocalUploadModalProps) {
@@ -91,7 +95,7 @@ export function LocalUploadModal({ files, initialFolder, onConfirm, onCancel }: 
               setSelected(new Set());
             }}
           >
-            {folders.map(item => <option key={item} value={item}>{item}</option>)}
+            {folders.map(item => <option key={item || '__root__'} value={item}>{item || '/'}</option>)}
           </select>
         </div>
         <div className="getnote-picker-actions">

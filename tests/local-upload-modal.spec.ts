@@ -77,4 +77,27 @@ describe('LocalUploadModal', () => {
       expect.objectContaining({ path: 'Inbox/c.md' }),
     ]);
   });
+
+  it('includes root-level markdown files in the folder picker', async () => {
+    const onConfirm = vi.fn();
+    const files = [
+      new TFile('root.md'),
+      new TFile('Get笔记/a.md'),
+    ];
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    render(
+      h(LocalUploadModal, {
+        files,
+        initialFolder: '',
+        onConfirm,
+        onCancel: vi.fn(),
+      }),
+      container
+    );
+
+    const folderSelect = container.querySelector('select') as HTMLSelectElement;
+    expect(Array.from(folderSelect.options).map(option => option.value)).toContain('');
+    expect(container.textContent).toContain('root.md');
+  });
 });

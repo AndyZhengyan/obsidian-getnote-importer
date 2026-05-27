@@ -8,9 +8,9 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/AndyZhengyan/obsidian-getnote-importer/ci.yml?branch=main&style=flat-square)](https://github.com/AndyZhengyan/obsidian-getnote-importer/actions)
 [![许可证](https://img.shields.io/github/license/AndyZhengyan/obsidian-getnote-importer?style=flat-square)](LICENSE)
 
-把 Get笔记里的灵感、摘录、链接、录音和 AI 总结同步进 Obsidian，变成可长期整理、搜索和链接的本地 Markdown 知识库。
+把 GetNote（得到大脑，原名 Get笔记）里的灵感、摘录、链接、录音和 AI 总结同步进 Obsidian，变成可长期整理、搜索和链接的本地 Markdown 知识库。
 
-GetNote Importer 适合把 Get笔记作为快速捕捉入口、把 Obsidian 作为长期知识库的人。插件会用可读文件名、分类目录、frontmatter、增量更新、选择性同步和同步历史，尽量让导入内容从第一天就能融入你的 vault。
+GetNote Importer 适合把 GetNote（得到大脑，原名 Get笔记）作为快速捕捉入口、把 Obsidian 作为长期知识库的人。插件会用可读文件名、分类目录、frontmatter、增量更新、选择性同步和同步历史，尽量让导入内容从第一天就能融入你的 vault。
 
 ## 为什么好用
 

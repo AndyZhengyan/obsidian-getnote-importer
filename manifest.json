@@ -2,7 +2,7 @@
   "id": "getnote-importer",
   "name": "GetNote Importer",
   "version": "1.0.12",
-  "description": "Sync notes, links, recordings, and AI summaries from GetNote into your local vault.",
+  "description": "Sync notes, links, recordings, and AI summaries from GetNote (得到大脑, formerly Get笔记) into your local vault.",
   "author": "Andy Zheng",
   "isDesktopOnly": false,
   "minAppVersion": "1.8.7"

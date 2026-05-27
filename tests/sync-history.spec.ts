@@ -157,7 +157,7 @@ describe('sync history note type display', () => {
   it('localizes note type labels in the detail list', () => {
     initI18n('zh-CN');
 
-    expect(formatHistoryNoteType('recorder_audio')).toBe('录音长录');
+    expect(formatHistoryNoteType('recorder_audio')).toBe('录音笔记');
     expect(formatHistoryNoteType('unknown_remote_type')).toBe('其他');
   });
 });
@@ -194,7 +194,7 @@ describe('sync history scope display', () => {
         maxDays: 0,
         enabledNoteTypes: ['plain_text', 'link'],
       },
-    }))).toBe('仅同步：纯文本、链接笔记');
+    }))).toBe('仅同步：文字笔记、链接笔记');
   });
 
   it('shows an explicit empty filter when no note types are selected', () => {

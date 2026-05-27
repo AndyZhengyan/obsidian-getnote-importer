@@ -14,6 +14,10 @@ const AUDIO_NOTE_TYPES = new Set([
   'local_audio',
 ]);
 
+const IMAGE_NOTE_TYPES = new Set([
+  'img_text',
+]);
+
 function parseSyncBoundaryTime(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -58,6 +62,7 @@ function isSafeAttachmentUrl(url: string): boolean {
 }
 
 const IMAGE_EXT_PATTERN = /\.(png|jpg|jpeg|gif|webp|bmp|svg)(\?|$)/i;
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'] as const;
 
 function extractImageExtension(url: string): string {
   const match = url.match(IMAGE_EXT_PATTERN);
@@ -66,6 +71,31 @@ function extractImageExtension(url: string): string {
 
 function isImageAttachment(attachment: { type: string }): boolean {
   return attachment.type === 'image';
+}
+
+function imageAssetFilename(baseFilename: string, ext: string, index: number): string {
+  const suffix = index === 0 ? '' : `_${index + 1}`;
+  const rawFilename = `${baseFilename}_image${suffix}.${ext}`;
+  return rawFilename.split('/').pop()!.split('\\').pop()!;
+}
+
+function hasDownloadedImageAssets(
+  vault: App['vault'],
+  assetDir: string,
+  baseFilename: string,
+  imageCount: number
+): boolean {
+  for (let index = 0; index < imageCount; index++) {
+    const hasImage = IMAGE_EXTENSIONS.some(ext =>
+      Boolean(vault.getAbstractFileByPath(`${assetDir}/${imageAssetFilename(baseFilename, ext, index)}`))
+    );
+    if (!hasImage) return false;
+  }
+  return true;
+}
+
+function hasImageAssetPaths(note: GetNoteNote): boolean {
+  return (note.assetPaths ?? []).some(path => /\.(png|jpg|jpeg|gif|webp|bmp|svg)(\?|$)/i.test(path));
 }
 
 export class SyncCancelledError extends Error {
@@ -173,7 +203,7 @@ export class SyncEngine {
 
   private async downloadAudioAsset(
     note: GetNoteNote,
-    attachment: { type: string; url: string; title: string; duration: number }
+    attachment: { type: string; url: string; title: string; duration?: number }
   ): Promise<string | null> {
     try {
       if (!isSafeAttachmentUrl(attachment.url)) {
@@ -210,7 +240,8 @@ export class SyncEngine {
 
   private async downloadImageAsset(
     note: GetNoteNote,
-    attachment: { type: string; url: string; title: string }
+    attachment: { type: string; url: string; title: string },
+    index = 0
   ): Promise<string | null> {
     try {
       if (!isSafeAttachmentUrl(attachment.url)) {
@@ -225,9 +256,7 @@ export class SyncEngine {
       }
 
       const ext = extractImageExtension(attachment.url);
-      const rawFilename = `${this.getFileName(note)}_image.${ext}`;
-      // Strip path traversal components — only keep the last segment
-      const filename = rawFilename.split('/').pop()!.split('\\').pop()!;
+      const filename = imageAssetFilename(this.getFileName(note), ext, index);
       const targetPath = `${assetDir}/${filename}`;
 
       if (this.app.vault.getAbstractFileByPath(targetPath)) return targetPath;
@@ -284,6 +313,7 @@ export class SyncEngine {
 
     const contentChanged = this.isContentChanged(existingFile, note);
     if (contentChanged) return { exists: false, file: existingFile };
+    if (hasImageAssetPaths(note)) return { exists: false, file: existingFile };
 
     if (AUDIO_NOTE_TYPES.has(note.note_type)) {
       const categoryDir = getCategoryDir(note.note_type);
@@ -305,8 +335,7 @@ export class SyncEngine {
       const basePath = `${this.settings.folderName}/${categoryDir}`;
       const assetDir = `${basePath}/asset`;
       const baseFilename = this.getFileName(note);
-      const expectedImagePath = `${assetDir}/${baseFilename}_image.png`;
-      if (!this.app.vault.getAbstractFileByPath(expectedImagePath)) {
+      if (!hasDownloadedImageAssets(this.app.vault, assetDir, baseFilename, imageAttachments.length)) {
         return { exists: false, file: existingFile };
       }
     }
@@ -369,7 +398,7 @@ export class SyncEngine {
       const content = renderNote(note, note.assetFileName, parentFileName, childFileNames);
 
       if (existingByUid) {
-        const contentChanged = this.isContentChanged(existingByUid, note);
+        const contentChanged = this.isContentChanged(existingByUid, note) || hasImageAssetPaths(note);
         const pathChanged = existingByUid.path !== targetPath;
 
         if (!contentChanged && !pathChanged) return { status: 'skipped', file: existingByUid };
@@ -381,7 +410,7 @@ export class SyncEngine {
         return { status: 'updated', file: existingByUid };
       } else if (existingAtTarget instanceof TFile) {
         // File exists at target path but wasn't in uidIndex - check content
-        const contentChanged = this.isContentChanged(existingAtTarget, note);
+        const contentChanged = this.isContentChanged(existingAtTarget, note) || hasImageAssetPaths(note);
         await this.app.vault.modify(existingAtTarget, content);
         uidIndex.set(note.note_id, existingAtTarget);
         return { status: contentChanged ? 'updated' : 'skipped', file: existingAtTarget };
@@ -469,26 +498,36 @@ export class SyncEngine {
     return childrenCount > 0 && childrenCount !== childrenIdsCount;
   }
 
+  private needsImageDetail(note: GetNoteNote): boolean {
+    return IMAGE_NOTE_TYPES.has(note.note_type) && !(note.attachments ?? []).some(isImageAttachment);
+  }
+
   private async enrichAudioNote(note: GetNoteNote, signal: AbortSignal): Promise<GetNoteNote> {
     const needsAudioDetail = AUDIO_NOTE_TYPES.has(note.note_type);
-    if (!needsAudioDetail && !this.needsRelationDetail(note)) {
+    const needsRelationDetail = this.needsRelationDetail(note);
+    const hasImageAttachments = (note.attachments ?? []).some(isImageAttachment);
+    const needsImageDetail = this.needsImageDetail(note);
+    if (!needsAudioDetail && !needsRelationDetail && !hasImageAttachments && !needsImageDetail) {
       return note;
     }
     const credentials = getAuthCredentials(this.settings);
-    if (credentials.authMode === 'web' && !needsAudioDetail) {
+    if (credentials.authMode === 'web' && !needsAudioDetail && !hasImageAttachments && !needsImageDetail) {
       return note;
     }
 
     try {
-      const detailId = (note as { prime_id?: string }).prime_id ?? note.note_id;
-      const noteDetail = await fetchNoteDetail(
-        detailId,
-        credentials.token,
-        credentials.clientId,
-        signal,
-        credentials.authMode
-      );
-      const enrichedNote = this.mergeNoteDetail(note, noteDetail);
+      let enrichedNote = note;
+      if (needsAudioDetail || needsRelationDetail || needsImageDetail) {
+        const detailId = (note as { prime_id?: string }).prime_id ?? note.note_id;
+        const noteDetail = await fetchNoteDetail(
+          detailId,
+          credentials.token,
+          credentials.clientId,
+          signal,
+          credentials.authMode
+        );
+        enrichedNote = this.mergeNoteDetail(note, noteDetail);
+      }
       const assetPaths: string[] = [];
 
       if (needsAudioDetail) {
@@ -505,8 +544,8 @@ export class SyncEngine {
       }
 
       const imageAttachments = (enrichedNote.attachments ?? []).filter(isImageAttachment);
-      for (const img of imageAttachments) {
-        const imgPath = await this.downloadImageAsset(enrichedNote, img);
+      for (const [index, img] of imageAttachments.entries()) {
+        const imgPath = await this.downloadImageAsset(enrichedNote, img, index);
         if (imgPath) assetPaths.push(imgPath);
       }
 
@@ -808,18 +847,23 @@ export class SyncEngine {
             total: noteIds.length,
             percent,
           });
+          const noteForPreCheck = this.needsImageDetail(note)
+            ? await this.enrichAudioNote(note, controller.signal)
+            : note;
           // Pre-check: skip if note and attachments already exist and are up-to-date.
           // Uses UID-based lookup so renamed/moved files are still found.
-          const preCheck = this.preCheckNote(note, uidIndex);
+          const preCheck = this.preCheckNote(noteForPreCheck, uidIndex);
           if (preCheck.exists) {
             result.skipped++;
-            this.recordItem(result, note, { status: 'skipped' });
-            const mayHaveAppendNotes = (note.children_count ?? 0) > 0 || Boolean(note.children_ids?.length);
+            this.recordItem(result, noteForPreCheck, { status: 'skipped' });
+            const mayHaveAppendNotes = (noteForPreCheck.children_count ?? 0) > 0 || Boolean(noteForPreCheck.children_ids?.length);
             if (!mayHaveAppendNotes) {
               continue;
             }
           }
-          const noteToWrite = await this.enrichAudioNote(note, controller.signal);
+          const noteToWrite = noteForPreCheck === note
+            ? await this.enrichAudioNote(note, controller.signal)
+            : noteForPreCheck;
 
           const appendNotes = await this.fetchAppendNotes(noteToWrite, controller.signal, result);
           const parentBaseName = this.buildBaseName(noteToWrite);

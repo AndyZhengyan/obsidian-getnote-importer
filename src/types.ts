@@ -27,6 +27,7 @@ export interface Tag {
 
 export type KnownNoteType =
   | 'plain_text'
+  | 'img_text'
   | 'link'
   | 'recorder_audio'
   | 'recorder_flash_audio'
@@ -176,6 +177,7 @@ export interface NoteCategory {
 // note_type → 目录名映射
 export const NOTE_CATEGORIES: NoteCategory[] = [
   { dirName: '纯文本', noteType: 'plain_text' },
+  { dirName: '图片笔记', noteType: 'img_text' },
   { dirName: '链接笔记', noteType: 'link' },
   { dirName: '即时录音', noteType: 'immediate_audio' },
   { dirName: '录音长录', noteType: 'recorder_audio' },

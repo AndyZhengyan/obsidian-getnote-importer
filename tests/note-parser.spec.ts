@@ -233,6 +233,42 @@ describe('renderNote — audio note', () => {
   });
 });
 
+// ---- renderNote — image note ----
+describe('renderNote — image note', () => {
+  it('在正文后插入带前后封条的图片引用块', () => {
+    const note = makeNote({
+      note_type: 'img_text',
+      content: '图片笔记正文',
+      assetPaths: [
+        'Get笔记/图片笔记/asset/测试笔记_image.png',
+        'Get笔记/图片笔记/asset/测试笔记_image_2.jpg',
+      ],
+    });
+
+    const result = renderNote(note);
+
+    expect(result).toContain(
+      '图片笔记正文\n---\n> 📷 图片\n> ![](asset/测试笔记_image.png)\n> ![](asset/测试笔记_image_2.jpg)\n---\n'
+    );
+  });
+
+  it('图片文件名包含空格时使用尖括号包住链接目标', () => {
+    const note = makeNote({
+      note_type: 'img_text',
+      content: '图片笔记正文',
+      assetPaths: [
+        'Get笔记/图片笔记/asset/20260527203527_Obsidian GetNote Importer插件配置界面记录_image.png',
+      ],
+    });
+
+    const result = renderNote(note);
+
+    expect(result).toContain(
+      '> ![](<asset/20260527203527_Obsidian GetNote Importer插件配置界面记录_image.png>)'
+    );
+  });
+});
+
 // ---- formatTimestampPrefix ----
 describe('formatTimestampPrefix', () => {
   it('YYYY-MM-DD 格式', () => {

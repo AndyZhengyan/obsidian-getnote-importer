@@ -140,14 +140,14 @@ describe('NotePickerModal auth chains', () => {
     }, onConfirm);
 
     const trigger = Array.from(container.querySelectorAll('button'))
-      .find(button => button.textContent === '全部类型');
+      .find(button => button.textContent === '全部笔记');
     expect(trigger).toBeTruthy();
     await act(() => {
       trigger!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
     const plainTextOption = Array.from(container.querySelectorAll('label'))
-      .find(label => label.textContent === '纯文本');
+      .find(label => label.textContent === '文字笔记');
     expect(plainTextOption).toBeTruthy();
     const plainTextCheckbox = plainTextOption!.querySelector('input[type="checkbox"]') as HTMLInputElement;
     await act(() => {
@@ -167,6 +167,6 @@ describe('NotePickerModal auth chains', () => {
       container.querySelector('.mod-cta')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(onConfirm).toHaveBeenCalledWith(['link'], ['link', 'immediate_audio', 'recorder_audio', 'recorder_flash_audio', 'audio_long', 'local_audio']);
+    expect(onConfirm).toHaveBeenCalledWith(['link'], ['immediate_audio', 'recorder_audio', 'audio_long', 'local_audio', 'link', 'img_text', 'recorder_flash_audio']);
   });
 });

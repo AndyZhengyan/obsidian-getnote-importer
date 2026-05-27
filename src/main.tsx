@@ -401,6 +401,14 @@ export default class GetNoteSyncPlugin extends Plugin {
         skipped: 0,
         failed: files?.length ?? 0,
         total: files?.length ?? 0,
+        items: (files ?? []).map(file => ({
+          noteId: file.path,
+          title: file.basename || file.path.split('/').pop()?.replace(/\.md$/i, '') || file.path,
+          noteType: 'plain_text',
+          updatedAt: new Date().toISOString(),
+          status: 'failed',
+          error: message,
+        })),
       }, startedAt, files?.map(file => file.path), message);
       this.syncProgress = { message: t('reverseSync.failed', { msg: message }), count: '', percent: 0 };
       showError(t('reverseSync.failed', { msg: message }));
@@ -425,7 +433,7 @@ export default class GetNoteSyncPlugin extends Plugin {
       skipped: result.skipped,
       failed: result.failed,
       total: result.total,
-      items: [],
+      items: result.items,
     };
     await this.recordSyncHistory(
       syncResult,

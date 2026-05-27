@@ -90,7 +90,7 @@ describe('ReverseSyncEngine', () => {
 
     const result = await new ReverseSyncEngine(app as any, makeSettings()).syncBack();
 
-    expect(result).toEqual({ created: 0, skipped: 0, failed: 0, total: 0 });
+    expect(result).toEqual({ created: 0, skipped: 0, failed: 0, total: 0, items: [] });
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
@@ -109,7 +109,15 @@ describe('ReverseSyncEngine', () => {
 
     const result = await new ReverseSyncEngine(app as any, makeSettings()).syncBack();
 
-    expect(result).toEqual({ created: 1, skipped: 0, failed: 0, total: 1 });
+    expect(result).toEqual(expect.objectContaining({ created: 1, skipped: 0, failed: 0, total: 1 }));
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        noteId: '1909999999999999999',
+        title: 'Local title',
+        noteType: 'plain_text',
+        status: 'created',
+      }),
+    ]);
     expect(globalThis.fetch).toHaveBeenCalledWith(
       'https://openapi.biji.com/open/api/v1/resource/note/save',
       expect.objectContaining({
@@ -149,7 +157,16 @@ describe('ReverseSyncEngine', () => {
 
     const result = await new ReverseSyncEngine(app as any, makeSettings()).syncBack();
 
-    expect(result).toEqual({ created: 0, skipped: 1, failed: 0, total: 1 });
+    expect(result).toEqual(expect.objectContaining({ created: 0, skipped: 1, failed: 0, total: 1 }));
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        noteId: 'remote-1',
+        title: 'Imported',
+        noteType: 'plain_text',
+        status: 'skipped',
+        error: '远端已存在，跳过上传',
+      }),
+    ]);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     expect(app.vault.modify).not.toHaveBeenCalled();
   });
@@ -170,7 +187,7 @@ describe('ReverseSyncEngine', () => {
 
     const result = await new ReverseSyncEngine(app as any, makeSettings()).syncBack();
 
-    expect(result).toEqual({ created: 1, skipped: 0, failed: 0, total: 1 });
+    expect(result).toEqual(expect.objectContaining({ created: 1, skipped: 0, failed: 0, total: 1 }));
     expect(app.vault._getFile('Get笔记/missing.md')?.content).toContain('uid: "replacement-remote"');
     expect(app.vault._getFile('Get笔记/missing.md')?.content).toContain('Keep this body');
   });
@@ -192,7 +209,7 @@ describe('ReverseSyncEngine', () => {
       webApiToken: 'web-token',
     })).syncBack();
 
-    expect(result).toEqual({ created: 1, skipped: 0, failed: 0, total: 1 });
+    expect(result).toEqual(expect.objectContaining({ created: 1, skipped: 0, failed: 0, total: 1 }));
     expect(globalThis.fetch).toHaveBeenCalledWith(
       'https://get-notes.luojilab.com/voicenotes/web/notes',
       expect.objectContaining({ method: 'POST' })
@@ -221,7 +238,15 @@ describe('ReverseSyncEngine', () => {
     const selectedFile = app.vault.getMarkdownFiles().find(file => file.path === 'Get笔记/b.md');
     const result = await new ReverseSyncEngine(app as any, makeSettings()).syncFiles(selectedFile ? [selectedFile as any] : []);
 
-    expect(result).toEqual({ created: 1, skipped: 0, failed: 0, total: 1 });
+    expect(result).toEqual(expect.objectContaining({ created: 1, skipped: 0, failed: 0, total: 1 }));
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        noteId: 'selected-created',
+        title: 'B',
+        noteType: 'plain_text',
+        status: 'created',
+      }),
+    ]);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     expect(globalThis.fetch).toHaveBeenCalledWith(
       'https://openapi.biji.com/open/api/v1/resource/note/save',
@@ -249,8 +274,45 @@ describe('ReverseSyncEngine', () => {
     const selectedFile = app.vault.getMarkdownFiles().find(file => file.path === 'Get笔记/empty.md');
     const result = await new ReverseSyncEngine(app as any, makeSettings()).syncFiles(selectedFile ? [selectedFile as any] : []);
 
-    expect(result).toEqual({ created: 0, skipped: 1, failed: 0, total: 1 });
+    expect(result).toEqual(expect.objectContaining({ created: 0, skipped: 1, failed: 0, total: 1 }));
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        noteId: 'Get笔记/empty.md',
+        title: 'Empty',
+        noteType: 'plain_text',
+        status: 'skipped',
+        error: '正文为空，跳过上传',
+      }),
+    ]);
     expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(app.vault.modify).not.toHaveBeenCalled();
+  });
+
+  it('records upload failure details with the failing note and reason', async () => {
+    const app = makeMockApp();
+    app.vault._addFile('Get笔记/fail.md', [
+      '---',
+      'title: "Failing upload"',
+      'note_type: plain_text',
+      '---',
+      'Body',
+    ].join('\n'));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({ error: { message: 'server down' } }, 500)
+    );
+
+    const selectedFile = app.vault.getMarkdownFiles().find(file => file.path === 'Get笔记/fail.md');
+    const result = await new ReverseSyncEngine(app as any, makeSettings()).syncFiles(selectedFile ? [selectedFile as any] : []);
+
+    expect(result).toEqual(expect.objectContaining({ created: 0, skipped: 0, failed: 1, total: 1 }));
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        noteId: 'Get笔记/fail.md',
+        title: 'Failing upload',
+        noteType: 'plain_text',
+        status: 'failed',
+        error: 'API 服务器错误 500',
+      }),
+    ]);
   });
 });

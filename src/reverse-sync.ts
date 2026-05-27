@@ -1,12 +1,14 @@
 import type { App, TFile } from 'obsidian';
 import { createNote, fetchNoteDetail } from './api';
-import { getAuthCredentials, type AuthCredentials, type Settings } from './types';
+import { t } from './i18n';
+import { getAuthCredentials, type AuthCredentials, type Settings, type SyncResultItem } from './types';
 
 export interface ReverseSyncResult {
   created: number;
   skipped: number;
   failed: number;
   total: number;
+  items: SyncResultItem[];
 }
 
 interface LocalMarkdownNote {
@@ -18,6 +20,11 @@ interface LocalMarkdownNote {
   title: string;
   noteType: string;
   tags: string[];
+}
+
+interface LocalReadResult {
+  note?: LocalMarkdownNote;
+  skippedItem?: SyncResultItem;
 }
 
 const SUPPORTED_NOTE_TYPES = new Set(['plain_text', 'link']);
@@ -59,6 +66,10 @@ function fileBasename(file: TFile): string {
   return file.basename || file.path.split('/').pop()?.replace(/\.md$/i, '') || 'Untitled';
 }
 
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
 function replaceOrInsertUid(content: string, uid: string): string {
   const uidLine = `uid: "${uid}"`;
   const match = content.match(/^---\n([\s\S]*?)\n---\n?/);
@@ -97,24 +108,63 @@ export class ReverseSyncEngine {
     return credentials;
   }
 
-  private async readLocalNote(file: TFile): Promise<LocalMarkdownNote | null> {
+  private createLocalItem(
+    file: TFile,
+    status: SyncResultItem['status'],
+    options: {
+      noteId?: string;
+      title?: string;
+      noteType?: string;
+      error?: string;
+    } = {}
+  ): SyncResultItem {
+    return {
+      noteId: options.noteId || file.path,
+      title: options.title || fileBasename(file),
+      noteType: options.noteType || 'plain_text',
+      updatedAt: nowIso(),
+      status,
+      error: options.error,
+    };
+  }
+
+  private async readLocalNote(file: TFile): Promise<LocalReadResult> {
     const content = await this.app.vault.read(file);
     const cache = this.app.metadataCache.getFileCache(file);
     const frontmatter = cache?.frontmatter ?? {};
     const { body } = splitMarkdown(content);
     const noteType = readString(frontmatter, 'note_type') || 'plain_text';
-    if (!SUPPORTED_NOTE_TYPES.has(noteType)) return null;
-    if (!body.trim()) return null;
+    const title = readString(frontmatter, 'title') || fileBasename(file);
+    if (!SUPPORTED_NOTE_TYPES.has(noteType)) {
+      return {
+        skippedItem: this.createLocalItem(file, 'skipped', {
+          title,
+          noteType,
+          error: t('reverseSync.skip.unsupportedType', { noteType }),
+        }),
+      };
+    }
+    if (!body.trim()) {
+      return {
+        skippedItem: this.createLocalItem(file, 'skipped', {
+          title,
+          noteType,
+          error: t('reverseSync.skip.emptyBody'),
+        }),
+      };
+    }
 
     return {
-      file,
-      content,
-      frontmatter,
-      body,
-      uid: readString(frontmatter, 'uid') || undefined,
-      title: readString(frontmatter, 'title') || fileBasename(file),
-      noteType,
-      tags: readTags(frontmatter),
+      note: {
+        file,
+        content,
+        frontmatter,
+        body,
+        uid: readString(frontmatter, 'uid') || undefined,
+        title,
+        noteType,
+        tags: readTags(frontmatter),
+      },
     };
   }
 
@@ -128,7 +178,7 @@ export class ReverseSyncEngine {
     }
   }
 
-  private async createRemoteNote(note: LocalMarkdownNote, credentials: AuthCredentials): Promise<void> {
+  private async createRemoteNote(note: LocalMarkdownNote, credentials: AuthCredentials): Promise<string> {
     const created = await createNote({
       token: credentials.token,
       clientId: credentials.clientId,
@@ -139,30 +189,51 @@ export class ReverseSyncEngine {
       tags: note.tags,
     });
     await this.app.vault.modify(note.file, replaceOrInsertUid(note.content, created.noteId));
+    return created.noteId;
   }
 
   async syncFiles(files: TFile[]): Promise<ReverseSyncResult> {
     const credentials = this.requireCredentials();
-    const result: ReverseSyncResult = { created: 0, skipped: 0, failed: 0, total: 0 };
+    const result: ReverseSyncResult = { created: 0, skipped: 0, failed: 0, total: 0, items: [] };
 
     for (const file of files) {
       result.total++;
-      const note = await this.readLocalNote(file);
-      if (!note) {
+      const local = await this.readLocalNote(file);
+      if (local.skippedItem) {
         result.skipped++;
+        result.items.push(local.skippedItem);
         continue;
       }
+      const note = local.note;
+      if (!note) continue;
 
       try {
         if (note.uid && await this.remoteExists(note.uid, credentials)) {
           result.skipped++;
+          result.items.push(this.createLocalItem(file, 'skipped', {
+            noteId: note.uid,
+            title: note.title,
+            noteType: note.noteType,
+            error: t('reverseSync.skip.remoteExists'),
+          }));
           continue;
         }
-        await this.createRemoteNote(note, credentials);
+        const noteId = await this.createRemoteNote(note, credentials);
         result.created++;
+        result.items.push(this.createLocalItem(file, 'created', {
+          noteId,
+          title: note.title,
+          noteType: note.noteType,
+        }));
       } catch (err) {
         console.error(`[GetNote] Reverse sync failed [${file.path}]:`, err);
         result.failed++;
+        result.items.push(this.createLocalItem(file, 'failed', {
+          noteId: note.uid || file.path,
+          title: note.title,
+          noteType: note.noteType,
+          error: err instanceof Error ? err.message : String(err),
+        }));
       }
     }
 

@@ -293,6 +293,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
       skipped: 0,
       failed: 0,
       total: 1,
+      items: [],
     });
     const plugin = makePlugin();
 
@@ -310,6 +311,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
       skipped: 0,
       failed: 0,
       total: 1,
+      items: [],
     });
     const plugin = makePlugin();
     plugin.settings.reverseSync = { enabled: false };
@@ -328,12 +330,20 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
       skipped: 0,
       failed: 0,
       total: 99,
+      items: [],
     });
     const syncFiles = vi.spyOn(ReverseSyncEngine.prototype, 'syncFiles').mockResolvedValue({
       created: 1,
       skipped: 0,
       failed: 0,
       total: 1,
+      items: [{
+        noteId: 'remote-created',
+        title: 'Upload me',
+        noteType: 'plain_text',
+        updatedAt: '2026-05-27T12:00:00.000Z',
+        status: 'created',
+      }],
     });
     const plugin = makePlugin();
     plugin.settings.reverseSync = { enabled: false };
@@ -355,6 +365,13 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
           skipped: 0,
           failed: 0,
           total: 1,
+          items: [
+            expect.objectContaining({
+              noteId: 'remote-created',
+              title: 'Upload me',
+              status: 'created',
+            }),
+          ],
         }),
       }));
       expect(plugin.isSyncing).toBe(false);
@@ -367,6 +384,14 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
       skipped: 0,
       failed: 1,
       total: 1,
+      items: [{
+        noteId: 'Inbox/fail.md',
+        title: 'fail',
+        noteType: 'plain_text',
+        updatedAt: '2026-05-27T12:00:00.000Z',
+        status: 'failed',
+        error: 'API 服务器错误 500',
+      }],
     });
     const plugin = makePlugin();
 
@@ -378,6 +403,15 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
         mode: 'local-upload',
         status: 'failed',
         error: '失败 1 篇',
+        result: expect.objectContaining({
+          items: [
+            expect.objectContaining({
+              noteId: 'Inbox/fail.md',
+              status: 'failed',
+              error: 'API 服务器错误 500',
+            }),
+          ],
+        }),
       }));
     });
     expect(plugin.isSyncing).toBe(false);

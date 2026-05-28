@@ -1014,6 +1014,149 @@ describe('SyncEngine — audio note sync', () => {
     }
   });
 
+  it('图片笔记从详情接口下载图片附件并写入 md 引用', async () => {
+    const imageNote = makeNote({
+      note_id: '1911137317526242616',
+      title: 'Obsidian GetNote Importer插件配置界面记录',
+      content: '图片笔记正文',
+      note_type: 'img_text',
+      created_at: '2026-05-27T20:35:27+08:00',
+      updated_at: '2026-05-27T20:35:27+08:00',
+    });
+    const createdFiles: string[] = [];
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url: unknown) => {
+      const urlStr = typeof url === 'string' ? url : (url as Request).url;
+      if (urlStr.includes('/resource/note/list')) {
+        return Promise.resolve(mockFetchResponse({
+          data: { notes: [imageNote], has_more: false, next_cursor: '' },
+        }) as Response);
+      }
+      if (urlStr.includes('/resource/note/detail')) {
+        return Promise.resolve(mockFetchResponse({
+          success: true,
+          data: {
+            note: {
+              ...imageNote,
+              attachments: [
+                {
+                  type: 'image',
+                  url: 'https://get-notes.umiwi.com/get_notes_prod%2F202605272035%2Fsync-history.png',
+                  title: 'sync-history.png',
+                },
+              ],
+            },
+          },
+        }) as Response);
+      }
+      if (new URL(urlStr).hostname === 'get-notes.umiwi.com') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({}),
+          json: () => Promise.resolve(null),
+          text: () => Promise.resolve(''),
+          arrayBuffer: () => Promise.resolve(new ArrayBuffer(2048)),
+        } as Response);
+      }
+      throw new Error(`Unexpected request: ${urlStr}`);
+    });
+
+    const mockApp = makeMockApp();
+    mockApp.vault.create = vi.fn().mockImplementation(async (path: string, data: string) => {
+      createdFiles.push(path);
+      createdFiles.push(data);
+      return { path };
+    });
+    mockApp.vault.createBinary = vi.fn().mockImplementation(async (path: string) => {
+      createdFiles.push(path);
+      return { path };
+    });
+
+    try {
+      const engine = new SyncEngine(mockApp as any, makeSettings());
+      const result = await engine.sync();
+
+      expect(result.created).toBe(1);
+      expect(createdFiles).toContain('Get笔记/图片笔记/asset/Obsidian GetNote Importer插件配置界面记录_image.png');
+      const markdown = createdFiles.find(item => item.includes('图片笔记正文')) ?? '';
+      expect(markdown).toContain('> 📷 图片');
+      expect(markdown).toContain('> ![](<asset/Obsidian GetNote Importer插件配置界面记录_image.png>)');
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
+  it('图片笔记已存在但缺少图片时按笔记同步会补下载并重写 md 引用', async () => {
+    const imageNote = makeNote({
+      note_id: 'image_existing',
+      title: '已有图片笔记',
+      content: '图片笔记正文',
+      note_type: 'img_text',
+      created_at: '2026-05-27T20:35:27+08:00',
+      updated_at: '2026-05-27T20:35:27+08:00',
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url: unknown) => {
+      const urlStr = typeof url === 'string' ? url : (url as Request).url;
+      if (urlStr.includes('/resource/note/list')) {
+        return Promise.resolve(mockFetchResponse({
+          data: { notes: [imageNote], has_more: false, next_cursor: '' },
+        }) as Response);
+      }
+      if (urlStr.includes('/resource/note/detail')) {
+        return Promise.resolve(mockFetchResponse({
+          success: true,
+          data: {
+            note: {
+              ...imageNote,
+              attachments: [
+                {
+                  type: 'image',
+                  url: 'https://get-notes.umiwi.com/get_notes_prod%2F202605272035%2Fexisting.png',
+                  title: 'existing.png',
+                },
+              ],
+            },
+          },
+        }) as Response);
+      }
+      if (new URL(urlStr).hostname === 'get-notes.umiwi.com') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({}),
+          json: () => Promise.resolve(null),
+          text: () => Promise.resolve(''),
+          arrayBuffer: () => Promise.resolve(new ArrayBuffer(2048)),
+        } as Response);
+      }
+      throw new Error(`Unexpected request: ${urlStr}`);
+    });
+
+    const app = makeMockApp();
+    app.vault._addFolder('Get笔记/图片笔记');
+    app.vault._addFolder('Get笔记/图片笔记/asset');
+    app.vault._addFile(
+      'Get笔记/图片笔记/已有图片笔记.md',
+      '---\nuid: "image_existing"\nmodified: "2026-05-27 20:35:27"\nnote_type: img_text\n---\n图片笔记正文',
+      { uid: 'image_existing', modified: '2026-05-27 20:35:27' }
+    );
+
+    try {
+      const engine = new SyncEngine(app as any, makeSettings());
+      const result = await engine.syncNoteIds(['image_existing']);
+
+      expect(result.updated).toBe(1);
+      expect(app.vault.getAbstractFileByPath('Get笔记/图片笔记/asset/已有图片笔记_image.png')).toBeTruthy();
+      const modifiedContent = vi.mocked(app.vault.modify).mock.calls[0]?.[1] as string;
+      expect(modifiedContent).toContain('> 📷 图片');
+      expect(modifiedContent).toContain('> ![](asset/已有图片笔记_image.png)');
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
   it('拒绝下载非 HTTPS 音频附件', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
@@ -1268,6 +1411,61 @@ describe('SyncEngine — selective sync cancellation', () => {
       // @ts-ignore
       const result = engine['preCheckNote'](note, index);
       expect(result.exists).toBe(true);
+    });
+
+    it('图片笔记：图片笔记目录下已存在非 png 图片附件时返回 { exists: true }', () => {
+      const app = makeMockApp();
+      app.vault._addFile(
+        'Get笔记/图片笔记/test.md',
+        '---\nuid: "image_ready"\nmodified: "2026-04-28 10:00:00"\n---\n图片笔记',
+        { uid: 'image_ready', modified: '2026-04-28 10:00:00' }
+      );
+      app.vault._addFolder('Get笔记/图片笔记');
+      app.vault._addFolder('Get笔记/图片笔记/asset');
+      app.vault._addFile('Get笔记/图片笔记/asset/测试笔记_image.jpg', '');
+      const engine = new SyncEngine(app as any, makeSettings());
+      const note = makeNote({
+        note_id: 'image_ready',
+        title: '测试笔记',
+        note_type: 'img_text',
+        updated_at: '2026-04-28T10:00:00+08:00',
+        attachments: [
+          { type: 'image', url: 'https://cdn.example.com/path/photo.jpg', title: 'photo' },
+        ],
+      });
+      const index = new Map([['image_ready', { path: 'Get笔记/图片笔记/test.md' }]]);
+      // @ts-ignore
+      const result = engine['preCheckNote'](note, index);
+      expect(result.exists).toBe(true);
+    });
+
+    it('图片笔记：图片笔记目录下的非音频笔记也会下载多张图片附件', async () => {
+      const app = makeMockApp();
+      const engine = new SyncEngine(app as any, makeSettings());
+      const note = makeNote({
+        note_id: 'image_multi',
+        title: '测试笔记',
+        note_type: 'img_text',
+        attachments: [
+          { type: 'image', url: 'https://cdn.example.com/photo-a.jpg', title: 'photo-a' },
+          { type: 'image', url: 'https://cdn.example.com/photo-b.jpg', title: 'photo-b' },
+        ],
+      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse({}) as Response);
+
+      try {
+        // @ts-ignore
+        const enriched = await engine['enrichAudioNote'](note, new AbortController().signal);
+
+        expect(enriched.assetPaths).toEqual([
+          'Get笔记/图片笔记/asset/测试笔记_image.jpg',
+          'Get笔记/图片笔记/asset/测试笔记_image_2.jpg',
+        ]);
+        expect(app.vault.getAbstractFileByPath('Get笔记/图片笔记/asset/测试笔记_image.jpg')).toBeTruthy();
+        expect(app.vault.getAbstractFileByPath('Get笔记/图片笔记/asset/测试笔记_image_2.jpg')).toBeTruthy();
+      } finally {
+        vi.mocked(globalThis.fetch).mockRestore();
+      }
     });
   });
 

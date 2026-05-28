@@ -1,18 +1,25 @@
 import { useState } from 'preact/hooks';
-import { NOTE_CATEGORIES } from '../types';
 import { t } from '../i18n';
 
-const NOTE_TYPE_OPTIONS = NOTE_CATEGORIES.filter((category, index, categories) =>
-  categories.findIndex(item => item.noteType === category.noteType) === index
-);
+const NOTE_TYPE_OPTIONS = [
+  { labelKey: 'picker.type.audio_note', noteTypes: ['immediate_audio', 'recorder_audio', 'audio_long', 'local_audio'] },
+  { labelKey: 'picker.type.plain_text', noteTypes: ['plain_text'] },
+  { labelKey: 'picker.type.link', noteTypes: ['link'] },
+  { labelKey: 'picker.type.img_text', noteTypes: ['img_text'] },
+  { labelKey: 'picker.type.recorder_flash_audio', noteTypes: ['recorder_flash_audio'] },
+];
 
-function getTypeLabel(noteType: string): string {
-  return t(`picker.type.${noteType}`);
+function getTypeLabel(labelKey: string): string {
+  return t(labelKey);
 }
 
 function summarizeTypes(value: string[]): string {
   if (value.length === 0) return t('noteTypes.none');
-  if (value.length === 1) return getTypeLabel(value[0]);
+  const matchingGroup = NOTE_TYPE_OPTIONS.find(option =>
+    option.noteTypes.length === value.length &&
+    option.noteTypes.every(noteType => value.includes(noteType))
+  );
+  if (matchingGroup) return getTypeLabel(matchingGroup.labelKey);
   return t('noteTypes.selected', { count: value.length });
 }
 
@@ -23,15 +30,15 @@ interface NoteTypeSelectProps {
 
 export function NoteTypeSelect({ value, onChange }: NoteTypeSelectProps) {
   const [open, setOpen] = useState(false);
-  const allNoteTypes = NOTE_TYPE_OPTIONS.map(option => option.noteType);
+  const allNoteTypes = NOTE_TYPE_OPTIONS.flatMap(option => option.noteTypes);
   const selectedTypes = value ?? allNoteTypes;
   const allSelected = value === undefined || selectedTypes.length === allNoteTypes.length;
 
-  const handleTypeToggle = (noteType: string, checked: boolean) => {
+  const handleTypeToggle = (noteTypes: string[], checked: boolean) => {
     const current = value ?? allNoteTypes;
     const next = checked
-      ? Array.from(new Set([...current, noteType]))
-      : current.filter(type => type !== noteType);
+      ? Array.from(new Set([...current, ...noteTypes]))
+      : current.filter(type => !noteTypes.includes(type));
 
     onChange(next.length === allNoteTypes.length ? undefined : next);
   };
@@ -60,13 +67,13 @@ export function NoteTypeSelect({ value, onChange }: NoteTypeSelectProps) {
             <span>{t('noteTypes.all')}</span>
           </label>
           {NOTE_TYPE_OPTIONS.map(option => (
-            <label className="getnote-note-type-select-option" key={option.noteType}>
+            <label className="getnote-note-type-select-option" key={option.labelKey}>
               <input
                 type="checkbox"
-                checked={selectedTypes.includes(option.noteType)}
-                onChange={(event) => handleTypeToggle(option.noteType, (event.target as HTMLInputElement).checked)}
+                checked={option.noteTypes.every(noteType => selectedTypes.includes(noteType))}
+                onChange={(event) => handleTypeToggle(option.noteTypes, (event.target as HTMLInputElement).checked)}
               />
-              <span>{getTypeLabel(option.noteType)}</span>
+              <span>{getTypeLabel(option.labelKey)}</span>
             </label>
           ))}
         </div>

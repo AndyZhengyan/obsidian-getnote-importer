@@ -95,7 +95,7 @@ describe('ManualSyncModal filters', () => {
     const { container, onConfirm } = renderModal({ syncStartDate: '', maxDays: 30 });
 
     const trigger = Array.from(container.querySelectorAll('button'))
-      .find(button => button.textContent === '全部类型');
+      .find(button => button.textContent === '全部笔记');
     expect(trigger).toBeTruthy();
 
     await act(() => {
@@ -103,7 +103,7 @@ describe('ManualSyncModal filters', () => {
     });
 
     const plainTextOption = Array.from(container.querySelectorAll('label'))
-      .find(label => label.textContent === '纯文本');
+      .find(label => label.textContent === '文字笔记');
     expect(plainTextOption).toBeTruthy();
     const checkbox = plainTextOption!.querySelector('input[type="checkbox"]') as HTMLInputElement;
 
@@ -119,7 +119,7 @@ describe('ManualSyncModal filters', () => {
     expect(onConfirm).toHaveBeenCalledWith({
       syncStartDate: '',
       maxDays: 30,
-      enabledNoteTypes: ['link', 'immediate_audio', 'recorder_audio', 'recorder_flash_audio', 'audio_long', 'local_audio'],
+      enabledNoteTypes: ['immediate_audio', 'recorder_audio', 'audio_long', 'local_audio', 'link', 'img_text', 'recorder_flash_audio'],
     });
   });
 
@@ -127,7 +127,7 @@ describe('ManualSyncModal filters', () => {
     const { container, onConfirm } = renderModal({ syncStartDate: '', maxDays: 30 });
 
     const trigger = Array.from(container.querySelectorAll('button'))
-      .find(button => button.textContent === '全部类型');
+      .find(button => button.textContent === '全部笔记');
     expect(trigger).toBeTruthy();
 
     await act(() => {
@@ -135,7 +135,7 @@ describe('ManualSyncModal filters', () => {
     });
 
     const allOption = Array.from(container.querySelectorAll('label'))
-      .find(label => label.textContent === '全部类型');
+      .find(label => label.textContent === '全部笔记');
     expect(allOption).toBeTruthy();
     const allCheckbox = allOption!.querySelector('input[type="checkbox"]') as HTMLInputElement;
 

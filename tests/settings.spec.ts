@@ -289,14 +289,14 @@ describe('SettingsComponent auth credentials', () => {
     }));
 
     const trigger = Array.from(container.querySelectorAll('button'))
-      .find(button => button.textContent === '全部类型');
+      .find(button => button.textContent === '全部笔记');
     expect(trigger).toBeTruthy();
     await act(() => {
       trigger!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
     const plainTextOption = Array.from(container.querySelectorAll('label'))
-      .find(label => label.textContent === '纯文本');
+      .find(label => label.textContent === '文字笔记');
     expect(plainTextOption).toBeTruthy();
     const checkbox = plainTextOption!.querySelector('input[type="checkbox"]') as HTMLInputElement;
     expect(checkbox.checked).toBe(true);
@@ -309,7 +309,7 @@ describe('SettingsComponent auth credentials', () => {
     expect(updateSetting).not.toHaveBeenCalledWith('enabledNoteTypes', expect.anything());
     expect(updateSetting).toHaveBeenCalledWith('scheduledSync', {
       ...scheduledSync,
-      enabledNoteTypes: ['link', 'immediate_audio', 'recorder_audio', 'recorder_flash_audio', 'audio_long', 'local_audio'],
+      enabledNoteTypes: ['immediate_audio', 'recorder_audio', 'audio_long', 'local_audio', 'link', 'img_text', 'recorder_flash_audio'],
     });
   });
 });

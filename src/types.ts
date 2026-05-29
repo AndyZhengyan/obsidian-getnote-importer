@@ -25,6 +25,11 @@ export interface Tag {
   name: string;
 }
 
+export interface SubscribedTopic {
+  topic_id: string;
+  name: string;
+}
+
 export type KnownNoteType =
   | 'plain_text'
   | 'img_text'

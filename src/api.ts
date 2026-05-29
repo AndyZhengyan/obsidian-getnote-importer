@@ -1,7 +1,7 @@
 // Central API entry point - delegates to client implementations based on authMode
-import { createNote as openapiCreateNote, fetchNotes as openapiFetchNotes, fetchNoteDetail as openapiFetchNoteDetail } from './api-clients/openapi-client';
-import { createNote as webapiCreateNote, fetchNotes as webapiFetchNotes, fetchNoteChildren as webapiFetchNoteChildren, fetchNoteDetail as webapiFetchNoteDetail } from './api-clients/webapi-client';
-import type { GetNoteNote, AuthMode } from './types';
+import { createNote as openapiCreateNote, fetchNotes as openapiFetchNotes, fetchNoteDetail as openapiFetchNoteDetail, fetchSubscribedKnowledgeNotes as openapiFetchSubscribedKnowledgeNotes, fetchSubscribedTopics as openapiFetchSubscribedTopics } from './api-clients/openapi-client';
+import { createNote as webapiCreateNote, fetchNotes as webapiFetchNotes, fetchNoteChildren as webapiFetchNoteChildren, fetchNoteDetail as webapiFetchNoteDetail, fetchSubscribedKnowledgeNotes as webapiFetchSubscribedKnowledgeNotes, fetchSubscribedTopics as webapiFetchSubscribedTopics } from './api-clients/webapi-client';
+import type { GetNoteNote, AuthMode, SubscribedTopic } from './types';
 import { t } from './i18n';
 
 export const GETNOTE_LIST_LIMIT = 20;
@@ -14,6 +14,7 @@ export interface FetchNotesOptions {
   signal?: AbortSignal;
   authMode?: AuthMode;
   webCsrfToken?: string;
+  topicIds?: string[];
 }
 
 export async function fetchNotes(options: FetchNotesOptions): Promise<{
@@ -49,6 +50,31 @@ export async function fetchNoteChildren(
 ): Promise<GetNoteNote[]> {
   if (authMode !== 'web') return [];
   return webapiFetchNoteChildren(parentPrimeId, token, signal);
+}
+
+export async function fetchSubscribedTopics(options: FetchNotesOptions): Promise<SubscribedTopic[]> {
+  if (options.authMode === 'web') {
+    return webapiFetchSubscribedTopics(options.token, options.signal);
+  }
+  return openapiFetchSubscribedTopics(options.token, options.clientId, options.signal);
+}
+
+export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions): Promise<GetNoteNote[]> {
+  if (options.authMode === 'web') {
+    return webapiFetchSubscribedKnowledgeNotes({
+      token: options.token,
+      sinceId: options.sinceId,
+      limit: options.limit,
+      signal: options.signal,
+    });
+  }
+  return openapiFetchSubscribedKnowledgeNotes({
+    token: options.token,
+    clientId: options.clientId,
+    sinceId: options.sinceId,
+    limit: options.limit,
+    signal: options.signal,
+  });
 }
 
 export interface CreateNoteOptions {

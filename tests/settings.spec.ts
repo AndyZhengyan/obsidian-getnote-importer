@@ -73,7 +73,7 @@ describe('SettingsComponent auth credentials', () => {
       reverseSync: { enabled: false },
     }));
 
-    expect(container.textContent).not.toContain('允许上传本地笔记到 Get笔记');
+    expect(container.textContent).not.toContain('允许上传本地笔记到得到大脑');
     expect(container.textContent).not.toContain('启用上传');
   });
 
@@ -86,8 +86,8 @@ describe('SettingsComponent auth credentials', () => {
       reverseSync: { enabled: false },
     }), vi.fn(), openLocalUpload);
 
-    expect(container.textContent).toContain('从 Get笔记同步到 Obsidian');
-    expect(container.textContent).toContain('从 Obsidian 上传到 Get笔记');
+    expect(container.textContent).toContain('从得到大脑同步到 Obsidian');
+    expect(container.textContent).toContain('从 Obsidian 上传到得到大脑');
     expect(container.textContent).not.toContain('选择笔记上传');
     const uploadButton = Array.from(container.querySelectorAll('button'))
       .find((button): button is HTMLButtonElement => button.textContent === '按笔记上传');
@@ -275,7 +275,7 @@ describe('SettingsComponent auth credentials', () => {
     }));
 
     const links = Array.from(container.querySelectorAll('a')).map((link) => link.href);
-    expect(links.some((href) => href.includes('README.md#about-the-author'))).toBe(true);
+    expect(links.some((href) => href.includes('README.md#%E5%85%B3%E4%BA%8E%E4%BD%9C%E8%80%85') || href.includes('README.md#关于作者'))).toBe(true);
     expect(links.some((href) => href.includes('docs/web-mode-manual-token.md'))).toBe(true);
   });
 

@@ -146,7 +146,7 @@ export class ReverseSyncEngine {
   private requireCredentials(): AuthCredentials {
     const credentials = getAuthCredentials(this.settings);
     if (!credentials.token || (credentials.authMode !== 'web' && !credentials.clientId)) {
-      throw new Error('Missing GetNote credentials');
+      throw new Error('Missing Dedao Brain credentials');
     }
     return credentials;
   }
@@ -299,7 +299,7 @@ export class ReverseSyncEngine {
         }));
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') throw err;
-        console.error(`[GetNote] Reverse sync failed [${file.path}]:`, err);
+        console.error(`[DedaoBrain] Reverse sync failed [${file.path}]:`, err);
         result.failed++;
         result.items.push(this.createLocalItem(file, 'failed', {
           noteId: note.uid || file.path,

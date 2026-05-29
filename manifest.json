@@ -1,8 +1,8 @@
 {
-  "id": "getnote-importer",
+  "id": "dedao-brain-sync",
   "name": "Dedao Brain Sync",
-  "version": "1.1.0",
-  "description": "Bidirectional sync for notes, links, recordings, and AI summaries between GetNote / 得到大脑（原Get笔记） and your local vault.",
+  "version": "1.0.12",
+  "description": "Sync notes, links, recordings, and AI summaries from Dedao Brain into your local vault.",
   "author": "Andy Zheng",
   "isDesktopOnly": false,
   "minAppVersion": "1.8.7"

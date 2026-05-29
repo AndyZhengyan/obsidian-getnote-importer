@@ -157,6 +157,7 @@ export interface FetchNotesOptions {
   sinceId?: string;
   limit?: number;
   signal?: AbortSignal;
+  topicIds?: string[];
 }
 
 export interface CreateNoteOptions {

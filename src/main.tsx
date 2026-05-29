@@ -374,7 +374,7 @@ export default class GetNoteSyncPlugin extends Plugin {
     void this.openTopicPicker();
   }
 
-  private async runSubscribedKnowledgeSync(topicIds?: string[]): Promise<void> {
+  async runSubscribedKnowledgeSync(topicIds?: string[]): Promise<void> {
     if (this.isSyncing) return;
     const credentials = getAuthCredentials(this.settings);
     if (!credentials.token || (credentials.authMode !== 'web' && !credentials.clientId)) {
@@ -609,7 +609,7 @@ class TopicPickerModalWrapper extends Modal {
         clientId={credentials.clientId}
         authMode={credentials.authMode}
         abortSignal={this.abortController.signal}
-        onConfirm={(topicIds) => {
+        onConfirm={(topicIds: string[]) => {
           this.abortController.abort();
           this.close();
           void this.plugin.runSubscribedKnowledgeSync(topicIds);

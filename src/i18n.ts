@@ -173,6 +173,15 @@ export const translations: Record<string, Record<string, string>> = {
     'picker.type.local_audio': '录音笔记',
     'picker.type.unknown': '其他',
 
+    // === Topic Picker ===
+    'topicPicker.title': '选择订阅专题',
+    'topicPicker.error': '加载失败',
+    'topicPicker.retry': '重试',
+    'topicPicker.empty': '暂无订阅专题',
+    'topicPicker.selected': '已选 {count} 个',
+    'topicPicker.cancel': '取消',
+    'topicPicker.confirm': '同步专题 ({count})',
+
     // === Sync Modal ===
     'modal.title': '得到大脑同步中',
     'modal.connecting': '正在连接 API...',
@@ -194,6 +203,10 @@ export const translations: Record<string, Record<string, string>> = {
     'sync.fetched': '已获取 {count} 条笔记',
     'sync.processing': '处理中：新增 {created} · 更新 {updated} · 跳过 {skipped} · 失败 {failed}',
     'sync.processingCount': '处理中... {current}/{total}',
+
+    // === Subscribed Knowledge Sync ===
+    'sync.subscribedKnowledge.fetching': '正在获取订阅专题笔记...',
+    'sync.subscribedKnowledge.started': '订阅专题同步开始...',
 
     // === Notices ===
     'sync.started': '同步开始...',
@@ -430,6 +443,15 @@ export const translations: Record<string, Record<string, string>> = {
     'picker.type.local_audio': 'Audio Note',
     'picker.type.unknown': 'Other',
 
+    // === Topic Picker ===
+    'topicPicker.title': 'Select Subscribed Topics',
+    'topicPicker.error': 'Failed to load',
+    'topicPicker.retry': 'Retry',
+    'topicPicker.empty': 'No subscribed topics',
+    'topicPicker.selected': '{count} selected',
+    'topicPicker.cancel': 'Cancel',
+    'topicPicker.confirm': 'Sync Topics ({count})',
+
     // === Sync Modal ===
     'modal.title': 'Dedao Brain Syncing',
     'modal.connecting': 'Connecting to API...',
@@ -451,6 +473,10 @@ export const translations: Record<string, Record<string, string>> = {
     'sync.fetched': 'Retrieved {count} notes',
     'sync.processing': 'Processing: Created {created} · Updated {updated} · Skipped {skipped} · Failed {failed}',
     'sync.processingCount': 'Processing... {current}/{total}',
+
+    // === Subscribed Knowledge Sync ===
+    'sync.subscribedKnowledge.fetching': 'Fetching subscribed topic notes...',
+    'sync.subscribedKnowledge.started': 'Subscribed topic sync started...',
 
     // === Notices ===
     'sync.started': 'Sync started...',

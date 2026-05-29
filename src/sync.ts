@@ -162,7 +162,7 @@ export class SyncEngine {
 
   private async downloadAudioAsset(
     note: GetNoteNote,
-    attachment: { type: string; url: string; title: string; duration: number }
+    attachment: { type: string; url: string; title: string; duration?: number }
   ): Promise<string | null> {
     try {
       if (!isSafeAttachmentUrl(attachment.url)) {

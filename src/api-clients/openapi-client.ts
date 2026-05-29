@@ -167,7 +167,7 @@ export interface CreateNoteOptions {
 
 export interface SubscribedTopic {
   topic_id: string;
-  name?: string;
+  name: string;
 }
 
 export interface Blogger {
@@ -218,7 +218,7 @@ function normalizeTopic(value: unknown): SubscribedTopic | null {
   if (typeof id !== 'string' && typeof id !== 'number') return null;
   return {
     topic_id: String(id),
-    name: typeof value.name === 'string' ? value.name : undefined,
+    name: typeof value.name === 'string' ? value.name : '',
   };
 }
 

@@ -59,7 +59,7 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
     apiToken: '',
     clientId: '',
     webCsrfToken: '',
-    folderName: 'Get笔记',
+    folderName: '得到大脑',
     filenamePrefix: '',
     maxDays: 30,
     syncStartDate: '',
@@ -85,7 +85,7 @@ afterEach(() => {
 });
 
 describe('ReverseSyncEngine', () => {
-  it('ignores markdown files outside the configured GetNote folder', async () => {
+  it('ignores markdown files outside the configured Dedao Brain folder', async () => {
     const app = makeMockApp();
     app.vault._addFile('Inbox/local.md', [
       '---',
@@ -105,7 +105,7 @@ describe('ReverseSyncEngine', () => {
 
   it('does not treat a root note named like the configured folder as inside that folder', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记.md', [
+    app.vault._addFile('得到大脑.md', [
       '---',
       'title: "Folder index"',
       '---',
@@ -123,7 +123,7 @@ describe('ReverseSyncEngine', () => {
 
   it('creates a local-only markdown note and writes the returned uid back to frontmatter', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/local.md', [
+    app.vault._addFile('得到大脑/local.md', [
       '---',
       'title: "Local title"',
       'note_type: plain_text',
@@ -158,7 +158,7 @@ describe('ReverseSyncEngine', () => {
         }),
       })
     );
-    expect(app.vault._getFile('Get笔记/local.md')?.content).toBe([
+    expect(app.vault._getFile('得到大脑/local.md')?.content).toBe([
       '---',
       'uid: "1909999999999999999"',
       'title: "Local title"',
@@ -170,7 +170,7 @@ describe('ReverseSyncEngine', () => {
 
   it('skips notes whose uid still exists remotely', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/imported.md', [
+    app.vault._addFile('得到大脑/imported.md', [
       '---',
       'uid: "remote-1"',
       'title: "Imported"',
@@ -200,7 +200,7 @@ describe('ReverseSyncEngine', () => {
 
   it('reads numeric uid values before deciding whether to create a remote note', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/numeric.md', [
+    app.vault._addFile('得到大脑/numeric.md', [
       '---',
       'uid: 1909999999999999999',
       'title: "Numeric uid"',
@@ -225,7 +225,7 @@ describe('ReverseSyncEngine', () => {
 
   it('normalizes single-quoted uid values before checking the remote note', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/single-quoted.md', [
+    app.vault._addFile('得到大脑/single-quoted.md', [
       '---',
       "uid: 'remote-single'",
       'title: "Single quoted uid"',
@@ -248,7 +248,7 @@ describe('ReverseSyncEngine', () => {
 
   it('parses uid from current file contents when metadata cache is stale', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/stale-cache.md', [
+    app.vault._addFile('得到大脑/stale-cache.md', [
       '---',
       'uid: "remote-from-content"',
       'title: "Fresh content"',
@@ -256,7 +256,7 @@ describe('ReverseSyncEngine', () => {
       '---',
       'Body',
     ].join('\n'));
-    app.vault._setFrontmatter('Get笔记/stale-cache.md', {});
+    app.vault._setFrontmatter('得到大脑/stale-cache.md', {});
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       mockFetchResponse({ success: true, data: { note: { note_id: 'remote-from-content' } } })
     );
@@ -270,7 +270,7 @@ describe('ReverseSyncEngine', () => {
 
   it('creates a replacement note when a local uid no longer exists remotely and rewrites uid only', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/missing.md', [
+    app.vault._addFile('得到大脑/missing.md', [
       '---',
       'uid: "missing-remote"',
       'title: "Missing remote"',
@@ -285,13 +285,13 @@ describe('ReverseSyncEngine', () => {
     const result = await new ReverseSyncEngine(app as any, makeSettings()).syncBack();
 
     expect(result).toEqual(expect.objectContaining({ created: 1, skipped: 0, failed: 0, total: 1 }));
-    expect(app.vault._getFile('Get笔记/missing.md')?.content).toContain('uid: "replacement-remote"');
-    expect(app.vault._getFile('Get笔记/missing.md')?.content).toContain('Keep this body');
+    expect(app.vault._getFile('得到大脑/missing.md')?.content).toContain('uid: "replacement-remote"');
+    expect(app.vault._getFile('得到大脑/missing.md')?.content).toContain('Keep this body');
   });
 
   it('creates a local-only markdown note through Web API mode', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/local.md', [
+    app.vault._addFile('得到大脑/local.md', [
       '---',
       'title: "Local title"',
       '---',
@@ -312,13 +312,13 @@ describe('ReverseSyncEngine', () => {
       expect.objectContaining({ method: 'POST' })
     );
     expect(result.items[0]).toEqual(expect.objectContaining({ noteId: '1911000000000000000' }));
-    expect(app.vault._getFile('Get笔记/local.md')?.content).toContain('uid: "1911000000000000000"');
-    expect(app.vault._getFile('Get笔记/local.md')?.content).toContain('prime_id: "prime-created"');
+    expect(app.vault._getFile('得到大脑/local.md')?.content).toContain('uid: "1911000000000000000"');
+    expect(app.vault._getFile('得到大脑/local.md')?.content).toContain('prime_id: "prime-created"');
   });
 
   it('uses Web prime_id for remote existence checks when it is available', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/web-imported.md', [
+    app.vault._addFile('得到大脑/web-imported.md', [
       '---',
       'uid: "1911000000000000000"',
       'prime_id: "prime-existing"',
@@ -345,7 +345,7 @@ describe('ReverseSyncEngine', () => {
 
   it('skips Web notes with uid but no prime_id instead of creating possible duplicates', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/web-without-prime.md', [
+    app.vault._addFile('得到大脑/web-without-prime.md', [
       '---',
       'uid: "1911000000000000000"',
       'title: "Old Web import"',
@@ -372,7 +372,7 @@ describe('ReverseSyncEngine', () => {
 
   it('handles CRLF frontmatter without uploading YAML as body or duplicating frontmatter', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/crlf.md', '---\r\ntitle: "CRLF"\r\nnote_type: plain_text\r\n---\r\nBody\r\n');
+    app.vault._addFile('得到大脑/crlf.md', '---\r\ntitle: "CRLF"\r\nnote_type: plain_text\r\n---\r\nBody\r\n');
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       mockFetchResponse({ success: true, data: { note: { note_id: 'crlf-created' } } })
     );
@@ -391,8 +391,8 @@ describe('ReverseSyncEngine', () => {
         }),
       })
     );
-    expect(app.vault._getFile('Get笔记/crlf.md')?.content.match(/^---/g)?.length).toBe(1);
-    expect(app.vault._getFile('Get笔记/crlf.md')?.content).toContain('uid: "crlf-created"');
+    expect(app.vault._getFile('得到大脑/crlf.md')?.content.match(/^---/g)?.length).toBe(1);
+    expect(app.vault._getFile('得到大脑/crlf.md')?.content).toContain('uid: "crlf-created"');
   });
 
   it('does not treat a leading markdown divider block as frontmatter', async () => {
@@ -403,7 +403,7 @@ describe('ReverseSyncEngine', () => {
       '---',
       'Body',
     ].join('\n');
-    app.vault._addFile('Get笔记/divider.md', content);
+    app.vault._addFile('得到大脑/divider.md', content);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       mockFetchResponse({ success: true, data: { note: { note_id: 'divider-created' } } })
     );
@@ -416,7 +416,7 @@ describe('ReverseSyncEngine', () => {
         body: expect.stringContaining('"content":"---\\n# Not YAML\\n---\\nBody"'),
       })
     );
-    expect(app.vault._getFile('Get笔记/divider.md')?.content).toBe([
+    expect(app.vault._getFile('得到大脑/divider.md')?.content).toBe([
       '---',
       'uid: "divider-created"',
       '---',
@@ -426,7 +426,7 @@ describe('ReverseSyncEngine', () => {
 
   it('re-reads the local file before writing the returned uid', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/editing.md', [
+    app.vault._addFile('得到大脑/editing.md', [
       '---',
       'title: "Editing"',
       'note_type: plain_text',
@@ -434,7 +434,7 @@ describe('ReverseSyncEngine', () => {
       'Initial body',
     ].join('\n'));
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-      app.vault._setContentOnly('Get笔记/editing.md', [
+      app.vault._setContentOnly('得到大脑/editing.md', [
         '---',
         'title: "Editing"',
         'note_type: plain_text',
@@ -446,20 +446,20 @@ describe('ReverseSyncEngine', () => {
 
     await new ReverseSyncEngine(app as any, makeSettings()).syncBack();
 
-    expect(app.vault._getFile('Get笔记/editing.md')?.content).toContain('uid: "editing-created"');
-    expect(app.vault._getFile('Get笔记/editing.md')?.content).toContain('User edit while uploading');
-    expect(app.vault._getFile('Get笔记/editing.md')?.content).not.toContain('Initial body');
+    expect(app.vault._getFile('得到大脑/editing.md')?.content).toContain('uid: "editing-created"');
+    expect(app.vault._getFile('得到大脑/editing.md')?.content).toContain('User edit while uploading');
+    expect(app.vault._getFile('得到大脑/editing.md')?.content).not.toContain('Initial body');
   });
 
   it('uploads only the markdown files explicitly selected by the user', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/a.md', [
+    app.vault._addFile('得到大脑/a.md', [
       '---',
       'title: "A"',
       '---',
       'Body A',
     ].join('\n'));
-    app.vault._addFile('Get笔记/b.md', [
+    app.vault._addFile('得到大脑/b.md', [
       '---',
       'title: "B"',
       '---',
@@ -469,7 +469,7 @@ describe('ReverseSyncEngine', () => {
       mockFetchResponse({ success: true, data: { note: { note_id: 'selected-created' } } })
     );
 
-    const selectedFile = app.vault.getMarkdownFiles().find(file => file.path === 'Get笔记/b.md');
+    const selectedFile = app.vault.getMarkdownFiles().find(file => file.path === '得到大脑/b.md');
     const result = await new ReverseSyncEngine(app as any, makeSettings()).syncFiles(selectedFile ? [selectedFile as any] : []);
 
     expect(result).toEqual(expect.objectContaining({ created: 1, skipped: 0, failed: 0, total: 1 }));
@@ -488,13 +488,13 @@ describe('ReverseSyncEngine', () => {
         body: expect.stringContaining('"title":"B"'),
       })
     );
-    expect(app.vault._getFile('Get笔记/a.md')?.content).not.toContain('selected-created');
-    expect(app.vault._getFile('Get笔记/b.md')?.content).toContain('uid: "selected-created"');
+    expect(app.vault._getFile('得到大脑/a.md')?.content).not.toContain('selected-created');
+    expect(app.vault._getFile('得到大脑/b.md')?.content).toContain('uid: "selected-created"');
   });
 
   it('counts selected markdown files that cannot be uploaded as skipped', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/empty.md', [
+    app.vault._addFile('得到大脑/empty.md', [
       '---',
       'title: "Empty"',
       'note_type: plain_text',
@@ -505,13 +505,13 @@ describe('ReverseSyncEngine', () => {
       mockFetchResponse({ success: true, data: { note: { note_id: 'should-not-create' } } })
     );
 
-    const selectedFile = app.vault.getMarkdownFiles().find(file => file.path === 'Get笔记/empty.md');
+    const selectedFile = app.vault.getMarkdownFiles().find(file => file.path === '得到大脑/empty.md');
     const result = await new ReverseSyncEngine(app as any, makeSettings()).syncFiles(selectedFile ? [selectedFile as any] : []);
 
     expect(result).toEqual(expect.objectContaining({ created: 0, skipped: 1, failed: 0, total: 1 }));
     expect(result.items).toEqual([
       expect.objectContaining({
-        noteId: 'Get笔记/empty.md',
+        noteId: '得到大脑/empty.md',
         title: 'Empty',
         noteType: 'plain_text',
         status: 'skipped',
@@ -524,7 +524,7 @@ describe('ReverseSyncEngine', () => {
 
   it('records upload failure details with the failing note and reason', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/fail.md', [
+    app.vault._addFile('得到大脑/fail.md', [
       '---',
       'title: "Failing upload"',
       'note_type: plain_text',
@@ -535,13 +535,13 @@ describe('ReverseSyncEngine', () => {
       mockFetchResponse({ error: { message: 'server down' } }, 500)
     );
 
-    const selectedFile = app.vault.getMarkdownFiles().find(file => file.path === 'Get笔记/fail.md');
+    const selectedFile = app.vault.getMarkdownFiles().find(file => file.path === '得到大脑/fail.md');
     const result = await new ReverseSyncEngine(app as any, makeSettings()).syncFiles(selectedFile ? [selectedFile as any] : []);
 
     expect(result).toEqual(expect.objectContaining({ created: 0, skipped: 0, failed: 1, total: 1 }));
     expect(result.items).toEqual([
       expect.objectContaining({
-        noteId: 'Get笔记/fail.md',
+        noteId: '得到大脑/fail.md',
         title: 'Failing upload',
         noteType: 'plain_text',
         status: 'failed',
@@ -552,20 +552,20 @@ describe('ReverseSyncEngine', () => {
 
   it('records one unreadable selected file as failed and continues the batch', async () => {
     const app = makeMockApp();
-    app.vault._addFile('Get笔记/deleted.md', [
+    app.vault._addFile('得到大脑/deleted.md', [
       '---',
       'title: "Deleted"',
       '---',
       'Body',
     ].join('\n'));
-    app.vault._addFile('Get笔记/ok.md', [
+    app.vault._addFile('得到大脑/ok.md', [
       '---',
       'title: "OK"',
       '---',
       'Body',
     ].join('\n'));
     vi.mocked(app.vault.read).mockImplementation(async (file: { path: string }) => {
-      if (file.path === 'Get笔记/deleted.md') throw new Error('file missing');
+      if (file.path === '得到大脑/deleted.md') throw new Error('file missing');
       return app.vault._getFile(file.path)?.content ?? '';
     });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -576,7 +576,7 @@ describe('ReverseSyncEngine', () => {
 
     expect(result).toEqual(expect.objectContaining({ created: 1, skipped: 0, failed: 1, total: 2 }));
     expect(result.items).toEqual(expect.arrayContaining([
-      expect.objectContaining({ noteId: 'Get笔记/deleted.md', status: 'failed', error: 'file missing' }),
+      expect.objectContaining({ noteId: '得到大脑/deleted.md', status: 'failed', error: 'file missing' }),
       expect.objectContaining({ noteId: 'ok-created', status: 'created' }),
     ]));
   });

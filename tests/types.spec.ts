@@ -44,8 +44,8 @@ describe('getCategoryDir', () => {
 });
 
 describe('DEFAULT_SETTINGS', () => {
-  it('folderName 默认为 Get笔记', () => {
-    expect(DEFAULT_SETTINGS.folderName).toBe('Get笔记');
+  it('folderName 默认为 得到大脑', () => {
+    expect(DEFAULT_SETTINGS.folderName).toBe('得到大脑');
   });
 
   it('maxDays 默认为 30', () => {

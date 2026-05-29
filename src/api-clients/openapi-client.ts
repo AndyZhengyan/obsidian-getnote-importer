@@ -5,7 +5,7 @@ export const GETNOTE_LIST_LIMIT = 20;
 
 function safeJsonParse(text: string): unknown {
   let safe = text.replace(
-    /"(id|note_id|parent_id|follow_id|live_id)"\s*:\s*(\d+)/g,
+    /"(id|note_id|parent_id|follow_id|live_id|topic_id|post_id|post_id_alias)"\s*:\s*(\d+)/g,
     '"$1":"$2"'
   );
   safe = safe.replace(/"children_ids"\s*:\s*\[([^\]]*)\]/g, (_match, body: string) => {
@@ -152,6 +152,7 @@ export interface FetchNotesOptions {
   sinceId?: string;
   limit?: number;
   signal?: AbortSignal;
+  topicIds?: string[];
 }
 
 export interface CreateNoteOptions {
@@ -164,6 +165,25 @@ export interface CreateNoteOptions {
   signal?: AbortSignal;
 }
 
+export interface SubscribedTopic {
+  topic_id: string;
+  name: string;
+}
+
+export interface Blogger {
+  follow_id: string;
+  name?: string;
+}
+
+export interface BloggerContent {
+  post_id_alias: string;
+  title?: string;
+  content?: string;
+  summary?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export async function fetchNotes(options: FetchNotesOptions): Promise<{ notes: GetNoteNote[]; hasMore: boolean }> {
   const { token, clientId, sinceId = '0', signal } = options;
   const params = new URLSearchParams();
@@ -173,6 +193,148 @@ export async function fetchNotes(options: FetchNotesOptions): Promise<{ notes: G
     url, { method: 'GET', headers: buildHeaders(token, clientId) }, 3, signal
   );
   return normalizeListData(data);
+}
+
+function readArray(value: Record<string, unknown>, keys: string[]): unknown[] {
+  for (const key of keys) {
+    const candidate = value[key];
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+}
+
+function readHasMore(value: Record<string, unknown>): boolean {
+  return Boolean(value.has_more ?? value.hasMore);
+}
+
+function normalizeData(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) return {};
+  return isRecord(value.data) ? value.data : value;
+}
+
+function normalizeTopic(value: unknown): SubscribedTopic | null {
+  if (!isRecord(value)) return null;
+  const id = value.topic_id ?? value.id ?? value.id_alias;
+  if (typeof id !== 'string' && typeof id !== 'number') return null;
+  return {
+    topic_id: String(id),
+    name: typeof value.name === 'string' ? value.name : '',
+  };
+}
+
+function normalizeBlogger(value: unknown): Blogger | null {
+  if (!isRecord(value)) return null;
+  const id = value.follow_id ?? value.id ?? value.watch_id;
+  if (typeof id !== 'string' && typeof id !== 'number') return null;
+  return {
+    follow_id: String(id),
+    name: typeof value.name === 'string' ? value.name : typeof value.nickname === 'string' ? value.nickname : undefined,
+  };
+}
+
+function normalizeContent(value: unknown): BloggerContent | null {
+  if (!isRecord(value)) return null;
+  const id = value.post_id_alias ?? value.post_id ?? value.id_alias ?? value.id;
+  if (typeof id !== 'string' && typeof id !== 'number') return null;
+  return {
+    post_id_alias: String(id),
+    title: typeof value.title === 'string' ? value.title : typeof value.post_name === 'string' ? value.post_name : undefined,
+    content: typeof value.content === 'string' ? value.content : typeof value.post_cleaned_summary === 'string' ? value.post_cleaned_summary : undefined,
+    summary: typeof value.summary === 'string' ? value.summary : typeof value.post_summary === 'string' ? value.post_summary : undefined,
+    created_at: typeof value.created_at === 'string' ? value.created_at : typeof value.post_create_time === 'string' ? value.post_create_time : undefined,
+    updated_at: typeof value.updated_at === 'string' ? value.updated_at : typeof value.edit_time === 'string' ? value.edit_time : undefined,
+  };
+}
+
+function bloggerContentToNote(content: BloggerContent, topic: SubscribedTopic, blogger: Blogger): GetNoteNote {
+  const created = content.created_at ?? '';
+  const updated = content.updated_at ?? created;
+  const body = content.content || content.summary || '';
+  return {
+    id: `blogger:${topic.topic_id}:${content.post_id_alias}`,
+    note_id: `blogger_${content.post_id_alias}`,
+    title: content.title ?? '',
+    content: body,
+    note_type: 'blogger_post',
+    source: 'blogger',
+    tags: [
+      ...(topic.name ? [{ name: topic.name }] : []),
+      ...(blogger.name ? [{ name: blogger.name }] : []),
+    ],
+    created_at: created,
+    updated_at: updated,
+  };
+}
+
+export async function fetchSubscribedTopics(token: string, clientId: string, signal?: AbortSignal): Promise<SubscribedTopic[]> {
+  const topics: SubscribedTopic[] = [];
+  let page = 1;
+  while (true) {
+    const url = `https://openapi.biji.com/open/api/v1/resource/knowledge/subscribe/list?page=${page}`;
+    const data = await apiRequest<Record<string, unknown>>(url, { method: 'GET', headers: buildHeaders(token, clientId) }, 2, signal);
+    const source = normalizeData(data);
+    topics.push(...readArray(source, ['topics', 'list', 'items']).map(normalizeTopic).filter((item): item is SubscribedTopic => Boolean(item)));
+    if (!readHasMore(source)) break;
+    page++;
+  }
+  return topics;
+}
+
+async function fetchTopicBloggers(topicId: string, token: string, clientId: string, signal?: AbortSignal): Promise<Blogger[]> {
+  const bloggers: Blogger[] = [];
+  let page = 1;
+  while (true) {
+    const params = new URLSearchParams({ topic_id: topicId, page: String(page) });
+    const url = `https://openapi.biji.com/open/api/v1/resource/knowledge/bloggers?${params.toString()}`;
+    const data = await apiRequest<Record<string, unknown>>(url, { method: 'GET', headers: buildHeaders(token, clientId) }, 2, signal);
+    const source = normalizeData(data);
+    bloggers.push(...readArray(source, ['bloggers', 'list', 'items']).map(normalizeBlogger).filter((item): item is Blogger => Boolean(item)));
+    if (!readHasMore(source)) break;
+    page++;
+  }
+  return bloggers;
+}
+
+async function fetchBloggerContents(topicId: string, blogger: Blogger, token: string, clientId: string, signal?: AbortSignal): Promise<BloggerContent[]> {
+  const contents: BloggerContent[] = [];
+  let page = 1;
+  while (true) {
+    const params = new URLSearchParams({ topic_id: topicId, follow_id: blogger.follow_id, page: String(page) });
+    const url = `https://openapi.biji.com/open/api/v1/resource/knowledge/blogger/contents?${params.toString()}`;
+    const data = await apiRequest<Record<string, unknown>>(url, { method: 'GET', headers: buildHeaders(token, clientId) }, 2, signal);
+    const source = normalizeData(data);
+    contents.push(...readArray(source, ['contents', 'posts', 'list', 'items']).map(normalizeContent).filter((item): item is BloggerContent => Boolean(item)));
+    if (!readHasMore(source)) break;
+    page++;
+  }
+  return contents;
+}
+
+async function fetchBloggerContentDetail(topicId: string, content: BloggerContent, token: string, clientId: string, signal?: AbortSignal): Promise<BloggerContent> {
+  const params = new URLSearchParams({ topic_id: topicId, post_id: content.post_id_alias });
+  const url = `https://openapi.biji.com/open/api/v1/resource/knowledge/blogger/content/detail?${params.toString()}`;
+  const data = await apiRequest<Record<string, unknown>>(url, { method: 'GET', headers: buildHeaders(token, clientId) }, 2, signal);
+  const detail = normalizeContent(normalizeData(data));
+  return detail ? { ...content, ...detail } : content;
+}
+
+export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions): Promise<GetNoteNote[]> {
+  const { token, clientId, signal } = options;
+  const notes: GetNoteNote[] = [];
+  const topics = await fetchSubscribedTopics(token, clientId, signal);
+  const targetIds = options.topicIds;
+  const filteredTopics = targetIds ? topics.filter(t => targetIds.includes(t.topic_id)) : topics;
+  for (const topic of filteredTopics) {
+    const bloggers = await fetchTopicBloggers(topic.topic_id, token, clientId, signal);
+    for (const blogger of bloggers) {
+      const contents = await fetchBloggerContents(topic.topic_id, blogger, token, clientId, signal);
+      for (const content of contents) {
+        const detail = await fetchBloggerContentDetail(topic.topic_id, content, token, clientId, signal);
+        notes.push(bloggerContentToNote(detail, topic, blogger));
+      }
+    }
+  }
+  return notes;
 }
 
 export async function fetchNoteDetail(

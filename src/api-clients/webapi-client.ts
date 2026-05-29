@@ -1,4 +1,4 @@
-import type { GetNoteNote, Attachment } from '../types';
+import type { GetNoteNote, Attachment, SubscribedTopic } from '../types';
 import { t } from '../i18n';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -14,6 +14,14 @@ function buildHeaders(token: string): Record<string, string> {
   return {
     Authorization: normalizeBearerToken(token),
     'x-request-id': String(Date.now()),
+  };
+}
+
+function buildKnowledgeHeaders(token: string): Record<string, string> {
+  return {
+    ...buildHeaders(token),
+    'X-Appid': '3',
+    'X-Av': '1.2.2',
   };
 }
 
@@ -149,6 +157,7 @@ export interface FetchNotesOptions {
   sinceId?: string;
   limit?: number;
   signal?: AbortSignal;
+  topicIds?: string[];
 }
 
 export interface CreateNoteOptions {
@@ -172,6 +181,140 @@ export async function fetchNotes(options: FetchNotesOptions): Promise<{ notes: G
     headers: buildHeaders(token),
   }, 3, signal);
   return parseWebApiListResponse(data);
+}
+
+function normalizeWebData(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) return {};
+  return isRecord(value.c) ? value.c : value;
+}
+
+function noteFromKnowledgeResource(resource: unknown, topicName?: string): GetNoteNote | null {
+  if (!isRecord(resource)) return null;
+  const meta = isRecord(resource.resource_note_meta_data) ? resource.resource_note_meta_data : resource;
+  const id = meta.note_id ?? resource.resource_id_alias ?? resource.id_alias ?? resource.id;
+  if (typeof id !== 'string' && typeof id !== 'number') return null;
+  const noteId = String(id);
+  const title = typeof meta.title === 'string'
+    ? meta.title
+    : typeof resource.post_name === 'string'
+      ? resource.post_name
+      : '';
+  const content = typeof meta.content === 'string'
+    ? meta.content
+    : typeof meta.body_text === 'string'
+      ? meta.body_text
+      : typeof resource.post_cleaned_summary === 'string'
+        ? resource.post_cleaned_summary
+        : '';
+  const created = typeof meta.created_at === 'string'
+    ? meta.created_at
+    : typeof resource.post_create_time === 'string'
+      ? resource.post_create_time
+      : '';
+  const updated = typeof meta.edit_time === 'string'
+    ? meta.edit_time
+    : typeof meta.updated_at === 'string'
+      ? meta.updated_at
+      : created;
+  const noteType = typeof meta.note_type === 'string'
+    ? meta.note_type
+    : resource.resource_type === 'BLOGGER_POST'
+      ? 'blogger_post'
+      : 'plain_text';
+  const source = typeof meta.source === 'string' ? meta.source : resource.resource_type === 'BLOGGER_POST' ? 'blogger' : 'web';
+  const rawTags = Array.isArray(meta.tags) ? meta.tags as { name?: string }[] : [];
+  const tags = [
+    ...rawTags.filter((tag): tag is { name: string } => typeof tag.name === 'string'),
+    ...(topicName ? [{ name: topicName }] : []),
+  ];
+  return {
+    id: noteId,
+    note_id: noteType === 'blogger_post' && !noteId.startsWith('blogger_') ? `blogger_${noteId}` : noteId,
+    title,
+    content,
+    note_type: noteType,
+    source,
+    tags,
+    created_at: created,
+    updated_at: updated,
+    attachments: (meta.attachments as Attachment[]) ?? [],
+    audio: typeof meta.audio === 'string' ? meta.audio : undefined,
+    prime_id: typeof meta.prime_id === 'string' ? meta.prime_id : undefined,
+  };
+}
+
+export async function fetchSubscribedTopics(token: string, signal?: AbortSignal): Promise<SubscribedTopic[]> {
+  const listUrl = 'https://knowledge-api.trytalks.com/v1/web/subscribe/topic/list?page=1&size=200&exclude_mine=true';
+  const listData = await apiRequest<Record<string, unknown>>(listUrl, {
+    method: 'GET',
+    headers: buildKnowledgeHeaders(token),
+  }, 2, signal);
+  const topicsData = normalizeWebData(listData);
+  const raw = Array.isArray(topicsData.list) ? topicsData.list : [];
+  const topics: SubscribedTopic[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
+    const id = item.id_alias;
+    if (typeof id !== 'string' && typeof id !== 'number') continue;
+    topics.push({
+      topic_id: String(id),
+      name: typeof item.name === 'string' ? item.name : '',
+    });
+  }
+  return topics;
+}
+
+export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions): Promise<GetNoteNote[]> {
+  const notes: GetNoteNote[] = [];
+  const listUrl = 'https://knowledge-api.trytalks.com/v1/web/subscribe/topic/list?page=1&size=200&exclude_mine=true';
+  const listData = await apiRequest<Record<string, unknown>>(listUrl, {
+    method: 'GET',
+    headers: buildKnowledgeHeaders(options.token),
+  }, 2, options.signal);
+  const topicsData = normalizeWebData(listData);
+  const rawTopics = Array.isArray(topicsData.list) ? topicsData.list : [];
+  const targetIds = options.topicIds;
+  const filteredTopics = targetIds
+    ? rawTopics.filter((t: unknown) => {
+        if (!isRecord(t)) return false;
+        const id = String(t.id_alias ?? '');
+        return targetIds.includes(id);
+      })
+    : rawTopics;
+  for (const topic of filteredTopics) {
+    if (!isRecord(topic)) continue;
+    const topicAlias = topic.id_alias;
+    const rootDir = isRecord(topic.root_dir) ? topic.root_dir : {};
+    const directoryId = rootDir.id;
+    if ((typeof topicAlias !== 'string' && typeof topicAlias !== 'number') || (typeof directoryId !== 'string' && typeof directoryId !== 'number')) {
+      continue;
+    }
+    let page = 1;
+    while (true) {
+      const params = new URLSearchParams({
+        topic_id: '-1',
+        topic_id_alias: String(topicAlias),
+        directory_id: String(directoryId),
+        sort: 'create_time_desc',
+        resource_type: '0',
+        page: String(page),
+      });
+      const url = `https://knowledge-api.trytalks.com/v1/web/topic/resource/list/mix?${params.toString()}`;
+      const data = await apiRequest<Record<string, unknown>>(url, {
+        method: 'GET',
+        headers: buildKnowledgeHeaders(options.token),
+      }, 2, options.signal);
+      const source = normalizeWebData(data);
+      const resources = Array.isArray(source.resources) ? source.resources : [];
+      for (const resource of resources) {
+        const note = noteFromKnowledgeResource(resource, typeof topic.name === 'string' ? topic.name : undefined);
+        if (note) notes.push(note);
+      }
+      if (!source.has_next || resources.length === 0) break;
+      page++;
+    }
+  }
+  return notes;
 }
 
 export async function fetchNoteDetail(

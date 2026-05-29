@@ -85,7 +85,7 @@ function buildFrontmatter(note: GetNoteNote): string {
     `title: "${title}"`,
     `created: ${formatDateTime(note.created_at)}`,
     `modified: ${formatDateTime(note.updated_at)}`,
-    `source: Get笔记`,
+    `source: 得到大脑`,
     `note_type: ${note.note_type}`,
     `tags: ${tagBlock}`,
   ];

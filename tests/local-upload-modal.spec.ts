@@ -6,8 +6,8 @@ import { LocalUploadModal } from '../src/ui/local-upload-modal';
 
 function renderModal(onConfirm = vi.fn()) {
   const files = [
-    new TFile('Get笔记/a.md'),
-    new TFile('Get笔记/nested/b.md'),
+    new TFile('得到大脑/a.md'),
+    new TFile('得到大脑/nested/b.md'),
     new TFile('Inbox/c.md'),
     new TFile('Archive/d.md'),
   ];
@@ -16,7 +16,7 @@ function renderModal(onConfirm = vi.fn()) {
   render(
     h(LocalUploadModal, {
       files,
-      initialFolder: 'Get笔记',
+      initialFolder: '得到大脑',
       onConfirm,
       onCancel: vi.fn(),
     }),
@@ -48,7 +48,7 @@ describe('LocalUploadModal', () => {
     });
 
     expect(onConfirm).toHaveBeenCalledWith([
-      expect.objectContaining({ path: 'Get笔记/nested/b.md' }),
+      expect.objectContaining({ path: '得到大脑/nested/b.md' }),
     ]);
   });
 
@@ -82,7 +82,7 @@ describe('LocalUploadModal', () => {
     const onConfirm = vi.fn();
     const files = [
       new TFile('root.md'),
-      new TFile('Get笔记/a.md'),
+      new TFile('得到大脑/a.md'),
     ];
     const container = document.createElement('div');
     document.body.appendChild(container);

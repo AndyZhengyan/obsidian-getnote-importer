@@ -1,0 +1,113 @@
+{
+  "name": "sync-subscribed-blogger-openapi",
+  "description": "OpenAPI: full sync includes subscribed knowledge blogger posts",
+  "authMode": "openapi",
+  "sequence": [
+    {
+      "request": {
+        "url": "https://openapi.biji.com/open/api/v1/resource/note/list",
+        "params": { "since_id": "0" }
+      },
+      "response": {
+        "body": {
+          "success": true,
+          "data": {
+            "notes": [],
+            "has_more": false
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "url": "https://openapi.biji.com/open/api/v1/resource/knowledge/subscribe/list",
+        "params": { "page": "1" }
+      },
+      "response": {
+        "body": {
+          "success": true,
+          "data": {
+            "topics": [
+              {
+                "topic_id": "finance_topic",
+                "name": "金融理财",
+                "description": "订阅知识库"
+              }
+            ],
+            "has_more": false
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "url": "https://openapi.biji.com/open/api/v1/resource/knowledge/bloggers",
+        "params": { "topic_id": "finance_topic", "page": "1" }
+      },
+      "response": {
+        "body": {
+          "success": true,
+          "data": {
+            "bloggers": [
+              {
+                "follow_id": "follow_yigehangzhang",
+                "name": "有一个行长"
+              }
+            ],
+            "has_more": false
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "url": "https://openapi.biji.com/open/api/v1/resource/knowledge/blogger/contents",
+        "params": {
+          "topic_id": "finance_topic",
+          "follow_id": "follow_yigehangzhang",
+          "page": "1"
+        }
+      },
+      "response": {
+        "body": {
+          "success": true,
+          "data": {
+            "contents": [
+              {
+                "post_id_alias": "post_market_1",
+                "title": "利率市场观察",
+                "summary": "短视频摘要",
+                "created_at": "2026-05-20 09:00:00",
+                "updated_at": "2026-05-20 09:30:00"
+              }
+            ],
+            "has_more": false
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "url": "https://openapi.biji.com/open/api/v1/resource/knowledge/blogger/content/detail",
+        "params": {
+          "topic_id": "finance_topic",
+          "post_id": "post_market_1"
+        }
+      },
+      "response": {
+        "body": {
+          "success": true,
+          "data": {
+            "post_id_alias": "post_market_1",
+            "title": "利率市场观察",
+            "content": "这是订阅博主原文内容。",
+            "summary": "短视频摘要",
+            "created_at": "2026-05-20 09:00:00",
+            "updated_at": "2026-05-20 09:30:00",
+            "url": "https://biji.com/post/blogger/follow_yigehangzhang/post_market_1"
+          }
+        }
+      }
+    }
+  ]
+}

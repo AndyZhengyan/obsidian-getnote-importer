@@ -1,5 +1,5 @@
 import { App, TFile } from 'obsidian';
-import { fetchAllNotes, fetchNoteChildren, fetchNoteDetail } from './api';
+import { fetchAllNotes, fetchNoteChildren, fetchNoteDetail, fetchSubscribedKnowledgeNotes } from './api';
 import { formatDateTime, formatTimestampPrefix, renderNote, generateDisplayTitle } from './note-parser';
 import { getCategoryDir } from './types';
 import { getAuthCredentials, type GetNoteNote, type Settings, type SyncResult, type SyncResultItem, type SyncScopeOptions } from './types';
@@ -770,6 +770,67 @@ export class SyncEngine {
         }
 
         if (fetchedCount >= noteIds.length) break;
+      }
+
+      this.onProgress?.({ percent: 100 });
+      return result;
+    } catch (err) {
+      cleanup();
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new SyncCancelledError();
+      }
+      throw err;
+    } finally {
+      if (this.abortController === controller) {
+        this.abortController = null;
+      }
+    }
+  }
+
+  async syncSubscribedKnowledge(modal?: SyncModal): Promise<SyncResult> {
+    const result: SyncResult = { created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] };
+    const uidIndex = this.buildUidIndex();
+    const seenNoteIds = new Set<string>();
+    const controller = new AbortController();
+    this.abortController = controller;
+    this.cancelled = false;
+
+    const cleanup = () => {
+      this.cancelled = true;
+      this.onCancel?.();
+      if (!controller.signal.aborted) controller.abort();
+    };
+    modal?.setOnCancel(cleanup);
+
+    try {
+      const credentials = getAuthCredentials(this.settings);
+      const notes = await fetchSubscribedKnowledgeNotes({
+        token: credentials.token,
+        clientId: credentials.clientId,
+        signal: controller.signal,
+        authMode: credentials.authMode,
+      });
+      const recentNotes = this.filterRecentNotes(notes);
+      const filtered = this.filterNotesByDateRange(recentNotes);
+      const typeFiltered = this.filterNotesByType(filtered);
+
+      for (const note of typeFiltered) {
+        if (this.cancelled || modal?.isCancelled()) throw new SyncCancelledError();
+        if (seenNoteIds.has(note.note_id)) continue;
+        seenNoteIds.add(note.note_id);
+        result.total++;
+        const writeResult = await this.writeNote(note, uidIndex);
+        this.applyWriteResult(result, writeResult);
+        this.recordItem(result, note, writeResult);
+        this.onProgress?.({
+          processed: result.total,
+          total: typeFiltered.length,
+          created: result.created,
+          updated: result.updated,
+          skipped: result.skipped,
+          failed: result.failed,
+          percent: typeFiltered.length ? Math.round((result.total / typeFiltered.length) * 100) : 100,
+        });
       }
 
       this.onProgress?.({ percent: 100 });

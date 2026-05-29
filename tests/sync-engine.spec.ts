@@ -1973,6 +1973,65 @@ describe('SyncEngine — fixture-based sync integration', () => {
     );
   });
 
+  it('OpenAPI: manual subscribed knowledge sync writes blogger posts', async () => {
+    resetFixtures();
+    loadScenario('sync-subscribed-blogger-openapi');
+
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({
+      authMode: 'openapi',
+      openApiToken: 'test-openapi-token',
+      openApiClientId: 'test-client',
+      maxDays: 0,
+    }));
+
+    const result = await engine.syncSubscribedKnowledge();
+
+    expect(result.created).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(result.total).toBe(1);
+    expect(result.items).toEqual([
+      expect.objectContaining({ noteId: 'blogger_post_market_1', status: 'created' }),
+    ]);
+    const created = vi.mocked(app.vault.create).mock.calls;
+    expect(created.map(([path]) => path)).toContain('Get笔记/其他/利率市场观察.md');
+    expect(created.find(([path]) => path === 'Get笔记/其他/利率市场观察.md')?.[1]).toContain('这是订阅博主原文内容。');
+    expect(getFixtureRequests().map(request => request.url)).toEqual([
+      'https://openapi.biji.com/open/api/v1/resource/knowledge/subscribe/list?page=1',
+      'https://openapi.biji.com/open/api/v1/resource/knowledge/bloggers?topic_id=finance_topic&page=1',
+      'https://openapi.biji.com/open/api/v1/resource/knowledge/blogger/contents?topic_id=finance_topic&follow_id=follow_yigehangzhang&page=1',
+      'https://openapi.biji.com/open/api/v1/resource/knowledge/blogger/content/detail?topic_id=finance_topic&post_id=post_market_1',
+    ]);
+  });
+
+  it('WebAPI: manual subscribed knowledge sync writes blogger resources', async () => {
+    resetFixtures();
+    loadScenario('sync-subscribed-blogger-webapi');
+
+    const app = makeMockApp();
+    const engine = new SyncEngine(app as any, makeSettings({
+      authMode: 'web',
+      webApiToken: 'test-web-token',
+      maxDays: 0,
+    }));
+
+    const result = await engine.syncSubscribedKnowledge();
+
+    expect(result.created).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(result.total).toBe(1);
+    expect(result.items).toEqual([
+      expect.objectContaining({ noteId: 'blogger_post_market_1', status: 'created' }),
+    ]);
+    const created = vi.mocked(app.vault.create).mock.calls;
+    expect(created.map(([path]) => path)).toContain('Get笔记/其他/利率市场观察.md');
+    expect(created.find(([path]) => path === 'Get笔记/其他/利率市场观察.md')?.[1]).toContain('这是 Web API 订阅博主内容。');
+    expect(getFixtureRequests().map(request => request.url)).toEqual([
+      'https://knowledge-api.trytalks.com/v1/web/subscribe/topic/list?page=1&size=200&exclude_mine=true',
+      'https://knowledge-api.trytalks.com/v1/web/topic/resource/list/mix?topic_id=-1&topic_id_alias=finance_topic_alias&directory_id=2001&sort=create_time_desc&resource_type=0&page=1',
+    ]);
+  });
+
   it('selective sync: parent + child both written via syncNoteIds', async () => {
     resetFixtures();
     loadScenario('selective-sync-openapi');

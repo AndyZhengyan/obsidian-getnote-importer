@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { NOTICE_PREFIX } from '../src/ui/notice';
 // Pure function tests — the Notice() call is tested via integration,
 // these unit tests cover the transformation logic.
 
@@ -17,6 +18,10 @@ function transformInfo(message: string) {
 }
 
 describe('showNotice', () => {
+  it('uses the short Obsidian notification prefix', () => {
+    expect(NOTICE_PREFIX).toBe('得到大脑');
+  });
+
   it('uses default timeout 5000', () => {
     const result = transformNotice('同步完成', 5000);
     expect(result.timeout).toBe(5000);

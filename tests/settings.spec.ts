@@ -35,6 +35,7 @@ function renderSettings(
       settings,
       updateSetting,
       startSync: vi.fn(),
+      startSubscribedKnowledgeSync: vi.fn(),
       isSyncing: options.isSyncing ?? false,
       openNotePicker: vi.fn(),
       openLocalUpload,
@@ -73,7 +74,7 @@ describe('SettingsComponent auth credentials', () => {
       reverseSync: { enabled: false },
     }));
 
-    expect(container.textContent).not.toContain('允许上传本地笔记到 Get笔记');
+    expect(container.textContent).not.toContain('允许上传本地笔记到 得到大脑');
     expect(container.textContent).not.toContain('启用上传');
   });
 
@@ -86,8 +87,8 @@ describe('SettingsComponent auth credentials', () => {
       reverseSync: { enabled: false },
     }), vi.fn(), openLocalUpload);
 
-    expect(container.textContent).toContain('从 Get笔记同步到 Obsidian');
-    expect(container.textContent).toContain('从 Obsidian 上传到 Get笔记');
+    expect(container.textContent).toContain('从 得到大脑同步到 Obsidian');
+    expect(container.textContent).toContain('从 Obsidian 上传到 得到大脑');
     expect(container.textContent).not.toContain('选择笔记上传');
     const uploadButton = Array.from(container.querySelectorAll('button'))
       .find((button): button is HTMLButtonElement => button.textContent === '按笔记上传');

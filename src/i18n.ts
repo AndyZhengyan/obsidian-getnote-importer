@@ -22,6 +22,7 @@ export const translations: Record<string, Record<string, string>> = {
     'settings.prefix.desc': '自定义前缀，自动加在文件名开头',
     'settings.prefix.placeholder': '例如 GetNote 或 YYYYMMDDHHmmss',
     'settings.prefix.hint': '时间格式：YYYY / MM / DD / HH / mm / ss',
+    'settings.subscribedKnowledge.button': '同步订阅知识库',
     'settings.interval.hint': '最小 5 分钟',
     'settings.interval.minWarning': '间隔不能小于 5 分钟，已自动调整为 5 分钟',
     'settings.scheduled.label': '定时自动同步',
@@ -197,6 +198,8 @@ export const translations: Record<string, Record<string, string>> = {
     // === Notices ===
     'sync.started': '同步开始...',
     'sync.autoComplete': '自动同步完成：新增 {created} 更新 {updated}',
+    'sync.subscribedKnowledge.fetching': '正在同步订阅知识库...',
+    'sync.subscribedKnowledge.started': '开始同步订阅知识库',
     'sync.autoFailRepeated': '自动同步连续失败 {count} 次，请检查设置',
     'notice.autoSynced': '自动同步：新增 {created}，更新 {updated}',
     'notice.autoSyncFailed': '自动同步失败',
@@ -278,6 +281,7 @@ export const translations: Record<string, Record<string, string>> = {
     'settings.prefix.desc': 'Custom prefix added to the start of filenames',
     'settings.prefix.placeholder': 'e.g. GetNote or YYYYMMDDHHmmss',
     'settings.prefix.hint': 'Time format: YYYY / MM / DD / HH / mm / ss',
+    'settings.subscribedKnowledge.button': 'Sync Subscribed Knowledge',
     'settings.scheduled.label': 'Scheduled Auto Sync',
     'settings.scheduled.desc': 'Automatically sync from GetNote to Obsidian at regular intervals. Local notes are never uploaded automatically.',
     'settings.scheduled.enabled': 'Enable scheduled sync',
@@ -453,6 +457,8 @@ export const translations: Record<string, Record<string, string>> = {
     // === Notices ===
     'sync.started': 'Sync started...',
     'sync.autoComplete': 'Auto sync complete: {created} created {updated} updated',
+    'sync.subscribedKnowledge.fetching': 'Syncing subscribed knowledge...',
+    'sync.subscribedKnowledge.started': 'Started subscribed knowledge sync',
     'sync.autoFailRepeated': 'Auto sync failed {count} times, please check settings',
     'notice.autoSynced': 'Auto sync: {created} created, {updated} updated',
     'notice.autoSyncFailed': 'Auto sync failed',

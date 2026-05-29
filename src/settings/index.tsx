@@ -40,6 +40,7 @@ interface SettingsComponentProps {
   settings: Settings;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   startSync: () => void;
+  startSubscribedKnowledgeSync: () => void;
   isSyncing: boolean;
   openNotePicker: () => void;
   openLocalUpload: () => void;
@@ -56,6 +57,7 @@ export function SettingsComponent({
   settings,
   updateSetting,
   startSync,
+  startSubscribedKnowledgeSync,
   isSyncing,
   openNotePicker,
   openLocalUpload,
@@ -539,6 +541,13 @@ export function SettingsComponent({
                 onClick={openNotePicker}
               >
                 {t('settings.syncPicker.button')}
+              </button>
+              <button
+                className="mod-secondary getnote-sync-action-button"
+                disabled={!hasCredentials || isSyncing}
+                onClick={startSubscribedKnowledgeSync}
+              >
+                {t('settings.subscribedKnowledge.button')}
               </button>
             </div>
           </div>

@@ -1,0 +1,85 @@
+{
+  "name": "sync-subscribed-blogger-webapi",
+  "description": "WebAPI: full sync includes subscribed knowledge blogger resources",
+  "authMode": "web",
+  "sequence": [
+    {
+      "request": {
+        "url": "https://get-notes.luojilab.com/voicenotes/web/notes",
+        "params": { "limit": "20", "since_id": "", "sort": "create_desc" }
+      },
+      "response": {
+        "body": {
+          "h": { "c": 0 },
+          "c": {
+            "list": [],
+            "has_more": false
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "url": "https://knowledge-api.trytalks.com/v1/web/subscribe/topic/list",
+        "params": { "page": "1", "size": "200", "exclude_mine": "true" }
+      },
+      "response": {
+        "body": {
+          "h": { "c": 0 },
+          "c": {
+            "list": [
+              {
+                "id": 1001,
+                "id_alias": "finance_topic_alias",
+                "name": "金融理财",
+                "root_dir": { "id": 2001 },
+                "extend_data": { "blogger_resource_cnt": 1 }
+              }
+            ],
+            "has_more": false
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "url": "https://knowledge-api.trytalks.com/v1/web/topic/resource/list/mix",
+        "params": {
+          "topic_id": "-1",
+          "topic_id_alias": "finance_topic_alias",
+          "directory_id": "2001",
+          "sort": "create_time_desc",
+          "resource_type": "0",
+          "page": "1"
+        }
+      },
+      "response": {
+        "body": {
+          "h": { "c": 0 },
+          "c": {
+            "directories": [],
+            "resources": [
+              {
+                "resource_type": "BLOGGER_POST",
+                "resource_id_alias": "post_market_1",
+                "blogger_id_alias": "yigehangzhang",
+                "resource_note_meta_data": {
+                  "note_id": "blogger_post_market_1",
+                  "title": "利率市场观察",
+                  "content": "这是 Web API 订阅博主内容。",
+                  "body_text": "这是 Web API 订阅博主内容。",
+                  "note_type": "blogger_post",
+                  "source": "blogger",
+                  "created_at": "2026-05-20 09:00:00",
+                  "edit_time": "2026-05-20 09:30:00",
+                  "tags": [{ "name": "金融理财" }]
+                }
+              }
+            ],
+            "has_next": 0
+          }
+        }
+      }
+    }
+  ]
+}

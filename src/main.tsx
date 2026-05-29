@@ -364,6 +364,66 @@ export default class GetNoteSyncPlugin extends Plugin {
     void this.runSync('selective', { maxDays: 0, syncStartDate: '', ...(enabledNoteTypes !== undefined ? { enabledNoteTypes } : {}) }, noteIds);
   }
 
+  syncSubscribedKnowledge(): void {
+    void this.runSubscribedKnowledgeSync();
+  }
+
+  private async runSubscribedKnowledgeSync(): Promise<void> {
+    if (this.isSyncing) return;
+    const credentials = getAuthCredentials(this.settings);
+    if (!credentials.token || (credentials.authMode !== 'web' && !credentials.clientId)) {
+      showError(t('notice.fillCredentials'));
+      return;
+    }
+
+    const startedAt = Date.now();
+    this.isSyncing = true;
+    this.syncProgress = { message: t('sync.subscribedKnowledge.fetching'), count: '', percent: 0 };
+    this.currentSyncEngine = null;
+    this.refreshSettingsTab();
+    showNotice(t('sync.subscribedKnowledge.started'));
+
+    const engine = new SyncEngine(this.app, this.settings, (info) => this.setProgress(info));
+    this.currentSyncEngine = engine;
+    engine.setOnCancel(() => this.cancelSync());
+
+    try {
+      const result = await engine.syncSubscribedKnowledge();
+      await this.recordSyncHistory(result, 'full', startedAt, {
+        maxDays: this.settings.maxDays,
+        syncStartDate: this.settings.syncStartDate,
+      });
+      showSuccess(t('notice.syncComplete', {
+        created: result.created,
+        updated: result.updated,
+        skipped: result.skipped,
+        failed: result.failed > 0 ? ` · ${t('modal.failed', { failed: result.failed })}` : '',
+      }), 8000);
+    } catch (err) {
+      if (err instanceof SyncCancelledError) {
+        await this.recordSyncHistory(emptySyncResult(), 'full', startedAt, {
+          maxDays: this.settings.maxDays,
+          syncStartDate: this.settings.syncStartDate,
+        }, 'cancelled');
+        this.syncProgress = { message: t('modal.cancelled'), count: '', percent: 0 };
+        return;
+      }
+      const error = err instanceof Error ? err.message : String(err);
+      await this.recordSyncHistory(emptySyncResult(), 'full', startedAt, {
+        maxDays: this.settings.maxDays,
+        syncStartDate: this.settings.syncStartDate,
+      }, 'failed', error);
+      this.syncProgress = { message: t('notice.syncFailed', { msg: error }), count: '', percent: 0 };
+      console.error(t('console.syncError'), err);
+      showError(t('notice.syncFailed', { msg: error }));
+    } finally {
+      this.isSyncing = false;
+      this.currentSyncEngine = null;
+      this.syncProgress = { message: '', count: '', percent: 0 };
+      this.refreshSettingsTab();
+    }
+  }
+
   openLocalUploadModal(): void {
     const credentials = getAuthCredentials(this.settings);
     if (!credentials.token || (credentials.authMode !== 'web' && !credentials.clientId)) {

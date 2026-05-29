@@ -23,6 +23,7 @@ export class GetNoteSettingsTab extends PluginSettingTab {
         settings={this.plugin.settings}
         updateSetting={this.updateSetting}
         startSync={() => this.plugin.openManualSyncModal()}
+        startSubscribedKnowledgeSync={() => this.plugin.syncSubscribedKnowledge()}
         isSyncing={this.plugin.isSyncing}
         syncProgress={this.plugin.syncProgress}
         openNotePicker={() => this.plugin.openNotePicker()}

@@ -22,6 +22,10 @@ describe('getCategoryDir', () => {
     expect(getCategoryDir('recorder_flash_audio')).toBe('录音长录');
   });
 
+  it('img_text → 图片笔记', () => {
+    expect(getCategoryDir('img_text')).toBe('图片笔记');
+  });
+
   it('audio_long → 录音长录', () => {
     expect(getCategoryDir('audio_long')).toBe('录音长录');
   });
@@ -40,8 +44,8 @@ describe('getCategoryDir', () => {
 });
 
 describe('DEFAULT_SETTINGS', () => {
-  it('folderName 默认为 Get笔记', () => {
-    expect(DEFAULT_SETTINGS.folderName).toBe('Get笔记');
+  it('folderName 默认为 得到大脑', () => {
+    expect(DEFAULT_SETTINGS.folderName).toBe('得到大脑');
   });
 
   it('maxDays 默认为 30', () => {

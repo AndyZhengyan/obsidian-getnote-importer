@@ -2,7 +2,7 @@
   "id": "dedao-brain-sync",
   "name": "Dedao Brain Sync",
   "version": "1.0.12",
-  "description": "Sync notes, links, recordings, and AI summaries from Dedao Brain (GetNote) into your local vault.",
+  "description": "Sync notes, links, recordings, and AI summaries from Dedao Brain (formerly GetNote, 得到大脑（原Get笔记）) into your local vault.",
   "author": "Andy Zheng",
   "isDesktopOnly": false,
   "minAppVersion": "1.8.7"

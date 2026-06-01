@@ -26,7 +26,7 @@ describe('renderNote', () => {
     expect(result).toContain('title: "测试笔记"');
     expect(result).toContain('created: 2026-04-27 22:26:17');
     expect(result).toContain('modified: 2026-04-28 10:00:00');
-    expect(result).toContain('source: Get笔记');
+    expect(result).toContain('source: 得到大脑');
     expect(result).toContain('note_type: plain_text');
     expect(result).toContain('tags: ["tag1", "tag2"]');
     expect(result).toContain('这是正文内容');
@@ -235,6 +235,42 @@ describe('renderNote — audio note', () => {
     const result = renderNote(note);
     expect(result).not.toContain('asset/');
     expect(result).toContain('正文内容');
+  });
+});
+
+// ---- renderNote — image note ----
+describe('renderNote — image note', () => {
+  it('在正文后插入带前后封条的图片引用块', () => {
+    const note = makeNote({
+      note_type: 'img_text',
+      content: '图片笔记正文',
+      assetPaths: [
+        '得到大脑/图片笔记/asset/测试笔记_image.png',
+        '得到大脑/图片笔记/asset/测试笔记_image_2.jpg',
+      ],
+    });
+
+    const result = renderNote(note);
+
+    expect(result).toContain(
+      '图片笔记正文\n---\n> 📷 图片\n> ![](asset/测试笔记_image.png)\n> ![](asset/测试笔记_image_2.jpg)\n---\n'
+    );
+  });
+
+  it('图片文件名包含空格时使用尖括号包住链接目标', () => {
+    const note = makeNote({
+      note_type: 'img_text',
+      content: '图片笔记正文',
+      assetPaths: [
+        '得到大脑/图片笔记/asset/20260527203527_Obsidian GetNote Importer插件配置界面记录_image.png',
+      ],
+    });
+
+    const result = renderNote(note);
+
+    expect(result).toContain(
+      '> ![](<asset/20260527203527_Obsidian GetNote Importer插件配置界面记录_image.png>)'
+    );
   });
 });
 

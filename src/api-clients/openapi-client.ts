@@ -1,11 +1,11 @@
-import type { GetNoteNote, Attachment } from '../types';
+import type { GetNoteNote, Attachment, SubscribedTopic } from '../types';
 import { t } from '../i18n';
 
 export const GETNOTE_LIST_LIMIT = 20;
 
 function safeJsonParse(text: string): unknown {
   let safe = text.replace(
-    /"(id|note_id|parent_id|follow_id|live_id|topic_id|post_id|post_id_alias)"\s*:\s*(\d+)/g,
+    /"(id|note_id|parent_id|follow_id|live_id)"\s*:\s*(\d+)/g,
     '"$1":"$2"'
   );
   safe = safe.replace(/"children_ids"\s*:\s*\[([^\]]*)\]/g, (_match, body: string) => {
@@ -63,8 +63,8 @@ function normalizeNoteDetailData(value: unknown): Partial<GetNoteNote> | null {
   const nestedNote = isRecord(value.note) ? value.note : null;
   const source = nestedNote ?? value;
   const detail = { ...source } as Partial<GetNoteNote>;
-  const attachments = (value.attachments ?? source.attachments) as Attachment[] | undefined;
-  const audio = normalizeAudio(value.audio ?? source.audio);
+  const attachments = (source.attachments ?? nestedNote?.attachments ?? value.attachments) as Attachment[] | undefined;
+  const audio = normalizeAudio(value.audio ?? source.audio ?? nestedNote?.audio);
   const childrenIds = Array.isArray(source.children_ids)
     ? source.children_ids.map(id => String(id))
     : undefined;
@@ -164,11 +164,6 @@ export interface CreateNoteOptions {
   signal?: AbortSignal;
 }
 
-interface SubscribedTopic {
-  topic_id: string;
-  name?: string;
-}
-
 export interface Blogger {
   follow_id: string;
   name?: string;
@@ -217,7 +212,7 @@ function normalizeTopic(value: unknown): SubscribedTopic | null {
   if (typeof id !== 'string' && typeof id !== 'number') return null;
   return {
     topic_id: String(id),
-    name: typeof value.name === 'string' ? value.name : undefined,
+    name: typeof value.name === 'string' ? value.name : '',
   };
 }
 
@@ -227,7 +222,11 @@ function normalizeBlogger(value: unknown): Blogger | null {
   if (typeof id !== 'string' && typeof id !== 'number') return null;
   return {
     follow_id: String(id),
-    name: typeof value.name === 'string' ? value.name : typeof value.nickname === 'string' ? value.nickname : undefined,
+    name: typeof value.name === 'string'
+      ? value.name
+      : typeof value.nickname === 'string'
+        ? value.nickname
+        : undefined,
   };
 }
 
@@ -294,7 +293,7 @@ export async function fetchTopicBloggers(topicId: string, token: string, clientI
   return bloggers;
 }
 
-export async function fetchTopicContentPreviews(topicId: string, topicName: string | undefined, token: string, clientId: string, signal?: AbortSignal): Promise<{ note_id: string; title: string; updated_at: string; blogger_name: string }[]> {
+export async function fetchTopicContentPreviews(topicId: string, _topicName: string | undefined, token: string, clientId: string, signal?: AbortSignal): Promise<{ note_id: string; title: string; updated_at: string; blogger_name: string }[]> {
   const items: { note_id: string; title: string; updated_at: string; blogger_name: string }[] = [];
   const bloggers = await fetchTopicBloggers(topicId, token, clientId, signal);
   for (const blogger of bloggers) {

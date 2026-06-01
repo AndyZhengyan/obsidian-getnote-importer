@@ -955,9 +955,11 @@ describe('SyncEngine — audio note sync', () => {
         return Promise.resolve(mockFetchResponse({
           success: true,
           data: {
-            ...audioNote,
-            attachments: [{ type: 'audio', url: 'https://cdn.example.com/test.mp3', title: '', duration: 883920 }],
-            audio: '🟢 说话人1 [00:00:01]\n转写内容',
+            note: {
+              ...audioNote,
+              attachments: [{ type: 'audio', url: 'https://cdn.example.com/test.mp3', title: '', duration: 883920 }],
+              audio: '🟢 说话人1 [00:00:01]\n转写内容',
+            },
           },
         }) as Response);
       }
@@ -988,7 +990,7 @@ describe('SyncEngine — audio note sync', () => {
     });
 
     try {
-      const engine = new SyncEngine(mockApp as any, makeSettings());
+      const engine = new SyncEngine(mockApp as any, makeSettings({ maxDays: 0 }));
       const result = await engine.sync();
 
       // 验证 asset 目录被创建/写入
@@ -1074,7 +1076,7 @@ describe('SyncEngine — audio note sync', () => {
     });
 
     try {
-      const engine = new SyncEngine(mockApp as any, makeSettings());
+      const engine = new SyncEngine(mockApp as any, makeSettings({ maxDays: 0 }));
       const result = await engine.sync();
 
       expect(result.created).toBe(1);
@@ -1228,8 +1230,11 @@ describe('SyncEngine — audio note sync', () => {
         return Promise.resolve(mockFetchResponse({
           success: true,
           data: {
-            attachments: [{ type: 'audio', url: 'https://cdn.example.com/test.mp3', title: '', duration: 883920 }],
-            audio: { original: '🟢 说话人1 [00:00:01]\n转写内容' },
+            note: {
+              ...audioNote,
+              attachments: [{ type: 'audio', url: 'https://cdn.example.com/test.mp3', title: '', duration: 883920 }],
+              audio: { original: '🟢 说话人1 [00:00:01]\n转写内容' },
+            },
           },
         }) as Response);
       }
@@ -1258,7 +1263,7 @@ describe('SyncEngine — audio note sync', () => {
     });
 
     try {
-      const engine = new SyncEngine(mockApp as any, makeSettings());
+      const engine = new SyncEngine(mockApp as any, makeSettings({ maxDays: 0 }));
       const result = await engine.sync();
 
       expect(result.failed).toBe(0);

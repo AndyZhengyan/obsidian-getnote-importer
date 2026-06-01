@@ -14,6 +14,10 @@ const AUDIO_NOTE_TYPES = new Set([
   'local_audio',
 ]);
 
+const IMAGE_NOTE_TYPES = new Set([
+  'img_text',
+]);
+
 function parseSyncBoundaryTime(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -55,6 +59,43 @@ function isSafeAttachmentUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+const IMAGE_EXT_PATTERN = /\.(png|jpg|jpeg|gif|webp|bmp|svg)(\?|$)/i;
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'] as const;
+
+function extractImageExtension(url: string): string {
+  const match = url.match(IMAGE_EXT_PATTERN);
+  return match ? match[1].toLowerCase() : 'png';
+}
+
+function isImageAttachment(attachment: { type: string }): boolean {
+  return attachment.type === 'image';
+}
+
+function imageAssetFilename(baseFilename: string, ext: string, index: number): string {
+  const suffix = index === 0 ? '' : `_${index + 1}`;
+  const rawFilename = `${baseFilename}_image${suffix}.${ext}`;
+  return rawFilename.split('/').pop()!.split('\\').pop()!;
+}
+
+function hasDownloadedImageAssets(
+  vault: App['vault'],
+  assetDir: string,
+  baseFilename: string,
+  imageCount: number
+): boolean {
+  for (let index = 0; index < imageCount; index++) {
+    const hasImage = IMAGE_EXTENSIONS.some(ext =>
+      Boolean(vault.getAbstractFileByPath(`${assetDir}/${imageAssetFilename(baseFilename, ext, index)}`))
+    );
+    if (!hasImage) return false;
+  }
+  return true;
+}
+
+function hasImageAssetPaths(note: GetNoteNote): boolean {
+  return (note.assetPaths ?? []).some(path => /\.(png|jpg|jpeg|gif|webp|bmp|svg)(\?|$)/i.test(path));
 }
 
 export class SyncCancelledError extends Error {
@@ -162,11 +203,11 @@ export class SyncEngine {
 
   private async downloadAudioAsset(
     note: GetNoteNote,
-    attachment: { type: string; url: string; title: string; duration: number }
+    attachment: { type: string; url: string; title: string; duration?: number }
   ): Promise<string | null> {
     try {
       if (!isSafeAttachmentUrl(attachment.url)) {
-        console.warn('[GetNote] Skipped unsafe audio attachment URL');
+        console.warn('[DedaoBrain] Skipped unsafe audio attachment URL');
         return null;
       }
 
@@ -176,7 +217,8 @@ export class SyncEngine {
         await this.app.vault.createFolder(assetDir);
       }
 
-      const filename = `${this.getFileName(note)}_audio.mp3`;
+      const rawFilename = `${this.getFileName(note)}_audio.mp3`;
+      const filename = rawFilename.split('/').pop()!.split('\\').pop()!;
       const targetPath = `${assetDir}/${filename}`;
 
       // Skip already-existing files
@@ -184,14 +226,51 @@ export class SyncEngine {
 
       const res = await fetch(attachment.url);
       if (res.status < 200 || res.status >= 300) {
-        console.error(`[GetNote] Audio download failed: ${res.status}`);
+        console.error(`[DedaoBrain] Audio download failed: ${res.status}`);
         return null;
       }
       const arrayBuffer = await res.arrayBuffer();
       await this.app.vault.createBinary(targetPath, arrayBuffer);
       return targetPath;
     } catch (err) {
-      console.error(`[GetNote] Audio download error:`, err);
+      console.error(`[DedaoBrain] Audio download error:`, err);
+      return null;
+    }
+  }
+
+  private async downloadImageAsset(
+    note: GetNoteNote,
+    attachment: { type: string; url: string; title: string },
+    index = 0
+  ): Promise<string | null> {
+    try {
+      if (!isSafeAttachmentUrl(attachment.url)) {
+        console.warn('[DedaoBrain] Skipped unsafe image attachment URL');
+        return null;
+      }
+
+      const categoryDir = await this.ensureCategoryDir(getCategoryDir(note.note_type));
+      const assetDir = `${categoryDir}/asset`;
+      if (!this.app.vault.getAbstractFileByPath(assetDir)) {
+        await this.app.vault.createFolder(assetDir);
+      }
+
+      const ext = extractImageExtension(attachment.url);
+      const filename = imageAssetFilename(this.getFileName(note), ext, index);
+      const targetPath = `${assetDir}/${filename}`;
+
+      if (this.app.vault.getAbstractFileByPath(targetPath)) return targetPath;
+
+      const res = await fetch(attachment.url);
+      if (res.status < 200 || res.status >= 300) {
+        console.error(`[DedaoBrain] Image download failed: ${res.status}`);
+        return null;
+      }
+      const arrayBuffer = await res.arrayBuffer();
+      await this.app.vault.createBinary(targetPath, arrayBuffer);
+      return targetPath;
+    } catch (err) {
+      console.error(`[DedaoBrain] Image download error:`, err);
       return null;
     }
   }
@@ -216,7 +295,7 @@ export class SyncEngine {
       }
       return targetPath;
     } catch (err) {
-      console.error('[GetNote] Audio transcript write error:', err);
+      console.error('[DedaoBrain] Audio transcript write error:', err);
       return null;
     }
   }
@@ -234,8 +313,8 @@ export class SyncEngine {
 
     const contentChanged = this.isContentChanged(existingFile, note);
     if (contentChanged) return { exists: false, file: existingFile };
+    if (hasImageAssetPaths(note)) return { exists: false, file: existingFile };
 
-    // For audio notes, verify attachments exist as well
     if (AUDIO_NOTE_TYPES.has(note.note_type)) {
       const categoryDir = getCategoryDir(note.note_type);
       const basePath = `${this.settings.folderName}/${categoryDir}`;
@@ -246,6 +325,17 @@ export class SyncEngine {
         !this.app.vault.getAbstractFileByPath(`${assetDir}/${baseFilename}_audio.mp3`) ||
         !this.app.vault.getAbstractFileByPath(`${assetDir}/${baseFilename}_transcript.md`)
       ) {
+        return { exists: false, file: existingFile };
+      }
+    }
+
+    const imageAttachments = (note.attachments ?? []).filter(isImageAttachment);
+    if (imageAttachments.length > 0) {
+      const categoryDir = getCategoryDir(note.note_type);
+      const basePath = `${this.settings.folderName}/${categoryDir}`;
+      const assetDir = `${basePath}/asset`;
+      const baseFilename = this.getFileName(note);
+      if (!hasDownloadedImageAssets(this.app.vault, assetDir, baseFilename, imageAttachments.length)) {
         return { exists: false, file: existingFile };
       }
     }
@@ -308,7 +398,7 @@ export class SyncEngine {
       const content = renderNote(note, note.assetFileName, parentFileName, childFileNames);
 
       if (existingByUid) {
-        const contentChanged = this.isContentChanged(existingByUid, note);
+        const contentChanged = this.isContentChanged(existingByUid, note) || hasImageAssetPaths(note);
         const pathChanged = existingByUid.path !== targetPath;
 
         if (!contentChanged && !pathChanged) return { status: 'skipped', file: existingByUid };
@@ -320,7 +410,7 @@ export class SyncEngine {
         return { status: 'updated', file: existingByUid };
       } else if (existingAtTarget instanceof TFile) {
         // File exists at target path but wasn't in uidIndex - check content
-        const contentChanged = this.isContentChanged(existingAtTarget, note);
+        const contentChanged = this.isContentChanged(existingAtTarget, note) || hasImageAssetPaths(note);
         await this.app.vault.modify(existingAtTarget, content);
         uidIndex.set(note.note_id, existingAtTarget);
         return { status: contentChanged ? 'updated' : 'skipped', file: existingAtTarget };
@@ -345,7 +435,7 @@ export class SyncEngine {
         }
       }
     } catch (err) {
-      console.error(`[GetNote] Write failed [${generateDisplayTitle(note) || note.note_id}]:`, err);
+      console.error(`[DedaoBrain] Write failed [${generateDisplayTitle(note) || note.note_id}]:`, err);
       return {
         status: 'failed',
         file: undefined,
@@ -408,41 +498,64 @@ export class SyncEngine {
     return childrenCount > 0 && childrenCount !== childrenIdsCount;
   }
 
+  private needsImageDetail(note: GetNoteNote): boolean {
+    return IMAGE_NOTE_TYPES.has(note.note_type) && !(note.attachments ?? []).some(isImageAttachment);
+  }
+
   private async enrichAudioNote(note: GetNoteNote, signal: AbortSignal): Promise<GetNoteNote> {
     const needsAudioDetail = AUDIO_NOTE_TYPES.has(note.note_type);
-    if (!needsAudioDetail && !this.needsRelationDetail(note)) {
+    const needsRelationDetail = this.needsRelationDetail(note);
+    const hasImageAttachments = (note.attachments ?? []).some(isImageAttachment);
+    const needsImageDetail = this.needsImageDetail(note);
+    if (!needsAudioDetail && !needsRelationDetail && !hasImageAttachments && !needsImageDetail) {
       return note;
     }
     const credentials = getAuthCredentials(this.settings);
-    if (credentials.authMode === 'web' && !needsAudioDetail) {
+    if (credentials.authMode === 'web' && !needsAudioDetail && !hasImageAttachments && !needsImageDetail) {
       return note;
     }
 
     try {
-      // For Web API, use prime_id (not id/note_id) for the detail URL
-      const detailId = (note as { prime_id?: string }).prime_id ?? note.note_id;
-      const noteDetail = await fetchNoteDetail(
-        detailId,
-        credentials.token,
-        credentials.clientId,
-        signal,
-        credentials.authMode
-      );
-      const enrichedNote = this.mergeNoteDetail(note, noteDetail);
-      if (!needsAudioDetail) {
-        return enrichedNote;
+      let enrichedNote = note;
+      if (needsAudioDetail || needsRelationDetail || needsImageDetail) {
+        const detailId = (note as { prime_id?: string }).prime_id ?? note.note_id;
+        const noteDetail = await fetchNoteDetail(
+          detailId,
+          credentials.token,
+          credentials.clientId,
+          signal,
+          credentials.authMode
+        );
+        enrichedNote = this.mergeNoteDetail(note, noteDetail);
       }
-      const attachment = enrichedNote.attachments?.find(a => a.type === 'audio');
-      if (attachment) {
-        await this.downloadAudioAsset(enrichedNote, attachment);
-      } else {
-        console.warn(`[GetNote] No audio attachment found in note detail [${note.note_id}]`);
+      const assetPaths: string[] = [];
+
+      if (needsAudioDetail) {
+        const audioAttachment = enrichedNote.attachments?.find(a => a.type === 'audio');
+        if (audioAttachment) {
+          const audioPath = await this.downloadAudioAsset(enrichedNote, audioAttachment);
+          if (audioPath) assetPaths.push(audioPath);
+        } else {
+          console.warn(`[DedaoBrain] No audio attachment found in note detail [${note.note_id}]`);
+        }
+        const transcriptPath = await this.writeAudioTranscriptAsset(enrichedNote);
+        if (transcriptPath) assetPaths.push(transcriptPath);
+        enrichedNote.assetFileName = this.getFileName(enrichedNote);
       }
-      await this.writeAudioTranscriptAsset(enrichedNote);
-      enrichedNote.assetFileName = this.getFileName(enrichedNote);
+
+      const imageAttachments = (enrichedNote.attachments ?? []).filter(isImageAttachment);
+      for (const [index, img] of imageAttachments.entries()) {
+        const imgPath = await this.downloadImageAsset(enrichedNote, img, index);
+        if (imgPath) assetPaths.push(imgPath);
+      }
+
+      if (assetPaths.length > 0) {
+        enrichedNote.assetPaths = assetPaths;
+      }
+
       return enrichedNote;
     } catch (err) {
-      console.warn(`[GetNote] Failed to enrich note ${note.note_id}:`, err);
+      console.warn(`[DedaoBrain] Failed to enrich note ${note.note_id}:`, err);
       return note;
     }
   }
@@ -491,7 +604,7 @@ export class SyncEngine {
           status: 'failed',
           error: err instanceof Error ? err.message : String(err),
         });
-        console.warn(`[GetNote] Failed to fetch append notes for ${parentDetailId}:`, err);
+        console.warn(`[DedaoBrain] Failed to fetch append notes for ${parentDetailId}:`, err);
       }
       return [];
     }
@@ -545,7 +658,7 @@ export class SyncEngine {
           status: 'failed',
           error: err instanceof Error ? err.message : String(err),
         });
-        console.warn(`[GetNote] Failed to fetch append note ${childId}:`, err);
+        console.warn(`[DedaoBrain] Failed to fetch append note ${childId}:`, err);
       }
     }
     return appendNotes;
@@ -734,18 +847,23 @@ export class SyncEngine {
             total: noteIds.length,
             percent,
           });
+          const noteForPreCheck = this.needsImageDetail(note)
+            ? await this.enrichAudioNote(note, controller.signal)
+            : note;
           // Pre-check: skip if note and attachments already exist and are up-to-date.
           // Uses UID-based lookup so renamed/moved files are still found.
-          const preCheck = this.preCheckNote(note, uidIndex);
+          const preCheck = this.preCheckNote(noteForPreCheck, uidIndex);
           if (preCheck.exists) {
             result.skipped++;
-            this.recordItem(result, note, { status: 'skipped' });
-            const mayHaveAppendNotes = (note.children_count ?? 0) > 0 || Boolean(note.children_ids?.length);
+            this.recordItem(result, noteForPreCheck, { status: 'skipped' });
+            const mayHaveAppendNotes = (noteForPreCheck.children_count ?? 0) > 0 || Boolean(noteForPreCheck.children_ids?.length);
             if (!mayHaveAppendNotes) {
               continue;
             }
           }
-          const noteToWrite = await this.enrichAudioNote(note, controller.signal);
+          const noteToWrite = noteForPreCheck === note
+            ? await this.enrichAudioNote(note, controller.signal)
+            : noteForPreCheck;
 
           const appendNotes = await this.fetchAppendNotes(noteToWrite, controller.signal, result);
           const parentBaseName = this.buildBaseName(noteToWrite);

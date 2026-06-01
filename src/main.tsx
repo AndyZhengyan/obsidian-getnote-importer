@@ -78,7 +78,7 @@ function normalizeSyncHistory(value: unknown): SyncHistoryEntry[] {
 }
 
 export default class GetNoteSyncPlugin extends Plugin {
-  settings!: Settings;
+  declare settings: Settings;
   isSyncing = false;
   syncProgress: SyncProgressDetail = { message: '', count: '', percent: 0 };
   syncHistory: SyncHistoryEntry[] = [];

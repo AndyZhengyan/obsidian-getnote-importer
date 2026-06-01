@@ -1,6 +1,6 @@
 // Central API entry point - delegates to client implementations based on authMode
-import { createNote as openapiCreateNote, fetchNotes as openapiFetchNotes, fetchNoteDetail as openapiFetchNoteDetail, fetchSubscribedKnowledgeNotes as openapiFetchSubscribedKnowledgeNotes, fetchTopicBloggers as openapiFetchTopicBloggers, fetchTopicContentPreviews as openapiFetchTopicContentPreviews, fetchSubscribedTopics as openapiFetchSubscribedTopics } from './api-clients/openapi-client';
-import { createNote as webapiCreateNote, fetchNotes as webapiFetchNotes, fetchNoteChildren as webapiFetchNoteChildren, fetchNoteDetail as webapiFetchNoteDetail, fetchSubscribedKnowledgeNotes as webapiFetchSubscribedKnowledgeNotes, fetchTopicContentPreviews as webapiFetchTopicContentPreviews, fetchSubscribedTopics as webapiFetchSubscribedTopics } from './api-clients/webapi-client';
+import { createNote as openapiCreateNote, fetchNotes as openapiFetchNotes, fetchNoteDetail as openapiFetchNoteDetail, fetchSubscribedKnowledgeNotes as openapiFetchSubscribedKnowledgeNotes, fetchTopicBloggers as openapiFetchTopicBloggers, fetchTopicContentPreviewPage as openapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as openapiFetchTopicContentPreviews, fetchSubscribedTopics as openapiFetchSubscribedTopics } from './api-clients/openapi-client';
+import { createNote as webapiCreateNote, fetchNotes as webapiFetchNotes, fetchNoteChildren as webapiFetchNoteChildren, fetchNoteDetail as webapiFetchNoteDetail, fetchSubscribedKnowledgeNotes as webapiFetchSubscribedKnowledgeNotes, fetchTopicContentPreviewPage as webapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as webapiFetchTopicContentPreviews, fetchSubscribedTopics as webapiFetchSubscribedTopics } from './api-clients/webapi-client';
 import type { GetNoteNote, AuthMode, SubscribedTopic } from './types';
 import type { Blogger } from './api-clients/openapi-client';
 import { t } from './i18n';
@@ -89,6 +89,16 @@ export interface TopicContentPreviewOptions {
   maxBloggers?: number;
 }
 
+export interface TopicContentPreviewCursor {
+  bloggerIndex: number;
+  page: number;
+}
+
+export interface TopicContentPreviewPage {
+  items: ContentPreview[];
+  nextCursor?: TopicContentPreviewCursor;
+}
+
 export async function fetchTopicBloggers(
   topicId: string,
   token: string,
@@ -113,6 +123,21 @@ export async function fetchTopicContentPreviews(
     return webapiFetchTopicContentPreviews(topicId, token, signal, options);
   }
   return openapiFetchTopicContentPreviews(topicId, topicName, token, clientId, signal, options);
+}
+
+export async function fetchTopicContentPreviewPage(
+  topicId: string,
+  topicName: string | undefined,
+  token: string,
+  clientId: string,
+  authMode?: AuthMode,
+  signal?: AbortSignal,
+  cursor?: TopicContentPreviewCursor
+): Promise<TopicContentPreviewPage> {
+  if (authMode === 'web') {
+    return webapiFetchTopicContentPreviewPage(topicId, token, signal, cursor);
+  }
+  return openapiFetchTopicContentPreviewPage(topicId, topicName, token, clientId, signal, cursor);
 }
 
 export interface CreateNoteOptions {

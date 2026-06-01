@@ -184,8 +184,10 @@ export const translations: Record<string, Record<string, string>> = {
     'topicPicker.chooseTopic': '查看内容',
     'topicPicker.loaded': '已加载 {count} 条',
     'topicPicker.back': '返回专题',
+    'topicPicker.loadMore': '加载更多',
+    'topicPicker.loadingMore': '加载中...',
     'topicPicker.cancel': '取消',
-    'topicPicker.confirm': '同步专题 ({count})',
+    'topicPicker.confirm': '同步',
 
     // === Sync Modal ===
     'modal.title': '得到大脑同步中',
@@ -459,8 +461,10 @@ export const translations: Record<string, Record<string, string>> = {
     'topicPicker.chooseTopic': 'View contents',
     'topicPicker.loaded': '{count} loaded',
     'topicPicker.back': 'Back to topics',
+    'topicPicker.loadMore': 'Load more',
+    'topicPicker.loadingMore': 'Loading...',
     'topicPicker.cancel': 'Cancel',
-    'topicPicker.confirm': 'Sync Topics ({count})',
+    'topicPicker.confirm': 'Sync',
 
     // === Sync Modal ===
     'modal.title': 'Dedao Brain Syncing',

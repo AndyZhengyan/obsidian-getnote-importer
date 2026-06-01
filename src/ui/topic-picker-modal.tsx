@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import type { AuthMode, SubscribedTopic } from '../types';
-import type { ContentPreview } from '../api';
-import { fetchSubscribedTopics, fetchTopicContentPreviews } from '../api';
+import type { ContentPreview, TopicContentPreviewCursor } from '../api';
+import { fetchSubscribedTopics, fetchTopicContentPreviewPage } from '../api';
 import { t } from '../i18n';
 
 interface TopicData {
   topic: SubscribedTopic;
   contents: ContentPreview[];
   loading: boolean;
+  loadingMore: boolean;
+  nextCursor?: TopicContentPreviewCursor;
   error?: string;
 }
 
@@ -71,7 +73,7 @@ export function TopicPickerModal({ token, clientId, authMode, onConfirm, onCance
         setTopics(result);
         const init: Record<string, TopicData> = {};
         for (const topic of result) {
-          init[topic.topic_id] = { topic, contents: [], loading: false };
+          init[topic.topic_id] = { topic, contents: [], loading: false, loadingMore: false };
         }
         setTopicData(init);
       } catch (err) {
@@ -85,33 +87,60 @@ export function TopicPickerModal({ token, clientId, authMode, onConfirm, onCance
 
   useEffect(() => { loadTopics(); }, [loadTopics]);
 
-  const openTopic = async (topic: SubscribedTopic) => {
-    setActiveTopicId(topic.topic_id);
+  const loadTopicPage = async (topic: SubscribedTopic, cursor?: TopicContentPreviewCursor) => {
     const data = topicData[topic.topic_id];
-    if (!data || data.contents.length > 0) return;
-
-    setTopicData(prev => ({ ...prev, [topic.topic_id]: { ...prev[topic.topic_id], loading: true, error: undefined } }));
+    if (!data) return;
+    const isLoadMore = Boolean(cursor);
+    setTopicData(prev => ({
+      ...prev,
+      [topic.topic_id]: {
+        ...prev[topic.topic_id],
+        loading: !isLoadMore,
+        loadingMore: isLoadMore,
+        error: undefined,
+      },
+    }));
     try {
-      const contents = await fetchTopicContentPreviews(
+      const page = await fetchTopicContentPreviewPage(
         topic.topic_id,
         topic.name,
         token,
         clientId,
         authMode,
         abortSignal,
-        { maxPages: 1, maxBloggers: 1 }
+        cursor
       );
       setTopicData(prev => ({
         ...prev,
-        [topic.topic_id]: { ...prev[topic.topic_id], contents, loading: false },
+        [topic.topic_id]: {
+          ...prev[topic.topic_id],
+          contents: isLoadMore
+            ? [...prev[topic.topic_id].contents, ...page.items]
+            : page.items,
+          loading: false,
+          loadingMore: false,
+          nextCursor: page.nextCursor,
+        },
       }));
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setTopicData(prev => ({
         ...prev,
-        [topic.topic_id]: { ...prev[topic.topic_id], loading: false, error: err instanceof Error ? err.message : String(err) },
+        [topic.topic_id]: {
+          ...prev[topic.topic_id],
+          loading: false,
+          loadingMore: false,
+          error: err instanceof Error ? err.message : String(err),
+        },
       }));
     }
+  };
+
+  const openTopic = async (topic: SubscribedTopic) => {
+    setActiveTopicId(topic.topic_id);
+    const data = topicData[topic.topic_id];
+    if (!data || data.contents.length > 0) return;
+    await loadTopicPage(topic);
   };
 
   const handleCheck = (noteId: string, checked: boolean) => {
@@ -208,6 +237,17 @@ export function TopicPickerModal({ token, clientId, authMode, onConfirm, onCance
         {activeTopic && !activeTopic.loading && !activeTopic.error && activeTopic.contents.map(item => (
           <ContentRow key={item.note_id} item={item} checked={selectedNoteIds.has(item.note_id)} onChange={handleCheck} />
         ))}
+        {activeTopic && !activeTopic.loading && !activeTopic.error && activeTopic.nextCursor && (
+          <div className="getnote-picker-loadmore">
+            <button
+              data-topic-load-more
+              disabled={activeTopic.loadingMore}
+              onClick={() => loadTopicPage(activeTopic.topic, activeTopic.nextCursor)}
+            >
+              {activeTopic.loadingMore ? t('topicPicker.loadingMore') : t('topicPicker.loadMore')}
+            </button>
+          </div>
+        )}
       </div>
       <div className="getnote-picker-footer">
         <span className="getnote-picker-count">
@@ -217,7 +257,7 @@ export function TopicPickerModal({ token, clientId, authMode, onConfirm, onCance
         <div className="getnote-picker-btns">
           <button className="mod-cancel" onClick={onCancel}>{t('topicPicker.cancel')}</button>
           <button className="mod-cta" disabled={selectedNoteIds.size === 0} onClick={handleConfirm}>
-            {t('topicPicker.confirm', { count: selectedNoteIds.size })}
+            {t('topicPicker.confirm')}
           </button>
         </div>
       </div>

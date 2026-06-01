@@ -330,6 +330,51 @@ export async function fetchTopicContentPreviews(
   return items;
 }
 
+export async function fetchTopicContentPreviewPage(
+  topicId: string,
+  _topicName: string | undefined,
+  token: string,
+  clientId: string,
+  signal?: AbortSignal,
+  cursor: { bloggerIndex: number; page: number } = { bloggerIndex: 0, page: 1 }
+): Promise<{
+  items: { note_id: string; title: string; updated_at: string; blogger_name: string }[];
+  nextCursor?: { bloggerIndex: number; page: number };
+}> {
+  const bloggers = await fetchTopicBloggers(topicId, token, clientId, signal);
+  const blogger = bloggers[cursor.bloggerIndex];
+  if (!blogger) return { items: [] };
+
+  const params = new URLSearchParams({
+    topic_id: topicId,
+    follow_id: blogger.follow_id,
+    page: String(cursor.page),
+  });
+  const url = `https://openapi.biji.com/open/api/v1/resource/knowledge/blogger/contents?${params.toString()}`;
+  const data = await apiRequest<Record<string, unknown>>(url, { method: 'GET', headers: buildHeaders(token, clientId) }, 2, signal);
+  const source = normalizeData(data);
+  const contents = readArray(source, ['contents', 'posts', 'list', 'items'])
+    .map(normalizeContent)
+    .filter((item): item is BloggerContent => Boolean(item));
+  const items = contents.map(content => {
+    const created = content.created_at ?? '';
+    const updated = content.updated_at ?? created;
+    return {
+      note_id: `blogger_${content.post_id_alias}`,
+      title: content.title ?? '',
+      updated_at: updated,
+      blogger_name: blogger.name ?? '',
+    };
+  });
+  const nextCursor = readHasMore(source) && contents.length > 0
+    ? { bloggerIndex: cursor.bloggerIndex, page: cursor.page + 1 }
+    : cursor.bloggerIndex + 1 < bloggers.length
+      ? { bloggerIndex: cursor.bloggerIndex + 1, page: 1 }
+      : undefined;
+
+  return nextCursor ? { items, nextCursor } : { items };
+}
+
 async function fetchBloggerContents(topicId: string, blogger: Blogger, token: string, clientId: string, signal?: AbortSignal): Promise<BloggerContent[]> {
   const contents: BloggerContent[] = [];
   let page = 1;

@@ -23,7 +23,7 @@
     "esbuild": "^0.28.0",
     "eslint": "^10.4.0",
     "happy-dom": "^20.9.0",
-    "obsidian": "^1.5.0",
+    "obsidian": "^1.13.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.4",
     "vitest": "^4.1.7"

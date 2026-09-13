@@ -14,14 +14,15 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 * * *
 
-## 🎉 1.5.8 — Latest Update
+## 🎉 1.6.0 — Latest Update
 
-- **🟢 Connection health at a glance**: the settings page now uses gray, green, and red indicators for unverified, healthy, and failed connections, while retaining a visible “Last sync failed” state after automatic-sync failures.
-- **⏱️ Automatic sync as the primary path**: first-run guidance now leads users through scheduled automatic sync, and the latest automatic run determines connection health.
-- **📎 More reliable attachment controls**: the master attachment switch works again, while audio files and audio transcripts can be controlled independently so transcripts remain available without downloading audio.
-- **🛡️ Safer, more complete syncs**: subscribed-knowledge pagination is complete, and vault path conflicts are recorded as failures instead of being silently missed.
+- **🔄 Automatically send local edits back**: automatic sync can now upload linked text-note edits from the sync folder. If both sides changed, it preserves both copies for manual conflict resolution.
+- **📝 Upload and archive local drafts once**: a new Markdown text note in the sync folder can be created in Dedao Brain, receive its `uid`, and move to its canonical path. Existing target files are preserved and reported as conflicts.
+- **📚 Keep knowledge-base ownership**: drafts under `知识库/<name>/` join the matching writable remote knowledge base. Upload stops when ownership is unknown or read-only, preventing unassigned notes.
+- **🎛️ Simpler automatic-sync controls**: one nested toggle selects download-only or download-and-upload behavior, and empty syncs now produce a clear result.
+- **🧪 Updated toolchain**: test and build dependencies now include Vitest 5, with authentication behavior covered for both OpenAPI and Web API modes.
 
-This release improves stability and settings clarity. Existing configuration and local data require no migration; after upgrading, open settings to review connection health and automatic-sync status.
+Automatic upload is off by default and requires OpenAPI. Enable “Auto-upload local changes” under Automatic Sync when you want it.
 
 The README keeps only the current release highlights. See [GitHub Releases](https://github.com/AndyZhengyan/obsidian-dedao-brain-sync/releases) for the complete version history.
 
@@ -29,7 +30,7 @@ The README keeps only the current release highlights. See [GitHub Releases](http
 
 ## ✨ Why use it
 
-- 🔄 **True two-way workflow**: continuously sync Dedao Brain → Obsidian, and manually create selected local Markdown notes back in Dedao Brain.
+- 🔄 **True two-way workflow**: continuously sync Dedao Brain → Obsidian; automatically create or update text notes in the sync folder, or manually create selected Markdown notes in Dedao Brain.
 - 🧠 **More than a one-shot export**: each note becomes a local Markdown file that stays part of your long-term knowledge base.
 - ⚡ **Stable, resumable sync**: supports incremental sync, checkpoints, last-N-days scopes, start dates, selected notes, and knowledge-base scopes.
 - 🔎 **Search Dedao Brain inside Obsidian**: full-text search from the sidebar, with one-click open for local hits or sync for remote-only hits.
@@ -37,7 +38,7 @@ The README keeps only the current release highlights. See [GitHub Releases](http
 - 📚 **Better knowledge-base sync**: sync a specific knowledge base, or run a command to sync all subscribed knowledge bases.
 - 🗂️ **Control your local structure**: type-based folders, filename prefixes, created-date paths, plus migration and rollback for existing notes.
 - 🏷️ **Richer filters**: scope sync by updated time, start date, note type, tags, or knowledge base.
-- ⏱️ **Automatic sync**: scheduled sync and startup sync reduce manual work.
+- ⏱️ **Automatic sync**: scheduled and startup sync can download only or also upload local changes from the sync folder.
 - 📜 **Traceable history**: keeps the most recent 30 days of sync history, including scope, duration, status, and per-note results.
 - 📱 **Desktop + mobile**: the plugin is not desktop-only; OpenAPI mode works well across desktop and mobile Obsidian.
 
@@ -52,9 +53,9 @@ The README keeps only the current release highlights. See [GitHub Releases](http
 | ☑️ Sync by note | Pick specific remote notes to sync |
 | 📚 Sync by knowledge base | Sync a selected knowledge base |
 | 🌐 Sync all subscriptions | Run a command to sync all subscribed knowledge bases |
-| 🕒 Scheduled sync | Sync on an interval with optional note-type, tag, and knowledge-base scopes |
+| 🕒 Scheduled sync | Download on an interval and optionally upload local text notes from the sync folder |
 | 🚀 Startup sync | Run a sync when Obsidian starts, when scheduled sync is enabled |
-| ⬆️ Local upload | Manually create selected local Markdown files in Dedao Brain |
+| ⬆️ Local upload | Automatically upload text notes from the sync folder or manually create selected Markdown files |
 | 🏷️ Tag filters | Restrict sync using a tag whitelist |
 | 📎 Attachment downloads | Independently control image / audio / video / document downloads |
 | 🗂️ Date-based paths | Organize by created date and migrate / roll back existing files |
@@ -145,20 +146,20 @@ A dedicated command syncs all subscribed knowledge bases in one run. Subscriptio
 
 ### 🕒 Scheduled sync
 
-When scheduled sync is enabled, the plugin pulls remote changes at the configured interval and can also sync on startup.
+When automatic sync is enabled, the plugin pulls remote changes at the configured interval and can also sync on startup. Turn on “Auto-upload local changes” to process new or edited text notes in the sync folder and its subfolders during the same run.
 
-Scheduled sync only downloads remote changes; it never uploads local notes automatically.
+Automatic upload is off by default and requires OpenAPI. Deletions never propagate. When local and remote content both changed, the plugin preserves both copies and asks you to choose a version during manual sync.
 
 ### ⬆️ Create Dedao Brain notes from Obsidian
 
 Open local upload from the settings page or command palette and select one or more Markdown files.
 
-Reverse sync is currently **manual, selection-based, and create-only**:
+Manual upload is **selection-based and create-only**, separate from automatic updates inside the sync folder:
 
 - It mainly supports `plain_text` and `link` note types.
 - Notes with a `uid` that are confirmed to still exist remotely are skipped to avoid duplicates.
 - Existing Dedao Brain notes are not automatically overwritten.
-- Scheduled sync never triggers uploads.
+- Linked text-note edits inside the sync folder can be handled by “Auto-upload local changes.”
 - Uploaded tags are deduplicated and capped.
 
 ## 📁 Output layout
@@ -255,8 +256,8 @@ Migration is safe to re-run. When there is a target conflict, invalid metadata, 
 - OpenAPI depends on Dedao Brain's Open Platform and requires PRO access.
 - Web mode depends on Dedao Brain's web APIs and browser session; API changes or expired tokens can break it.
 - Automatic Web login / token refresh is primarily a desktop feature.
-- Reverse sync is currently create-only and does not automatically overwrite existing remote notes.
-- Reverse sync mainly supports plain-text and link note types.
+- Manual upload is create-only. Automatic upload can send title, body, and tag edits from linked plain-text notes in the sync folder.
+- Manual upload mainly supports plain-text and link notes; automatic upload supports plain-text notes through OpenAPI only.
 - Some attachment features depend on the detail API returning a valid attachment URL.
 - If Dedao Brain changes its response fields, some note types may require plugin updates.
 

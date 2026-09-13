@@ -85,6 +85,14 @@ describe('t() - Chinese translations', () => {
     expect(i18n.t('notice.autoSyncFailed')).toBe('自动同步失败');
   });
 
+  it('returns Chinese for notice.syncEmpty', () => {
+    expect(i18n.t('notice.syncEmpty')).toBe('同步完成：没有发现需要同步的笔记。');
+  });
+
+  it('returns Chinese for notice.autoSyncEmpty', () => {
+    expect(i18n.t('notice.autoSyncEmpty')).toBe('自动同步完成：没有发现需要同步的笔记。');
+  });
+
   it('returns Chinese for error.invalidCredentials', () => {
     expect(i18n.t('error.invalidCredentials')).toBe('API Token 或 Client ID 无效，请检查设置');
   });
@@ -134,6 +142,14 @@ describe('t() - English translations', () => {
 
   it('returns English for notice.autoSyncFailed', () => {
     expect(i18n.t('notice.autoSyncFailed')).toBe('Auto sync failed');
+  });
+
+  it('returns English for notice.syncEmpty', () => {
+    expect(i18n.t('notice.syncEmpty')).toBe('Sync complete: no notes needed syncing.');
+  });
+
+  it('returns English for notice.autoSyncEmpty', () => {
+    expect(i18n.t('notice.autoSyncEmpty')).toBe('Auto sync complete: no notes needed syncing.');
   });
 
   it('returns English for error.invalidCredentials', () => {

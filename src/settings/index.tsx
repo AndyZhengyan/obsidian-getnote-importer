@@ -592,6 +592,7 @@ export function SettingsComponent({
         authMode,
         sinceId: '0',
         limit: 1,
+        skipWebTokenRefresh: true,
       });
       if (authMode === 'web') {
         try {

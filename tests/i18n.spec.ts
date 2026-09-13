@@ -281,7 +281,7 @@ describe('t() - New settings keys', () => {
 
   it('settings connection health states', () => {
     expect(i18n.t('settings.connectionHealth.unverified')).toBe('未验证');
-    expect(i18n.t('settings.connectionHealth.healthy')).toBe('连接正常');
+    expect(i18n.t('settings.connectionHealth.healthy')).toBe('认证成功');
     expect(i18n.t('settings.connectionHealth.error')).toBe('连接异常');
     expect(i18n.t('settings.syncStatus.lastFailed')).toBe('上次同步失败');
   });
@@ -327,7 +327,7 @@ describe('t() - New settings keys', () => {
     expect(i18n.t('settings.testConnection')).toBe('Test Connection');
     expect(i18n.t('settings.connectionSuccess')).toBe('Connection successful');
     expect(i18n.t('settings.connectionHealth.unverified')).toBe('Not verified');
-    expect(i18n.t('settings.connectionHealth.healthy')).toBe('Connection healthy');
+    expect(i18n.t('settings.connectionHealth.healthy')).toBe('Authentication successful');
     expect(i18n.t('settings.connectionHealth.error')).toBe('Connection issue');
     expect(i18n.t('settings.syncStatus.lastFailed')).toBe('Last sync failed');
     expect(i18n.t('settings.maxDays.hint')).toBe('0 = no limit');

@@ -100,7 +100,10 @@ function makeMockApp(): MockApp {
       },
       _addFile: (path: string, content: string, frontmatter: Record<string, string> = {}) => {
         if (folders.has(path)) folders.delete(path);
-        files.set(path, makeMockFile(path, content, frontmatter));
+        const storedContent = Object.keys(frontmatter).length && !content.startsWith('---')
+          ? `---\n${Object.entries(frontmatter).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n${content}`
+          : content;
+        files.set(path, makeMockFile(path, storedContent, frontmatter));
       },
       _addFileAtPath: (path: string, kind: 'file' | 'folder') => {
         if (kind === 'file') {
@@ -206,6 +209,7 @@ describe('SyncEngine — vault write ownership', () => {
     const originalGet = app.vault.getAbstractFileByPath.bind(app.vault);
     const existingFile = new TFile(targetPath);
     app.vault._addFile(targetPath, '用户原始内容', frontmatter);
+    const originalContent = (originalGet(targetPath) as StoredFile).content;
     vi.spyOn(app.vault, 'getAbstractFileByPath').mockImplementation((path: string) => (
       path === targetPath ? existingFile : originalGet(path)
     ));
@@ -217,7 +221,7 @@ describe('SyncEngine — vault write ownership', () => {
       new Map<string, TFile>(),
     );
 
-    expect((originalGet(targetPath) as { content: string }).content).toBe('用户原始内容');
+    expect((originalGet(targetPath) as { content: string }).content).toBe(originalContent);
     expect(app.vault.create).toHaveBeenCalledWith(
       '得到大脑/纯文本/冲突标题-2.md',
       expect.stringContaining('远端内容'),
@@ -2217,37 +2221,101 @@ describe('SyncEngine — lastSyncEndTimestamp boundary re-check', () => {
   });
 });
 
+describe('SyncEngine — fresh UID ownership', () => {
+  it.each(['900719925474099312345', '"900719925474099312345"', "'900719925474099312345'"])(
+    'recognizes freshly persisted UID %s at a moved path despite stale metadata', async (uid) => {
+      const app = makeMockApp();
+      const path = '得到大脑/2026/04/纯文本/本地标题.md';
+      const content = `---\nuid: ${uid}\n---\n上传后继续编辑的内容`;
+      app.vault._addFile(path, content, { uid: 'stale-uid' });
+      const engine = new SyncEngine(app, makeSettings());
+      // @ts-expect-error private helper is tested through its real vault boundary
+      const index = await engine['buildUidIndex']();
+      // @ts-expect-error private helper is tested through its real vault boundary
+      const result = await engine['writeNote'](makeNote({ note_id: '900719925474099312345' }), index);
+      expect(index.has('stale-uid')).toBe(false);
+      expect(result).toEqual({ status: 'skipped', file: expect.objectContaining({ path }) });
+      expect(app.vault.create).not.toHaveBeenCalled();
+      expect(app.vault.modify).not.toHaveBeenCalled();
+      expect(await app.vault.read(app.vault.getAbstractFileByPath(path) as TFile)).toBe(content);
+    },
+  );
+
+  it('does not trust a removed UID still present in the metadata cache', async () => {
+    const app = makeMockApp();
+    app.vault._addFile('得到大脑/纯文本/测试笔记.md', '---\ntitle: 本地笔记\n---\n本地内容', { uid: 'note_001' });
+    const engine = new SyncEngine(app, makeSettings());
+    // @ts-expect-error private helper is tested through its real vault boundary
+    const index = await engine['buildUidIndex']();
+    // @ts-expect-error private helper is tested through its real vault boundary
+    await engine['writeNote'](makeNote(), index);
+    expect(index.get('note_001')?.path).toBe('得到大脑/纯文本/测试笔记-2.md');
+    expect(app.vault.modify).not.toHaveBeenCalled();
+  });
+
+  it('preserves current content if an associated target appears during create', async () => {
+    const app = makeMockApp();
+    const path = '得到大脑/纯文本/测试笔记.md';
+    const content = '---\nuid: "note_001"\n---\n并发写入的本地编辑';
+    vi.mocked(app.vault.create).mockImplementationOnce(async () => {
+      app.vault._addFile(path, content);
+      throw new Error('File already exists');
+    });
+    const engine = new SyncEngine(app, makeSettings());
+    // @ts-expect-error private helper is tested through its real vault boundary
+    const result = await engine['writeNote'](makeNote(), new Map<string, TFile>());
+    expect(result.status).toBe('skipped');
+    expect(app.vault.create).toHaveBeenCalledTimes(1);
+    expect(app.vault.modify).not.toHaveBeenCalled();
+    expect(await app.vault.read(app.vault.getAbstractFileByPath(path) as TFile)).toBe(content);
+  });
+
+  it('preserves a newly associated target that was absent from the index snapshot', async () => {
+    const app = makeMockApp();
+    const path = '得到大脑/纯文本/测试笔记.md';
+    const content = '---\nuid: "note_001"\n---\n本地新编辑';
+    app.vault._addFile(path, content);
+    const engine = new SyncEngine(app, makeSettings());
+    // @ts-expect-error private helper is tested through its real vault boundary
+    const result = await engine['writeNote'](makeNote(), new Map<string, TFile>());
+    expect(result.status).toBe('skipped');
+    expect(app.vault.create).not.toHaveBeenCalled();
+    expect(app.vault.modify).not.toHaveBeenCalled();
+    expect(await app.vault.read(app.vault.getAbstractFileByPath(path) as TFile)).toBe(content);
+  });
+});
+
 describe('SyncEngine — buildUidIndex', () => {
-  it('返回空 Map 当 vault 没有 md 文件', () => {
+  it('返回空 Map 当 vault 没有 md 文件', async () => {
     const app = makeMockApp();
     const engine = new SyncEngine(app, makeSettings());
     // @ts-expect-error private helper is tested directly
-    const index = engine['buildUidIndex']();
+    const index = await engine['buildUidIndex']();
     expect(index.size).toBe(0);
   });
 
-  it('索引带 uid frontmatter 的文件', () => {
+  it('索引带 uid frontmatter 的文件', async () => {
     const app = makeMockApp();
     app.vault._addFile('得到大脑/纯文本/test.md', 'content', { uid: 'note_abc' });
     app.vault._addFolder('得到大脑/纯文本');
     const engine = new SyncEngine(app, makeSettings());
     // @ts-expect-error private helper is tested directly
-    const index = engine['buildUidIndex']();
+    const index = await engine['buildUidIndex']();
     expect(index.size).toBe(1);
     expect(index.get('note_abc')?.path).toBe('得到大脑/纯文本/test.md');
   });
 
-  it('忽略不带 uid frontmatter 的文件', () => {
+  it('忽略不带 uid frontmatter 的文件', async () => {
     const app = makeMockApp();
     app.vault._addFile('得到大脑/纯文本/test.md', 'content', {});
     app.vault._addFolder('得到大脑/纯文本');
     const engine = new SyncEngine(app, makeSettings());
     // @ts-expect-error private helper is tested directly
-    const index = engine['buildUidIndex']();
+    const index = await engine['buildUidIndex']();
     expect(index.size).toBe(0);
   });
 
-  it('只索引 folderName 前缀下的文件', () => {
+  it('只索引 folderName 前缀下的文件', async () => {
     const app = makeMockApp();
     app.vault._addFile('得到大脑/纯文本/test.md', 'content', { uid: 'note_001' });
     app.vault._addFile('其他/纯文本/other.md', 'content', { uid: 'note_002' });
@@ -2255,7 +2323,7 @@ describe('SyncEngine — buildUidIndex', () => {
     app.vault._addFolder('其他/纯文本');
     const engine = new SyncEngine(app, makeSettings());
     // @ts-expect-error private helper is tested directly
-    const index = engine['buildUidIndex']();
+    const index = await engine['buildUidIndex']();
     expect(index.size).toBe(1);
     expect(index.has('note_001')).toBe(true);
     expect(index.has('note_002')).toBe(false);

@@ -1,3 +1,4 @@
+import { updateNote } from '../src/api-clients/openapi-client';
 import { describe, it, expect, vi } from 'vitest';
 import { createNote, fetchNoteChildren, fetchNotes, fetchNoteDetail, fetchNoteOriginal, fetchRecallSearch, fetchSubscribedKnowledgeNotes, fetchSubscribedTopics, fetchTopicContentPreviewPage, setWebTokenRefreshHandler } from '../src/api';
 
@@ -1024,5 +1025,24 @@ describe('createNote', () => {
     } finally {
       vi.mocked(globalThis.fetch).mockRestore();
     }
+  });
+});
+
+
+describe('OpenAPI note updates', () => {
+  it('preserves string IDs and explicit empty fields in the update request', async () => {
+    const request = vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse({ success: true }) as Response);
+    try {
+      await updateNote({ token: 'test', clientId: 'client', id: '90071992547409999', content: '', tags: [] });
+      expect(request).toHaveBeenCalledWith('https://openapi.biji.com/open/api/v1/resource/note/update',
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ id: '90071992547409999', content: '', tags: [] }) }));
+    } finally { request.mockRestore(); }
+  });
+  it('does not retry an uncertain write or accept an unacknowledged response', async () => {
+    const request = vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse({}) as Response);
+    try {
+      await expect(updateNote({ token: 'test', clientId: 'client', id: '1', title: 'new' })).rejects.toThrow();
+      expect(request).toHaveBeenCalledTimes(1);
+    } finally { request.mockRestore(); }
   });
 });

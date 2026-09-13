@@ -1,3 +1,4 @@
+import { BidirectionalSyncEngine } from '../src/bidirectional-sync';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { App, Modal, TFile, issuedNotices, resetIssuedNotices } from 'obsidian';
 import GetNoteSyncPlugin from '../src/main';
@@ -53,6 +54,27 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     plugin['settingsTab'] = settingsTab;
     return updateRuntimeState;
   }
+
+  it('includes bidirectional failures and updates in automatic sync history', async () => {
+    const plugin = makePlugin();
+    plugin.settings.reverseSync = { enabled: true };
+    const changes = vi.spyOn(BidirectionalSyncEngine.prototype, 'sync').mockResolvedValue({
+      created: 0, updated: 1, failed: 1, skipped: 0, total: 2, items: [],
+    });
+    vi.spyOn(SyncEngine.prototype, 'sync').mockResolvedValue({ created: 0, updated: 0, failed: 0, skipped: 0, total: 0, items: [] });
+    await plugin['runSync']('auto', { maxDays: 0, syncStartDate: '' });
+    expect(changes).toHaveBeenCalledOnce();
+    expect(plugin.syncHistory.at(-1)).toMatchObject({ status: 'partial', result: { updated: 1, failed: 1 } });
+  });
+
+  it('does not upload during a manual download even when two-way mode is enabled', async () => {
+    const plugin = makePlugin();
+    plugin.settings.reverseSync = { enabled: true };
+    const changes = vi.spyOn(BidirectionalSyncEngine.prototype, 'sync');
+    vi.spyOn(SyncEngine.prototype, 'sync').mockResolvedValue({ created: 0, updated: 0, failed: 0, skipped: 0, total: 0, items: [] });
+    await plugin['runSync']('full', { maxDays: 0, syncStartDate: '' });
+    expect(changes).not.toHaveBeenCalled();
+  });
 
   it('refreshes settings after clearing stale quota state', async () => {
     vi.useFakeTimers();

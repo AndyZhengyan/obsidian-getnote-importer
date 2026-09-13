@@ -295,9 +295,9 @@ describe('t() - New settings keys', () => {
   });
 
   it('settings onboarding states', () => {
-    expect(i18n.t('settings.onboarding.firstRun')).toBe('👋 首次使用：选好认证方式并填写凭证，然后开启定时自动同步。');
+    expect(i18n.t('settings.onboarding.firstRun')).toBe('👋 首次使用：选好认证方式并填写凭证，然后开启自动同步。');
     expect(i18n.t('settings.onboarding.needsCredentials')).toBe('🔑 还差一步：填好凭证后即可开启自动同步。详细步骤见下方「凭证设置」。');
-    expect(i18n.t('settings.onboarding.needsAutoSync')).toBe('凭证已就绪。请在下方开启「定时自动同步」。');
+    expect(i18n.t('settings.onboarding.needsAutoSync')).toBe('凭证已就绪。请在下方开启「自动同步」。');
     expect(i18n.t('settings.onboarding.ready', { minutes: 30 })).toBe('✅ 自动同步已开启，将每 30 分钟从得到同步到 Obsidian。');
   });
 
@@ -320,7 +320,7 @@ describe('t() - New settings keys', () => {
     expect(i18n.t('settings.lastSync.never')).toBe('Never synced');
     expect(i18n.t('settings.onboarding.firstRun')).toBe('👋 First time here? Pick an auth mode, add credentials, then enable scheduled auto sync.');
     expect(i18n.t('settings.onboarding.needsCredentials')).toBe('🔑 One more step: add credentials to enable auto sync. See "Credentials" below.');
-    expect(i18n.t('settings.onboarding.needsAutoSync')).toBe('Credentials are ready. Enable "Scheduled Auto Sync" below.');
+    expect(i18n.t('settings.onboarding.needsAutoSync')).toBe('Credentials are ready. Enable "Automatic Sync" below.');
     expect(i18n.t('settings.onboarding.ready', { minutes: 30 })).toBe('✅ Auto sync is enabled and will run every 30 minutes from Dedao to Obsidian.');
   });
 });

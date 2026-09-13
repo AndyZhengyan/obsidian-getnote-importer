@@ -195,6 +195,10 @@ export interface CreateNoteOptions {
   signal?: AbortSignal;
 }
 
+export interface AddNotesToKnowledgeBaseOptions {
+  token: string; clientId: string; topicId: string; noteIds: string[]; signal?: AbortSignal;
+}
+
 export interface Blogger {
   follow_id: string;
   name?: string;
@@ -701,4 +705,39 @@ export async function createNote(options: CreateNoteOptions): Promise<{ noteId: 
   const noteId = extractCreatedNoteId(data);
   if (!noteId) throw new Error(t('error.createNoteFailed'));
   return { noteId };
+}
+
+export async function addNotesToKnowledgeBase(options: AddNotesToKnowledgeBaseOptions): Promise<void> {
+  if (!options.topicId.trim() || options.noteIds.length === 0) throw new Error('Invalid knowledge-base assignment');
+  const data = await apiRequest<Record<string, unknown>>(
+    'https://openapi.biji.com/open/api/v1/resource/knowledge/note/batch-add',
+    {
+      method: 'POST',
+      headers: { ...buildHeaders(options.token, options.clientId), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic_id: options.topicId, note_ids: options.noteIds.map(String) }),
+    },
+    1,
+    options.signal,
+  );
+  if (data.success === false) throw new Error(t('error.addKnowledgeBaseNoteFailed'));
+}
+
+export interface UpdateNoteOptions {
+  token: string; clientId: string; id: string; title?: string; content?: string; tags?: string[]; signal?: AbortSignal;
+}
+
+/** Contract: getnote-cli/internal/client/client.go NoteUpdate (POST, string id). */
+export async function updateNote(options: UpdateNoteOptions): Promise<void> {
+  if (!options.id.trim()) throw new Error(t('bidirectional.invalid'));
+  const data = await apiRequest<Record<string, unknown>>(
+    'https://openapi.biji.com/open/api/v1/resource/note/update',
+    { method: 'POST', headers: { ...buildHeaders(options.token, options.clientId), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: options.id,
+        ...(options.title !== undefined ? { title: options.title } : {}),
+        ...(options.content !== undefined ? { content: options.content } : {}),
+        ...(options.tags !== undefined ? { tags: options.tags } : {}),
+      }),
+    }, 0, options.signal,
+  );
+  if (data.success !== true) throw new Error(t('bidirectional.unconfirmed'));
 }

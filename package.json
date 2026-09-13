@@ -27,7 +27,7 @@
     "obsidian": "^1.13.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.68.0",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   },
   "dependencies": {
     "preact": "^10.29.8",

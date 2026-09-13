@@ -247,7 +247,7 @@ Migration is safe to re-run. When there is a target conflict, invalid metadata, 
 - 🔐 API credentials stay in local Obsidian plugin data.
 - 🏠 The plugin does not depend on an extra third-party relay backend.
 - ⬇️ Downloaded content goes directly from Dedao Brain into your vault.
-- ⬆️ Only Markdown files you explicitly choose to upload are sent to Dedao Brain.
+- ⬆️ Manual upload sends only the Markdown files you explicitly select. When “Auto-upload local changes” is enabled, eligible new or edited text notes in the sync folder and its subfolders are sent automatically.
 - 📎 Attachments are downloaded only from URLs returned by Dedao Brain APIs.
 - 🛡️ Local path migration prefers skipping unsafe conflicts rather than overwriting files.
 

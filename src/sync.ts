@@ -1,6 +1,6 @@
 import { App, TFile } from 'obsidian';
 import { fetchAllNotes, fetchNoteChildren, fetchNoteDetail, fetchNoteOriginal, fetchSubscribedKnowledgeNotes } from './api';
-import { formatDateTime, renderNote, renderNoteWithTemplate, generateDisplayTitle } from './note-parser';
+import { renderNote, renderNoteWithTemplate, generateDisplayTitle } from './note-parser';
 import { getCategoryDir } from './types';
 import { getAuthCredentials, type GetNoteNote, type Settings, type SyncResult, type SyncResultItem, type SyncScopeOptions } from './types';
 import { applyTagFilter } from './utils/tag-aggregator';
@@ -137,10 +137,6 @@ function isDownloadableAttachment(
   const kind = classifyAttachmentUrl(attachment.url);
   if (kind === 'other') return true; // never silently drop unrecognized
   return isAttachmentTypeEnabled(settings.attachmentImport, kind);
-}
-
-function hasImageAssetPaths(note: GetNoteNote): boolean {
-  return (note.assetPaths ?? []).some(path => /\.(png|jpg|jpeg|gif|webp|bmp|svg)(\?|$)/i.test(path));
 }
 
 export class SyncCancelledError extends Error {
@@ -451,35 +447,38 @@ export class SyncEngine {
     return { exists: true, file: existingFile };
   }
 
-  private isContentChanged(file: TFile, note: GetNoteNote): boolean {
-    try {
-      const cached = this.app.metadataCache.getFileCache(file);
-      if (!cached?.frontmatter) return true;
-      const modified = cached.frontmatter['modified'] as string | undefined;
-      if (!modified) return true;
-      const noteModified = formatDateTime(note.updated_at);
-      return modified !== noteModified;
-    } catch {
-      return true;
+  private async readCurrentUid(file: TFile): Promise<string | undefined> {
+    const content = await this.app.vault.read(file);
+    const frontmatter = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content);
+    if (!frontmatter) return undefined;
+    // Parse the scalar as text: YAML numeric parsing can round large note IDs.
+    const match = /^uid[ \t]*:[ \t]*("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^\r\n]*?)[ \t]*(?:#.*)?$/m.exec(frontmatter[1]);
+    if (!match) return undefined;
+    const raw = match[1].trim();
+    if (raw.startsWith('"')) {
+      try {
+        const value: unknown = JSON.parse(raw);
+        return typeof value === 'string' && value ? value : undefined;
+      } catch {
+        return undefined;
+      }
     }
+    if (raw.startsWith("'")) return raw.slice(1, -1).replace(/''/g, "'") || undefined;
+    return raw && !/^(?:null$|~$|[\[\]{}>|&*!])/.test(raw) ? raw : undefined;
   }
 
-  private isOwnedByNote(file: TFile, noteId: string): boolean {
-    const cached = this.app.metadataCache.getFileCache(file);
-    return String(cached?.frontmatter?.['uid'] ?? '') === noteId;
+  private async isOwnedByNote(file: TFile, noteId: string): Promise<boolean> {
+    return await this.readCurrentUid(file) === noteId;
   }
 
-  private buildUidIndex(): Map<string, TFile> {
+  private async buildUidIndex(): Promise<Map<string, TFile>> {
     const index = new Map<string, TFile>();
     const prefix = this.settings.folderName + '/';
     const allFiles = this.app.vault.getMarkdownFiles();
     for (const file of allFiles) {
       if (!file.path.startsWith(prefix)) continue;
-      const cached = this.app.metadataCache.getFileCache(file);
-      const uid = cached?.frontmatter?.['uid'] as string | undefined;
-      if (uid) {
-        index.set(uid, file);
-      }
+      const uid = await this.readCurrentUid(file);
+      if (uid) index.set(uid, file);
     }
     return index;
   }
@@ -542,19 +541,17 @@ export class SyncEngine {
 
       if (
         existingAtTarget
-        && (!(existingAtTarget instanceof TFile) || !this.isOwnedByNote(existingAtTarget, note.note_id))
+        && (!(existingAtTarget instanceof TFile) || !await this.isOwnedByNote(existingAtTarget, note.note_id))
       ) {
         targetPath = this.resolveConflict(categoryDir, this.getFileName(note, parentBaseName));
         existingAtTarget = this.app.vault.getAbstractFileByPath(targetPath);
       }
 
-      if (existingAtTarget instanceof TFile && this.isOwnedByNote(existingAtTarget, note.note_id)) {
-        const content = renderNote(note, note.assetFileName, parentFileName, childFileNames);
-        // File exists at target path but wasn't in uidIndex - check content
-        const contentChanged = this.isContentChanged(existingAtTarget, note) || hasImageAssetPaths(note) || Boolean(note.linkOriginalFileName);
-        await this.app.vault.modify(existingAtTarget, content);
+      if (existingAtTarget instanceof TFile && await this.isOwnedByNote(existingAtTarget, note.note_id)) {
+        // A newly associated file may appear after the index snapshot. Preserve
+        // its body just as for an index hit; bidirectional sync handles updates.
         uidIndex.set(note.note_id, existingAtTarget);
-        return { status: contentChanged ? 'updated' : 'skipped', file: existingAtTarget };
+        return { status: 'skipped', file: existingAtTarget };
       } else {
         const content = await this.renderNewNote(note, parentFileName, childFileNames);
         try {
@@ -568,11 +565,9 @@ export class SyncEngine {
           // File was created by another process between check and create
           const racedTarget = this.app.vault.getAbstractFileByPath(targetPath);
           if (!racedTarget) throw createErr;
-          if (racedTarget instanceof TFile && this.isOwnedByNote(racedTarget, note.note_id)) {
-            const contentChanged = this.isContentChanged(racedTarget, note);
-            await this.app.vault.modify(racedTarget, content);
+          if (racedTarget instanceof TFile && await this.isOwnedByNote(racedTarget, note.note_id)) {
             uidIndex.set(note.note_id, racedTarget);
-            return { status: contentChanged ? 'updated' : 'skipped', file: racedTarget };
+            return { status: 'skipped', file: racedTarget };
           }
           const retryPath = this.resolveConflict(categoryDir, this.getFileName(note, parentBaseName));
           await this.app.vault.create(retryPath, content);
@@ -980,7 +975,7 @@ export class SyncEngine {
 
   async sync(modal?: SyncModal): Promise<SyncResult> {
     const result: SyncResult = { created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] };
-    const uidIndex = this.buildUidIndex();
+    const uidIndex = await this.buildUidIndex();
     const previouslySyncedNoteIds = this.buildPreviouslySyncedNoteIdSet();
     const seenNoteIds = new Set<string>();
     const observedTagNames = new Set<string>();
@@ -1170,7 +1165,7 @@ export class SyncEngine {
       this.filterNotesByDateRange(this.filterRecentNotes(knowledgeNotes), true)
     );
 
-    const uidIndex = this.buildUidIndex();
+    const uidIndex = await this.buildUidIndex();
     const seenNoteIds = new Set<string>();
     const knowledgeBaseNames = this.scopeOptions.knowledgeBaseNames ?? {};
     let knowledgeProcessed = 0;
@@ -1283,7 +1278,7 @@ export class SyncEngine {
     modal?: SyncModal
   ): Promise<SyncResult> {
     const result: SyncResult = { created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] };
-    const uidIndex = this.buildUidIndex();
+    const uidIndex = await this.buildUidIndex();
     const seenNoteIds = new Set<string>();
     const observedTagNames = new Set<string>();
     const controller = new AbortController();
@@ -1444,7 +1439,7 @@ export class SyncEngine {
 
   async syncSubscribedKnowledge(modal?: SyncModal, options?: string[] | SubscribedKnowledgeSyncOptions): Promise<SyncResult> {
     const result: SyncResult = { created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] };
-    const uidIndex = this.buildUidIndex();
+    const uidIndex = await this.buildUidIndex();
     const seenNoteIds = new Set<string>();
     const observedTagNames = new Set<string>();
     const controller = new AbortController();

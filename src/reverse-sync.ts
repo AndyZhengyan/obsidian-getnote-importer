@@ -2,6 +2,7 @@ import type { App, TFile } from 'obsidian';
 import { createNote, fetchNoteDetail, type CreateNoteResult } from './api';
 import { t } from './i18n';
 import { parseSourceBody } from './source-body';
+import { BidirectionalSyncEngine } from './bidirectional-sync';
 import { getAuthCredentials, type AuthCredentials, type Settings, type SyncResultItem } from './types';
 
 export interface ReverseSyncResult {
@@ -160,15 +161,19 @@ function isInsideFolder(file: TFile, folderName: string): boolean {
 
 export class ReverseSyncEngine {
   private abortController = new AbortController();
+  private uploadEngine: BidirectionalSyncEngine;
 
   constructor(
     private app: App,
     private settings: Settings,
     private onProgress?: (progress: ReverseSyncProgress) => void
-  ) {}
+  ) {
+    this.uploadEngine = new BidirectionalSyncEngine(app, settings);
+  }
 
   cancel(): void {
     this.abortController.abort();
+    this.uploadEngine.cancel();
   }
 
   private requireCredentials(): AuthCredentials {
@@ -321,6 +326,21 @@ export class ReverseSyncEngine {
       if (!note) continue;
 
       try {
+        if (credentials.authMode === 'openapi' && note.noteType === 'plain_text'
+          && isInsideFolder(file, this.settings.folderName)
+          && (!note.uid || ['archive', 'attach'].includes(readString(note.frontmatter, 'dedao_upload_state')))) {
+          const item = await this.uploadEngine.uploadNewFile(file, {
+            raw: note.content, title: note.title, body: prepareUploadContent(note.body), tags: prepareUploadTags(note.tags),
+          });
+          if (item.status === 'created') result.created++;
+          else {
+            item.status = 'skipped';
+            result.skipped++;
+          }
+          result.items.push(item);
+          this.reportProgress(item, result.total, totalFiles);
+          continue;
+        }
         if (credentials.authMode === 'web' && note.uid && !note.primeId) {
           result.skipped++;
           const item = this.createLocalItem(file, 'skipped', {
@@ -342,6 +362,15 @@ export class ReverseSyncEngine {
             noteType: note.noteType,
             error: t('reverseSync.skip.remoteExists'),
           });
+          result.items.push(item);
+          this.reportProgress(item, result.total, totalFiles);
+          continue;
+        }
+        if (note.uid && credentials.authMode === 'openapi' && isInsideFolder(file, this.settings.folderName)) {
+          const item = this.createLocalItem(file, 'skipped', {
+            noteId: note.uid, title: note.title, noteType: note.noteType, error: t('bidirectional.remoteMissing'),
+          });
+          result.skipped++;
           result.items.push(item);
           this.reportProgress(item, result.total, totalFiles);
           continue;

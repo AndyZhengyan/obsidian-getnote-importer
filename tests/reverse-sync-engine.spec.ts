@@ -3,8 +3,20 @@ import type { App, TFile } from 'obsidian';
 import { ReverseSyncEngine } from '../src/reverse-sync';
 import type { Settings } from '../src/types';
 
+vi.mock('obsidian', async importOriginal => ({
+  ...await importOriginal<typeof import('obsidian')>(),
+  parseYaml: (text: string) => Object.fromEntries(text.split(/\r?\n/).filter(line => line.includes(':')).map(line => {
+    const index = line.indexOf(':');
+    const value = line.slice(index + 1).trim();
+    let parsed: unknown = value;
+    try { parsed = JSON.parse(value); } catch { /* plain YAML scalar */ }
+    return [line.slice(0, index), parsed];
+  })),
+}));
+
 function makeMockApp() {
-  const files = new Map<string, { path: string; content: string; frontmatter: Record<string, unknown> }>();
+  const files = new Map<string, { path: string; basename: string; content: string; frontmatter: Record<string, unknown> }>();
+  const folders = new Set<string>();
 
   const parseYamlScalar = (value: string): unknown => {
     const trimmed = value.trim();
@@ -28,26 +40,45 @@ function makeMockApp() {
 
   return {
     vault: {
-      getMarkdownFiles: () => [...files.values()].map((f) => ({ path: f.path })),
+      getMarkdownFiles: () => [...files.values()],
+      getAbstractFileByPath: (path: string) => files.get(path) ?? (folders.has(path) ? { path } : null),
+      createFolder: vi.fn(async (path: string) => { folders.add(path); }),
+      process: vi.fn(async (file: { path: string }, fn: (raw: string) => string) => {
+        const existing = files.get(file.path);
+        if (!existing) throw new Error('file missing');
+        existing.content = fn(existing.content);
+        existing.frontmatter = parseFrontmatter(existing.content);
+        return existing.content;
+      }),
       read: vi.fn(async (file: { path: string }) => files.get(file.path)?.content ?? ''),
       modify: vi.fn(async (file: { path: string }, content: string) => {
         const existing = files.get(file.path);
         if (existing) {
-          files.set(file.path, { ...existing, content, frontmatter: parseFrontmatter(content) });
+          Object.assign(existing, { content, frontmatter: parseFrontmatter(content) });
         }
       }),
       _addFile: (path: string, content: string) => {
-        files.set(path, { path, content, frontmatter: parseFrontmatter(content) });
+        files.set(path, { path, basename: path.split('/').pop()!.replace(/\.md$/, ''), content, frontmatter: parseFrontmatter(content) });
       },
       _setContentOnly: (path: string, content: string) => {
         const existing = files.get(path);
-        if (existing) files.set(path, { ...existing, content });
+        if (existing) existing.content = content;
       },
       _setFrontmatter: (path: string, frontmatter: Record<string, unknown>) => {
         const existing = files.get(path);
         if (existing) files.set(path, { ...existing, frontmatter });
       },
       _getFile: (path: string) => files.get(path),
+    },
+    fileManager: {
+      renameFile: vi.fn(async (file: { path: string; basename: string }, path: string) => {
+        const existing = files.get(file.path);
+        if (!existing || files.has(path)) throw new Error('invalid rename');
+        files.delete(file.path);
+        file.path = path;
+        file.basename = path.split('/').pop()!.replace(/\.md$/, '');
+        files.set(path, existing);
+      }),
     },
     metadataCache: {
       getFileCache: (file: { path: string }) => {
@@ -102,6 +133,57 @@ afterEach(() => {
 });
 
 describe('ReverseSyncEngine', () => {
+  it('retries a failed manual archive without creating another remote identity', async () => {
+    const app = makeMockApp();
+    app.vault._addFile('得到大脑/retry.md', 'Body');
+    app.fileManager.renameFile.mockRejectedValueOnce(new Error('rename failed'));
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({ success: true, data: { note: { note_id: 'archive-id' } } })
+    );
+    const first = await new ReverseSyncEngine(toObsidianApp(app), makeSettings()).syncBack();
+    expect(first.failed).toBe(1);
+    expect(app.vault._getFile('得到大脑/retry.md')?.content).toContain('uid: "archive-id"');
+    const second = await new ReverseSyncEngine(toObsidianApp(app), makeSettings()).syncBack();
+    expect(second.failed).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(app.vault._getFile('得到大脑/retry.md')).toBeUndefined();
+    expect(app.vault._getFile('得到大脑/纯文本/retry.md')?.content).toContain('dedao_upload_state: "complete"');
+    const third = await new ReverseSyncEngine(toObsidianApp(app), makeSettings()).syncBack();
+    expect(third.skipped).toBe(1);
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+  });
+
+  it('keeps explicit uploads outside the sync folder at their original path', async () => {
+    const app = makeMockApp();
+    app.vault._addFile('Personal/upload.md', 'Outside body');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({ success: true, data: { note: { note_id: 'outside-id' } } })
+    );
+    const result = await new ReverseSyncEngine(toObsidianApp(app), makeSettings()).syncFiles(app.vault.getMarkdownFiles().map(toTFile));
+    expect(result.created).toBe(1);
+    expect(app.fileManager.renameFile).not.toHaveBeenCalled();
+    expect(app.vault._getFile('Personal/upload.md')?.content).toContain('uid: "outside-id"');
+  });
+
+  it('cancels manual creation and prevents repeating an uncertain create request', async () => {
+    const app = makeMockApp();
+    app.vault._addFile('得到大脑/cancel.md', 'Cancel body');
+    const engine = new ReverseSyncEngine(toObsidianApp(app), makeSettings());
+    let sentSignal: AbortSignal | null | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      sentSignal = init?.signal;
+      engine.cancel();
+      return mockFetchResponse({ success: true, data: { note: { note_id: 'cancel-id' } } });
+    });
+    await expect(engine.syncBack()).rejects.toMatchObject({ name: 'AbortError' });
+    expect(sentSignal?.aborted).toBe(true);
+    expect(app.vault._getFile('得到大脑/cancel.md')?.content).toContain('dedao_upload_state: "pending"');
+    expect(app.fileManager.renameFile).not.toHaveBeenCalled();
+    const retry = await new ReverseSyncEngine(toObsidianApp(app), makeSettings()).syncBack();
+    expect(retry.failed).toBe(1);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('creates a remote note from only the marked source body', async () => {
     const app = makeMockApp();
     app.vault._addFile('得到大脑/marked.md', [
@@ -224,14 +306,12 @@ describe('ReverseSyncEngine', () => {
         }),
       })
     );
-    expect(app.vault._getFile('得到大脑/local.md')?.content).toBe([
-      '---',
-      'uid: "1909999999999999999"',
-      'title: "Local title"',
-      'note_type: plain_text',
-      '---',
-      'Local body',
-    ].join('\n'));
+    expect(app.vault._getFile('得到大脑/local.md')).toBeUndefined();
+    const archived = app.vault._getFile('得到大脑/纯文本/Local title.md')?.content;
+    expect(archived).toContain('uid: "1909999999999999999"');
+    expect(archived).toContain('dedao_upload_state: "complete"');
+    expect(archived).toContain('dedao_bidirectional_hash:');
+    expect(archived).toContain('Local body');
   });
 
   it('limits uploaded tags to the OpenAPI create-note maximum', async () => {
@@ -442,7 +522,7 @@ describe('ReverseSyncEngine', () => {
     expect(app.vault.modify).not.toHaveBeenCalled();
   });
 
-  it('creates a replacement note when a local uid no longer exists remotely and rewrites uid only', async () => {
+  it('preserves an associated note when its remote uid is missing', async () => {
     const app = makeMockApp();
     app.vault._addFile('得到大脑/missing.md', [
       '---',
@@ -458,8 +538,9 @@ describe('ReverseSyncEngine', () => {
 
     const result = await new ReverseSyncEngine(toObsidianApp(app), makeSettings()).syncBack();
 
-    expect(result).toEqual(expect.objectContaining({ created: 1, skipped: 0, failed: 0, total: 1 }));
-    expect(app.vault._getFile('得到大脑/missing.md')?.content).toContain('uid: "replacement-remote"');
+    expect(result).toEqual(expect.objectContaining({ created: 0, skipped: 1, failed: 0, total: 1 }));
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(app.vault._getFile('得到大脑/missing.md')?.content).toContain('uid: "missing-remote"');
     expect(app.vault._getFile('得到大脑/missing.md')?.content).toContain('Keep this body');
   });
 
@@ -565,8 +646,8 @@ describe('ReverseSyncEngine', () => {
         }),
       })
     );
-    expect(app.vault._getFile('得到大脑/crlf.md')?.content.match(/^---/g)?.length).toBe(1);
-    expect(app.vault._getFile('得到大脑/crlf.md')?.content).toContain('uid: "crlf-created"');
+    expect(app.vault._getFile('得到大脑/纯文本/CRLF.md')?.content.match(/^---/g)?.length).toBe(1);
+    expect(app.vault._getFile('得到大脑/纯文本/CRLF.md')?.content).toContain('uid: "crlf-created"');
   });
 
   it('keeps valid fields when a closed frontmatter block contains malformed lines', async () => {
@@ -597,8 +678,8 @@ describe('ReverseSyncEngine', () => {
         }),
       })
     );
-    expect(app.vault._getFile('得到大脑/partial-frontmatter.md')?.content.match(/^---/g)?.length).toBe(1);
-    expect(app.vault._getFile('得到大脑/partial-frontmatter.md')?.content).toContain('uid: "partial-created"');
+    expect(app.vault._getFile('得到大脑/纯文本/Partial frontmatter.md')?.content.match(/^---/g)?.length).toBe(1);
+    expect(app.vault._getFile('得到大脑/纯文本/Partial frontmatter.md')?.content).toContain('uid: "partial-created"');
   });
 
   it('ignores malformed object-shaped tags while keeping the note uploadable', async () => {
@@ -652,12 +733,8 @@ describe('ReverseSyncEngine', () => {
         body: expect.stringContaining('"content":"---\\n# Not YAML\\n---\\nBody"'),
       })
     );
-    expect(app.vault._getFile('得到大脑/divider.md')?.content).toBe([
-      '---',
-      'uid: "divider-created"',
-      '---',
-      content,
-    ].join('\n'));
+    expect(app.vault._getFile('得到大脑/纯文本/divider.md')?.content).toContain('uid: "divider-created"');
+    expect(app.vault._getFile('得到大脑/纯文本/divider.md')?.content).toContain(content);
   });
 
   it('re-reads the local file before writing the returned uid', async () => {
@@ -682,9 +759,9 @@ describe('ReverseSyncEngine', () => {
 
     await new ReverseSyncEngine(toObsidianApp(app), makeSettings()).syncBack();
 
-    expect(app.vault._getFile('得到大脑/editing.md')?.content).toContain('uid: "editing-created"');
-    expect(app.vault._getFile('得到大脑/editing.md')?.content).toContain('User edit while uploading');
-    expect(app.vault._getFile('得到大脑/editing.md')?.content).not.toContain('Initial body');
+    expect(app.vault._getFile('得到大脑/纯文本/Editing.md')?.content).toContain('uid: "editing-created"');
+    expect(app.vault._getFile('得到大脑/纯文本/Editing.md')?.content).toContain('User edit while uploading');
+    expect(app.vault._getFile('得到大脑/纯文本/Editing.md')?.content).not.toContain('Initial body');
   });
 
   it('uploads only the markdown files explicitly selected by the user', async () => {
@@ -725,7 +802,7 @@ describe('ReverseSyncEngine', () => {
       })
     );
     expect(app.vault._getFile('得到大脑/a.md')?.content).not.toContain('selected-created');
-    expect(app.vault._getFile('得到大脑/b.md')?.content).toContain('uid: "selected-created"');
+    expect(app.vault._getFile('得到大脑/纯文本/B.md')?.content).toContain('uid: "selected-created"');
   });
 
   it('reports progress after each selected local file is processed', async () => {

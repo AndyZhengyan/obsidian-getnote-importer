@@ -31,6 +31,7 @@ function sanitizeObsidianTag(tag: string): string {
 
 const PLUGIN_FRONTMATTER_KEYS = new Set([
   'uid',
+  'topic_id',
   'title',
   'created',
   'modified',
@@ -123,6 +124,10 @@ function buildFrontmatter(note: GetNoteNote, extraLines: string[] = [], sourceBo
     'dedao_sync_schema: 1',
     `dedao_source_hash: "${createSourceHash(title, normalizedTags, sourceBody)}"`,
   ];
+
+  if (note.topic_id) {
+    lines.splice(7, 0, `topic_id: "${escapeYamlDoubleQuoted(note.topic_id)}"`);
+  }
 
   if (note.parent_id) {
     lines.push(`parent_id: "${escapeYamlDoubleQuoted(note.parent_id)}"`);

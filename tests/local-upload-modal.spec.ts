@@ -31,6 +31,22 @@ afterEach(() => {
 });
 
 describe('LocalUploadModal', () => {
+  it('warns when uploading from outside the download folder', async () => {
+    const { container } = renderModal();
+    expect(container.querySelector('[role="note"]')).toBeNull();
+    await act(() => {
+      const select = container.querySelector('select')!;
+      select.value = 'Inbox'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(container.querySelector('[role="note"]')?.textContent).toContain('得到大脑');
+    expect(container.querySelector('[role="note"]')?.textContent).toContain('不会更新此处原笔记');
+    await act(() => {
+      const select = container.querySelector('select')!;
+      select.value = '得到大脑/nested'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(container.querySelector('[role="note"]')).toBeNull();
+  });
+
   it('filters markdown files by directory and confirms only selected files', async () => {
     const { container, onConfirm } = renderModal();
 

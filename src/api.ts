@@ -1,5 +1,5 @@
 // Central API entry point - delegates to client implementations based on authMode
-import { createNote as openapiCreateNote, fetchNotes as openapiFetchNotes, fetchNoteDetail as openapiFetchNoteDetail, fetchRecallSearch as openapiFetchRecallSearch, fetchSubscribedKnowledgeNotes as openapiFetchSubscribedKnowledgeNotes, fetchTopicBloggers as openapiFetchTopicBloggers, fetchTopicContentPreviewPage as openapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as openapiFetchTopicContentPreviews, fetchSubscribedTopics as openapiFetchSubscribedTopics } from './api-clients/openapi-client';
+import { addNotesToKnowledgeBase as openapiAddNotesToKnowledgeBase, createNote as openapiCreateNote, fetchNotes as openapiFetchNotes, fetchNoteDetail as openapiFetchNoteDetail, fetchRecallSearch as openapiFetchRecallSearch, fetchSubscribedKnowledgeNotes as openapiFetchSubscribedKnowledgeNotes, fetchTopicBloggers as openapiFetchTopicBloggers, fetchTopicContentPreviewPage as openapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as openapiFetchTopicContentPreviews, fetchSubscribedTopics as openapiFetchSubscribedTopics } from './api-clients/openapi-client';
 import { createNote as webapiCreateNote, fetchNotes as webapiFetchNotes, fetchNoteChildren as webapiFetchNoteChildren, fetchNoteDetail as webapiFetchNoteDetail, fetchNoteOriginal as webapiFetchNoteOriginal, fetchSubscribedKnowledgeNotes as webapiFetchSubscribedKnowledgeNotes, fetchTopicContentPreviewPage as webapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as webapiFetchTopicContentPreviews, fetchSubscribedTopics as webapiFetchSubscribedTopics, isWebApiAuthenticationError } from './api-clients/webapi-client';
 import type { GetNoteNote, AuthMode, LinkOriginal, RecallSearchResult, SubscribedTopic } from './types';
 import type { Blogger } from './api-clients/openapi-client';
@@ -267,6 +267,13 @@ export async function createNote(options: CreateNoteOptions): Promise<CreateNote
     tags: options.tags,
     signal: options.signal,
   });
+}
+
+export async function addNotesToKnowledgeBase(options: {
+  token: string; clientId: string; topicId: string; noteIds: string[]; authMode: AuthMode; signal?: AbortSignal;
+}): Promise<void> {
+  if (options.authMode !== 'openapi') throw new Error(t('bidirectional.openApiOnly'));
+  return openapiAddNotesToKnowledgeBase(options);
 }
 
 export async function* fetchAllNotes(

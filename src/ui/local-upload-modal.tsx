@@ -1,3 +1,4 @@
+import { insideSyncFolder } from '../bidirectional-sync';
 import type { TFile } from 'obsidian';
 import { useMemo, useState } from 'preact/hooks';
 import { t } from '../i18n';
@@ -5,6 +6,7 @@ import { t } from '../i18n';
 interface LocalUploadModalProps {
   files: TFile[];
   initialFolder: string;
+  syncFolder?: string;
   onConfirm: (files: TFile[]) => void;
   onCancel: () => void;
 }
@@ -49,7 +51,7 @@ function folderOptions(files: TFile[], initialFolder: string): string[] {
   });
 }
 
-export function LocalUploadModal({ files, initialFolder, onConfirm, onCancel }: LocalUploadModalProps) {
+export function LocalUploadModal({ files, initialFolder, syncFolder = initialFolder, onConfirm, onCancel }: LocalUploadModalProps) {
   const folders = useMemo(() => folderOptions(files, initialFolder), [files, initialFolder]);
   const [folder, setFolder] = useState(cleanFolder(initialFolder) || folders[0] || '');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -103,6 +105,9 @@ export function LocalUploadModal({ files, initialFolder, onConfirm, onCancel }: 
           <button onClick={selectNone}>{t('picker.selectNone')}</button>
         </div>
       </div>
+      {!insideSyncFolder(`${cleanFolder(folder)}/note.md`, syncFolder) && (
+        <p role="note">{t('bidirectional.uploadWarning', { folder: syncFolder })}</p>
+      )}
       <div className="getnote-picker-body">
         <div className="getnote-picker-search">
           <input

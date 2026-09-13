@@ -1,3 +1,5 @@
+import { BidirectionalSyncEngine } from './bidirectional-sync';
+import { resolveSyncConflict } from './ui/sync-conflict-modal';
 import { App, Modal, Notice, Platform, Plugin, getLanguage, type DataAdapter, type Editor, type Menu, type TFile } from 'obsidian';
 import ReactDOM from 'react-dom';
 import { DEFAULT_SETTINGS, getAuthCredentials, migrateEnabledNoteTypes, type RecallSearchResult, type Settings, type SyncHistoryScope, type SyncProgressDetail, type SyncHistoryEntry, type SyncResult, type SyncScopeOptions } from './types';
@@ -200,7 +202,10 @@ export default class GetNoteSyncPlugin extends Plugin {
           ? loaded.scheduledSync.syncKnowledgeBases.filter((id): id is string => typeof id === 'string')
           : [],
       },
-      reverseSync: { ...DEFAULT_SETTINGS.reverseSync, ...loaded?.reverseSync },
+      reverseSync: { ...DEFAULT_SETTINGS.reverseSync, ...loaded?.reverseSync,
+        enabled: loaded?.reverseSync?.enabled === true || loaded?.reverseSync?.autoUpload?.enabled === true,
+        autoUpload: undefined,
+      },
       ribbonActions: { ...DEFAULT_SETTINGS.ribbonActions, ...loaded?.ribbonActions },
       syncHistory: normalizeSyncHistory(loaded?.syncHistory),
     };
@@ -293,6 +298,7 @@ export default class GetNoteSyncPlugin extends Plugin {
       this.registerInterval(this.quotaTickIntervalId);
     }
 
+
     if (this.settings.scheduledSync.enabled) {
       if (this.settings.scheduledSync.syncOnStart) {
         void this.doAutoSync();
@@ -304,6 +310,7 @@ export default class GetNoteSyncPlugin extends Plugin {
 
   onunload(): void {
     this.stopAutoSync();
+    this.currentSyncEngine?.cancel();
     if (this.syncProgressResultTimer) clearTimeout(this.syncProgressResultTimer);
     setWebTokenRefreshHandler(null);
     this.webTokenRefreshCoordinator = null;
@@ -346,6 +353,7 @@ export default class GetNoteSyncPlugin extends Plugin {
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
   }
+
 
   async applyDatePathSettings(
     target: DatePathMigrationTarget,
@@ -589,6 +597,31 @@ export default class GetNoteSyncPlugin extends Plugin {
     this.updateSettingsRuntimeState();
   }
 
+  /** Reconcile only existing text notes returned by this download's filters. */
+  private async reconcileDownloadedNotes(result: SyncResult, automatic: boolean): Promise<void> {
+    const ids = [...new Set((result.items ?? []).filter(item => item.status === 'skipped' && item.noteType === 'plain_text')
+      .map(item => item.noteId))];
+    if (!ids.length) return;
+    const reconciler = new BidirectionalSyncEngine(this.app, this.settings,
+      automatic ? undefined : conflict => resolveSyncConflict(this.app, conflict, 'download'));
+    this.currentSyncEngine = reconciler;
+    let changes: SyncResult;
+    try {
+      changes = await reconciler.sync(ids, { direction: 'download' });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw new SyncCancelledError();
+      throw error;
+    }
+    const reconciled = new Set((changes.items ?? []).map(item => item.noteId));
+    result.items = (result.items ?? []).filter(item => {
+      if (!reconciled.has(item.noteId)) return true;
+      result[item.status]--; result.total--;
+      return false;
+    });
+    for (const key of ['created', 'updated', 'skipped', 'failed', 'total'] as const) result[key] += changes[key];
+    result.items.push(...(changes.items ?? []));
+  }
+
   private async runSync(
     type: 'full' | 'selective' | 'auto',
     scopeOptions?: Partial<SyncScopeOptions>,
@@ -628,9 +661,30 @@ export default class GetNoteSyncPlugin extends Plugin {
       const result = selectedIds
         ? await engine.syncNoteIds(selectedIds)
         : await engine.sync();
+      if (type === 'auto' && this.settings.reverseSync.enabled && credentials.authMode === 'openapi') {
+        const reconciler = new BidirectionalSyncEngine(this.app, this.settings,
+          type === 'auto' ? undefined : conflict => resolveSyncConflict(this.app, conflict, 'both'));
+        this.currentSyncEngine = reconciler;
+        const changes = await reconciler.sync(undefined, { direction: 'both' });
+        const reconciledIds = new Set((changes.items ?? []).map(item => item.noteId));
+        result.items = (result.items ?? []).filter(item => {
+          if (item.status !== 'skipped' || !reconciledIds.has(item.noteId)) return true;
+          result.skipped--;
+          result.total--;
+          return false;
+        });
+        result.created += changes.created;
+        result.updated += changes.updated;
+        result.skipped += changes.skipped;
+        result.failed += changes.failed;
+        result.total += changes.total;
+        (result.items ??= []).push(...(changes.items ?? []));
+      }
+      else await this.reconcileDownloadedNotes(result, type === 'auto');
 
       const status: SyncHistoryEntry['status'] = result.failed > 0 ? 'partial' : 'success';
       await this.recordSyncHistory(result, type, startedAt, resolvedScope, status);
+      const hasSyncedNotes = result.created > 0 || result.updated > 0 || result.skipped > 0;
 
         // Clear exhausted quota state on successful sync
         if (credentials.authMode === 'openapi' && this.settings.lastQuotaState?.exhausted) {
@@ -648,8 +702,10 @@ export default class GetNoteSyncPlugin extends Plugin {
         } else {
           this.autoSyncFailCount = 0;
         }
-        if (status === 'success' && (result.created > 0 || result.updated > 0 || result.skipped > 0)) {
-          showNotice(t('notice.autoSynced', { created: result.created, updated: result.updated, skipped: result.skipped }));
+        if (status === 'success') {
+          showNotice(hasSyncedNotes
+            ? t('notice.autoSynced', { created: result.created, updated: result.updated, skipped: result.skipped })
+            : t('notice.autoSyncEmpty'));
         }
       } else {
         if (status === 'partial') {
@@ -660,12 +716,12 @@ export default class GetNoteSyncPlugin extends Plugin {
             failed: result.failed,
           }), 15000);
         } else {
-          showSuccess(t('notice.syncComplete', {
+          showSuccess(hasSyncedNotes ? t('notice.syncComplete', {
             created: result.created,
             updated: result.updated,
             skipped: result.skipped,
             failed: '',
-          }), 8000);
+          }) : t('notice.syncEmpty'), 8000);
         }
         this.finishSyncProgress(
           status === 'partial' ? 'failed' : 'success',
@@ -676,12 +732,12 @@ export default class GetNoteSyncPlugin extends Plugin {
               skipped: result.skipped,
               failed: result.failed,
             })
-            : t('notice.syncComplete', {
+            : hasSyncedNotes ? t('notice.syncComplete', {
               created: result.created,
               updated: result.updated,
               skipped: result.skipped,
               failed: '',
-            }),
+            }) : t('notice.syncEmpty'),
         );
         return;
       }
@@ -927,41 +983,33 @@ export default class GetNoteSyncPlugin extends Plugin {
     let progressFinished = false;
     try {
       const result = await engine.syncSubscribedKnowledge(undefined, syncOptions);
+      await this.reconcileDownloadedNotes(result, false);
       await this.recordSyncHistory(result, 'full', startedAt, {
         maxDays: 0,
         syncStartDate: '',
         selectedCount: syncOptions?.selectedNoteIds?.length,
         selectedIds: syncOptions?.selectedNoteIds,
       }, result.failed > 0 ? 'partial' : 'success', undefined, 'knowledge-base');
+      const hasSyncedNotes = result.created > 0 || result.updated > 0 || result.skipped > 0;
+      const resultMessage = result.failed > 0
+        ? t('notice.syncPartial', {
+          created: result.created,
+          updated: result.updated,
+          skipped: result.skipped,
+          failed: result.failed,
+        })
+        : hasSyncedNotes ? t('notice.syncComplete', {
+          created: result.created,
+          updated: result.updated,
+          skipped: result.skipped,
+          failed: '',
+        }) : t('notice.syncEmpty');
       if (result.failed > 0) {
-        showError(t('notice.syncPartial', {
-          created: result.created,
-          updated: result.updated,
-          skipped: result.skipped,
-          failed: result.failed,
-        }), 15000);
+        showError(resultMessage, 15000);
       } else {
-        showSuccess(t('notice.syncComplete', {
-          created: result.created,
-          updated: result.updated,
-          skipped: result.skipped,
-          failed: '',
-        }), 8000);
+        showSuccess(resultMessage, 8000);
       }
-      this.finishSyncProgress(
-        result.failed > 0 ? 'failed' : 'success',
-        result.failed > 0 ? t('notice.syncPartial', {
-          created: result.created,
-          updated: result.updated,
-          skipped: result.skipped,
-          failed: result.failed,
-        }) : t('notice.syncComplete', {
-          created: result.created,
-          updated: result.updated,
-          skipped: result.skipped,
-          failed: '',
-        }),
-      );
+      this.finishSyncProgress(result.failed > 0 ? 'failed' : 'success', resultMessage);
       progressFinished = true;
     } catch (err) {
       if (err instanceof SyncCancelledError) {
@@ -1288,7 +1336,8 @@ class LocalUploadModalWrapper extends Modal {
     ReactDOM.render(
       <LocalUploadModal
         files={this.app.vault.getMarkdownFiles()}
-        initialFolder={this.plugin.settings.folderName}
+        initialFolder={this.plugin.settings.reverseSync.uploadFolder || this.plugin.settings.folderName}
+        syncFolder={this.plugin.settings.folderName}
         onConfirm={(files) => {
           this.close();
           this.plugin.uploadSelectedLocalNotes(files);

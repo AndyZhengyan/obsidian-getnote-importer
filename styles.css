@@ -720,6 +720,23 @@
   text-align: right;
 }
 
+.getnote-bidirectional-hint {
+  max-width: 100%;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.getnote-input-hint-warning {
+  color: var(--text-warning);
+}
+
+.getnote-upload-folder-control input[type="text"] {
+  width: var(--getnote-secondary-input-width);
+  max-width: var(--getnote-secondary-input-width);
+  min-width: var(--getnote-secondary-input-min-width);
+  box-sizing: border-box;
+}
+
 .getnote-scheduled-row input[type="number"] {
   width: var(--getnote-secondary-input-width);
 }
@@ -2233,3 +2250,5 @@ body .getnote-ribbon-action-hidden {
 .getnote-date-path-confirm-content {
   max-width: 520px;
 }
+
+.getnote-sync-conflict-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow: auto; }

@@ -249,11 +249,13 @@ afterEach(() => {
 });
 
 describe('SettingsComponent information architecture (#257)', () => {
-  it('labels scheduled sync as one-way and manual sync as two-way', () => {
+  it('labels scheduled and manual sync clearly', () => {
     const { container } = renderSettings(makeSettings());
 
-    expect(container.textContent).toContain('定时自动同步（单向：得到 → OB）');
-    expect(container.textContent).toContain('手动同步（双向：得到 ↔ OB）');
+    expect(container.textContent).toContain('自动同步');
+    expect(container.textContent).not.toContain('自动同步（单向：得到 → OB）');
+    expect(container.textContent).toContain('手动同步');
+    expect(container.textContent).not.toContain('手动同步（双向：得到 ↔ OB）');
   });
 
   it('groups automatic sync, manual sync, and history before the final advanced settings section', async () => {
@@ -288,7 +290,7 @@ describe('SettingsComponent information architecture (#257)', () => {
     expect(syncDisclosure.getAttribute('aria-expanded')).toBe('true');
     expect(syncDisclosure.getAttribute('aria-controls')).toBe(syncDetails.id);
     expect(syncDetails.classList.contains('getnote-hidden')).toBe(false);
-    expect(syncSection.textContent!.indexOf('目标文件夹')).toBeLessThan(syncSection.textContent!.indexOf('定时自动同步'));
+    expect(syncSection.textContent!.indexOf('目标文件夹')).toBeLessThan(syncSection.textContent!.indexOf('自动同步'));
     expect(syncSection.textContent).toContain('手动同步');
     expect(syncSection.textContent).toContain('同步日志');
     expect(syncSection.compareDocumentPosition(advanced) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -405,6 +407,28 @@ describe('SettingsComponent information architecture (#257)', () => {
 
     expect(container.querySelector('[data-credential-details]')?.classList.contains('getnote-hidden')).toBe(true);
     expect(container.querySelector('[data-settings-status]')?.textContent).toContain('连接成功');
+  });
+
+  it('uses an aligned local-change auto-upload toggle inside automatic sync details', async () => {
+    const updateSetting = vi.fn();
+    const { container } = renderSettings(makeSettings(), updateSetting);
+    expect(container.querySelector('[data-auto-upload-settings]')).toBeNull();
+    expect(container.querySelector('#getnote-sync-direction')).toBeNull();
+
+    const details = container.querySelector<HTMLElement>('#getnote-scheduled-details')!;
+    const toggle = details.querySelector<HTMLInputElement>('input[aria-label="本地修改自动上传"]')!;
+    const row = toggle.closest('.getnote-scheduled-row');
+    expect(row?.parentElement).toBe(details);
+    expect(row?.querySelector('.getnote-scheduled-row-label')?.textContent).toBe('本地修改自动上传');
+    expect(row?.querySelector('.getnote-scheduled-row-control')).not.toBeNull();
+    expect(toggle.checked).toBe(false);
+
+    await act(() => {
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(updateSetting).toHaveBeenCalledWith('reverseSync', expect.objectContaining({ enabled: true, autoUpload: undefined }));
+    expect(details.textContent).toContain('仅上传同步目录中新增或修改的文字笔记');
   });
 
   it('replaces configured copy with an unverified connection indicator', () => {
@@ -527,7 +551,7 @@ describe('SettingsComponent information architecture (#257)', () => {
     await act(() => disclosure.dispatchEvent(new MouseEvent('click', { bubbles: true })));
     expect(details.classList.contains('getnote-hidden')).toBe(false);
 
-    const enabledToggle = container.querySelector<HTMLInputElement>('input[aria-label="启用定时同步"]')!;
+    const enabledToggle = container.querySelector<HTMLInputElement>('input[aria-label="启用自动同步"]')!;
     await act(() => enabledToggle.closest('.checkbox-container')!
       .dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
@@ -558,7 +582,7 @@ describe('SettingsComponent information architecture (#257)', () => {
     expect(attachments?.textContent).toContain('全部附件');
 
     expect(scheduled?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.getAttribute('aria-label'))
-      .toBe('启用定时同步');
+      .toBe('启用自动同步');
     expect(attachments?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.getAttribute('aria-label'))
       .toBe('下载附件');
   });
@@ -610,7 +634,7 @@ describe('SettingsComponent information architecture (#257)', () => {
     const credentials = { apiToken: 'token', clientId: 'client' };
     const disabled = renderSettings(makeSettings(credentials)).container
       .querySelector<HTMLElement>('[data-credential-guidance]');
-    expect(disabled?.textContent).toContain('开启「定时自动同步」');
+    expect(disabled?.textContent).toContain('开启「自动同步」');
     expect(disabled?.classList.contains('getnote-onboarding--needs-auto-sync')).toBe(true);
 
     const enabled = renderSettings(makeSettings({
@@ -2003,7 +2027,7 @@ describe('SettingsComponent — tag cache lazy seed (#238)', () => {
 describe('SettingsComponent scheduled sync toggles (#136)', () => {
   function findScheduledEnabledRow(container: HTMLElement): HTMLElement {
     const rows = container.querySelectorAll('.getnote-scheduled-row');
-    const row = Array.from(rows).find((el) => el.textContent?.includes('启用定时同步'));
+    const row = Array.from(rows).find((el) => el.textContent?.includes('启用自动同步'));
     expect(row).toBeTruthy();
     return row!;
   }

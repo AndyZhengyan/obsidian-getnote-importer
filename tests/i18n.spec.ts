@@ -85,6 +85,14 @@ describe('t() - Chinese translations', () => {
     expect(i18n.t('notice.autoSyncFailed')).toBe('自动同步失败');
   });
 
+  it('returns Chinese for notice.syncEmpty', () => {
+    expect(i18n.t('notice.syncEmpty')).toBe('同步完成：没有发现需要同步的笔记。');
+  });
+
+  it('returns Chinese for notice.autoSyncEmpty', () => {
+    expect(i18n.t('notice.autoSyncEmpty')).toBe('自动同步完成：没有发现需要同步的笔记。');
+  });
+
   it('returns Chinese for error.invalidCredentials', () => {
     expect(i18n.t('error.invalidCredentials')).toBe('API Token 或 Client ID 无效，请检查设置');
   });
@@ -134,6 +142,14 @@ describe('t() - English translations', () => {
 
   it('returns English for notice.autoSyncFailed', () => {
     expect(i18n.t('notice.autoSyncFailed')).toBe('Auto sync failed');
+  });
+
+  it('returns English for notice.syncEmpty', () => {
+    expect(i18n.t('notice.syncEmpty')).toBe('Sync complete: no notes needed syncing.');
+  });
+
+  it('returns English for notice.autoSyncEmpty', () => {
+    expect(i18n.t('notice.autoSyncEmpty')).toBe('Auto sync complete: no notes needed syncing.');
   });
 
   it('returns English for error.invalidCredentials', () => {
@@ -295,9 +311,9 @@ describe('t() - New settings keys', () => {
   });
 
   it('settings onboarding states', () => {
-    expect(i18n.t('settings.onboarding.firstRun')).toBe('👋 首次使用：选好认证方式并填写凭证，然后开启定时自动同步。');
+    expect(i18n.t('settings.onboarding.firstRun')).toBe('👋 首次使用：选好认证方式并填写凭证，然后开启自动同步。');
     expect(i18n.t('settings.onboarding.needsCredentials')).toBe('🔑 还差一步：填好凭证后即可开启自动同步。详细步骤见下方「凭证设置」。');
-    expect(i18n.t('settings.onboarding.needsAutoSync')).toBe('凭证已就绪。请在下方开启「定时自动同步」。');
+    expect(i18n.t('settings.onboarding.needsAutoSync')).toBe('凭证已就绪。请在下方开启「自动同步」。');
     expect(i18n.t('settings.onboarding.ready', { minutes: 30 })).toBe('✅ 自动同步已开启，将每 30 分钟从得到同步到 Obsidian。');
   });
 
@@ -320,7 +336,7 @@ describe('t() - New settings keys', () => {
     expect(i18n.t('settings.lastSync.never')).toBe('Never synced');
     expect(i18n.t('settings.onboarding.firstRun')).toBe('👋 First time here? Pick an auth mode, add credentials, then enable scheduled auto sync.');
     expect(i18n.t('settings.onboarding.needsCredentials')).toBe('🔑 One more step: add credentials to enable auto sync. See "Credentials" below.');
-    expect(i18n.t('settings.onboarding.needsAutoSync')).toBe('Credentials are ready. Enable "Scheduled Auto Sync" below.');
+    expect(i18n.t('settings.onboarding.needsAutoSync')).toBe('Credentials are ready. Enable "Automatic Sync" below.');
     expect(i18n.t('settings.onboarding.ready', { minutes: 30 })).toBe('✅ Auto sync is enabled and will run every 30 minutes from Dedao to Obsidian.');
   });
 });

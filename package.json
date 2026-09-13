@@ -19,15 +19,15 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "@types/react": "^19.2.18",
     "esbuild": "^0.28.2",
-    "eslint": "^10.9.0",
-    "happy-dom": "^20.11.6",
+    "eslint": "^10.9.1",
+    "happy-dom": "^20.11.12",
     "obsidian": "^1.13.1",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.67.0",
-    "vitest": "^4.1.10"
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "preact": "^10.29.8",

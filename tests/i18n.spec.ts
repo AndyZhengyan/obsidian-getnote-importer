@@ -48,6 +48,11 @@ describe('t() - Chinese translations', () => {
     expect(i18n.t('settings.desc')).toBe('得到大脑（原Get笔记） ↔ Obsidian，双向同步，自动整理，永久免费，');
   });
 
+  it('returns Chinese sync taglines', () => {
+    expect(i18n.t('settings.scheduled.desc')).toBe('让得到大脑与 Obsidian 自动保持同步');
+    expect(i18n.t('settings.manualSync.desc')).toBe('按需选择，一次完成同步');
+  });
+
   it('returns Chinese for settings.community', () => {
     expect(i18n.t('settings.community')).toBe('欢迎交流、留下star');
   });
@@ -105,6 +110,11 @@ describe('t() - English translations', () => {
 
   it('returns English for settings.desc', () => {
     expect(i18n.t('settings.desc')).toBe('得到大脑（原Get笔记） ↔ Obsidian, one-click sync');
+  });
+
+  it('returns English sync taglines', () => {
+    expect(i18n.t('settings.scheduled.desc')).toBe('Keep Dedao Brain and Obsidian in sync automatically');
+    expect(i18n.t('settings.manualSync.desc')).toBe('Choose what you need and sync it once');
   });
 
   it('returns English for settings.community', () => {

@@ -1407,7 +1407,7 @@ export function SettingsComponent({
       </SettingItem>
       </div>
 
-      <SettingItem name={t('settings.manualSync')}>
+      <SettingItem name={t('settings.manualSync')} description={t('settings.manualSync.desc')}>
         <div className="getnote-manual-actions">
           <div className="getnote-manual-action-group">
             <div className="getnote-manual-action-title">{t('settings.manualSync.download')}</div>

@@ -665,7 +665,7 @@ export default class GetNoteSyncPlugin extends Plugin {
         const reconciler = new BidirectionalSyncEngine(this.app, this.settings,
           type === 'auto' ? undefined : conflict => resolveSyncConflict(this.app, conflict, 'both'));
         this.currentSyncEngine = reconciler;
-        const changes = await reconciler.sync(undefined, { direction: 'both' });
+        const changes = await reconciler.sync(undefined, { direction: 'both', changedOnly: true });
         const reconciledIds = new Set((changes.items ?? []).map(item => item.noteId));
         result.items = (result.items ?? []).filter(item => {
           if (item.status !== 'skipped' || !reconciledIds.has(item.noteId)) return true;

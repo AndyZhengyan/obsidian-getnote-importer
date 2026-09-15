@@ -50,7 +50,7 @@ describe('t() - Chinese translations', () => {
 
   it('returns Chinese sync taglines', () => {
     expect(i18n.t('settings.scheduled.desc')).toBe('让得到大脑与 Obsidian 自动保持同步');
-    expect(i18n.t('settings.manualSync.desc')).toBe('按需选择，一次完成同步');
+    expect(i18n.t('settings.manualSync.desc')).toBe('选择所需内容，随时发起单次同步');
   });
 
   it('returns Chinese for settings.community', () => {
@@ -114,7 +114,7 @@ describe('t() - English translations', () => {
 
   it('returns English sync taglines', () => {
     expect(i18n.t('settings.scheduled.desc')).toBe('Keep Dedao Brain and Obsidian in sync automatically');
-    expect(i18n.t('settings.manualSync.desc')).toBe('Choose what you need and sync it once');
+    expect(i18n.t('settings.manualSync.desc')).toBe('Choose what you need and run a one-time sync');
   });
 
   it('returns English for settings.community', () => {

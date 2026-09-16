@@ -37,6 +37,12 @@ const LINK_NOTE_TYPES = new Set([
   'link',
 ]);
 
+// 划线/引用笔记（用户在书本/文章上 highlight 的内容）。
+// 列表接口返回空 title/content，详情接口才填充正文。
+const REF_NOTE_TYPES = new Set([
+  'ref',
+]);
+
 function parseSyncBoundaryTime(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -652,6 +658,11 @@ export class SyncEngine {
     return LINK_NOTE_TYPES.has(note.note_type) && !note.linkOriginal;
   }
 
+  // ref 笔记（划线/引用）：列表接口返回空 title/content，必须从详情接口拉取。
+  private needsRefDetail(note: GetNoteNote): boolean {
+    return REF_NOTE_TYPES.has(note.note_type) && (!note.content || !note.title);
+  }
+
   private async enrichNoteRelationships(note: GetNoteNote, signal: AbortSignal): Promise<GetNoteNote> {
     if (!this.needsRelationDetail(note)) return note;
     const credentials = getAuthCredentials(this.settings);
@@ -684,7 +695,8 @@ export class SyncEngine {
     const hasDownloadableAttachments = (note.attachments ?? []).some(a => isDownloadableAttachment(a, this.settings));
     const needsImageDetail = this.needsImageDetail(note);
     const needsLinkOriginalDetail = this.needsLinkOriginalDetail(note);
-    if (!needsAudioDetail && !needsRelationDetail && !hasDownloadableAttachments && !needsImageDetail && !needsLinkOriginalDetail) {
+    const needsRefDetail = this.needsRefDetail(note);
+    if (!needsAudioDetail && !needsRelationDetail && !hasDownloadableAttachments && !needsImageDetail && !needsLinkOriginalDetail && !needsRefDetail) {
       return note;
     }
     const credentials = getAuthCredentials(this.settings);
@@ -694,14 +706,15 @@ export class SyncEngine {
       !hasImageAttachments &&
       !hasDownloadableAttachments &&
       !needsImageDetail &&
-      !needsLinkOriginalDetail
+      !needsLinkOriginalDetail &&
+      !needsRefDetail
     ) {
       return note;
     }
 
     try {
       let enrichedNote = note;
-      if (needsAudioDetail || needsRelationDetail || needsImageDetail || (needsLinkOriginalDetail && credentials.authMode !== 'web')) {
+      if (needsAudioDetail || needsRelationDetail || needsImageDetail || (needsLinkOriginalDetail && credentials.authMode !== 'web') || needsRefDetail) {
         const detailId = (note as { prime_id?: string }).prime_id ?? note.note_id;
         const noteDetail = await fetchNoteDetail(
           detailId,

@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe('NoteTypeSelect', () => {
-  it('按官方筛选项展示笔记类型，仅 5 个 group（不含订阅博主）', async () => {
+  it('按官方筛选项展示笔记类型，6 个 group（不含订阅博主）', async () => {
     const { container } = renderSelect();
 
     await act(() => {
@@ -31,6 +31,7 @@ describe('NoteTypeSelect', () => {
       '图片笔记',
       '链接笔记',
       '录音笔记',
+      '划线笔记',
       '其他',
     ]);
   });

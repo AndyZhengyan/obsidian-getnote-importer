@@ -184,6 +184,7 @@ export class SyncEngine {
   private onCancel?: () => void;
   private cancelled = false;
   private abortController: AbortController | null = null;
+  private currentResult: SyncResult = { created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] };
 
   constructor(app: App, settings: Settings, onProgress?: SyncProgressCallback, scopeOptions?: Partial<SyncScopeOptions>) {
     this.app = app;
@@ -202,6 +203,26 @@ export class SyncEngine {
       ...(scopeOptions?.knowledgeBaseEntries ? { knowledgeBaseEntries: scopeOptions.knowledgeBaseEntries } : {}),
     };
     this.onProgress = onProgress;
+  }
+
+  /**
+   * Replaces the engine's current in-flight SyncResult. Used by callers that
+   * drive the engine externally (tests) or by the engine itself when it
+   * starts a new sync cycle. Reading the result before sync() finishes is the
+   * only way to recover lastNoteTimestamp when sync() throws partway through.
+   */
+  setCurrentResult(result: SyncResult): void {
+    this.currentResult = result;
+  }
+
+  /**
+   * Returns the engine's current SyncResult — initialized at sync() entry and
+   * updated as each note is processed. Persists across throws so callers in a
+   * catch block can still recover partial progress (e.g. lastNoteTimestamp for
+   * the auto-sync checkpoint).
+   */
+  getCurrentResult(): SyncResult {
+    return this.currentResult;
   }
 
   private async ensureNoteCategoryDir(note: GetNoteNote, categoryDir: string): Promise<string> {
@@ -975,6 +996,7 @@ export class SyncEngine {
 
   async sync(modal?: SyncModal): Promise<SyncResult> {
     const result: SyncResult = { created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] };
+    this.setCurrentResult(result);
     const uidIndex = await this.buildUidIndex();
     const previouslySyncedNoteIds = this.buildPreviouslySyncedNoteIdSet();
     const seenNoteIds = new Set<string>();
@@ -1278,6 +1300,7 @@ export class SyncEngine {
     modal?: SyncModal
   ): Promise<SyncResult> {
     const result: SyncResult = { created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] };
+    this.setCurrentResult(result);
     const uidIndex = await this.buildUidIndex();
     const seenNoteIds = new Set<string>();
     const observedTagNames = new Set<string>();
@@ -1439,6 +1462,7 @@ export class SyncEngine {
 
   async syncSubscribedKnowledge(modal?: SyncModal, options?: string[] | SubscribedKnowledgeSyncOptions): Promise<SyncResult> {
     const result: SyncResult = { created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] };
+    this.setCurrentResult(result);
     const uidIndex = await this.buildUidIndex();
     const seenNoteIds = new Set<string>();
     const observedTagNames = new Set<string>();

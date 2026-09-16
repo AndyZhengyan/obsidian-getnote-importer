@@ -538,6 +538,35 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     expect(plugin.syncHistory.at(-1)?.status).toBe('partial');
   });
 
+  it('advances checkpoint when engine throws mid-sync but had partial progress', async () => {
+    // Simulates S4408 scenario: quota_day hits after processing some notes.
+    // The engine exposed its partial result via getCurrentResult() before throwing;
+    // main must preserve lastNoteTimestamp in lastSyncEndTimestamp so the next
+    // auto-sync starts from a delta cursor instead of re-scanning the whole list.
+    vi.spyOn(SyncEngine.prototype, 'sync').mockImplementation(async function (this: SyncEngine) {
+      this.setCurrentResult({
+        created: 0,
+        updated: 0,
+        skipped: 56,
+        failed: 0,
+        total: 56,
+        items: [],
+        lastNoteTimestamp: '2026-05-10T12:00:00+08:00',
+      });
+      throw new Error('API 调用频率过高,请稍后再试');
+    });
+    const plugin = makePlugin();
+    plugin.settings.lastSyncEndTimestamp = '2026-05-09T10:00:00+08:00';
+
+    await plugin['runSync']('auto', {
+      maxDays: 0,
+      syncStartDate: plugin.settings.lastSyncEndTimestamp,
+    });
+
+    expect(plugin.settings.lastSyncEndTimestamp).toBe('2026-05-10T12:00:00+08:00');
+    expect(plugin.syncHistory.at(-1)?.status).toBe('partial');
+  });
+
   it('warns once when scheduled sync reaches three consecutive partial results', async () => {
     const sync = vi.spyOn(SyncEngine.prototype, 'sync').mockResolvedValue({
       created: 1,

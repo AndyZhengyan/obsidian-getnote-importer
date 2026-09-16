@@ -96,6 +96,13 @@ export interface ReverseSyncSettings {
     mode: 'realtime' | 'interval';
     intervalMinutes: number;
   };
+  /**
+   * Wall-clock timestamp of the last full reverse-sync pass (downloads + uploads).
+   * Used as the staleness threshold for the baseline-equals-local early-exit so we
+   * periodically re-verify remote state instead of trusting cached baselines forever.
+   * 0 or undefined means the reverse sync has never completed.
+   */
+  lastReverseFullSyncAt?: number;
 }
 
 export type AttachmentKind = 'image' | 'audio' | 'video' | 'document' | 'other';
@@ -230,6 +237,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reverseSync: {
     enabled: false,
     autoUpload: { enabled: false, mode: 'interval', intervalMinutes: 5 },
+    lastReverseFullSyncAt: 0,
   },
   attachmentImport: { ...DEFAULT_ATTACHMENT_IMPORT },
   ribbonActions: {

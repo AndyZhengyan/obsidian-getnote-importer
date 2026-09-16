@@ -763,7 +763,18 @@ export default class GetNoteSyncPlugin extends Plugin {
         shouldResetSyncState = false;
       } else {
         const error = err instanceof Error ? err.message : String(err);
-        await this.recordSyncHistory(emptySyncResult(), type, startedAt, resolvedScope, 'failed', error);
+        // Recover whatever partial progress the engine had before throwing so
+        // the auto-sync checkpoint can advance (otherwise quota-exceeded
+        // mid-cycle would leave lastSyncEndTimestamp stale and every
+        // subsequent cycle would re-scan the full list and re-burn quota).
+        const partial = this.currentSyncEngine && 'getCurrentResult' in this.currentSyncEngine
+          ? (this.currentSyncEngine as { getCurrentResult(): SyncResult }).getCurrentResult()
+          : emptySyncResult();
+        const failureResult: SyncResult = partial.total > 0
+          ? { ...partial, failed: partial.failed }
+          : emptySyncResult();
+        const failureStatus: SyncHistoryEntry['status'] = failureResult.total > 0 ? 'partial' : 'failed';
+        await this.recordSyncHistory(failureResult, type, startedAt, resolvedScope, failureStatus, error);
 
         const isQuotaExceeded = error.includes('配额') || error.includes('quota') || error.includes('429');
         if (credentials.authMode === 'openapi' && isQuotaExceeded) {

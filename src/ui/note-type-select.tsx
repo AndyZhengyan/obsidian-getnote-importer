@@ -3,13 +3,15 @@ import { t } from '../i18n';
 import { INTERNAL_AUDIO_NOTE_TYPES } from '../types';
 import { useFloatingSelectMenu } from './use-floating-select-menu';
 
-// 顶层 UI 仅 5 个 group。订阅博主（blogger_post）从 UI 选项移除但仍默认同步。
+// 顶层 UI 仅 6 个 group。订阅博主（blogger_post）从 UI 选项移除但仍默认同步。
 // 9 种内部 audio 类型合并到"录音笔记"组；sync.ts 的 AUDIO_NOTE_TYPES 保持 9 种不变以解耦。
+// ref（划线笔记）是书本/文章 highlight 的内容，列表接口不带正文，需走详情接口补全。
 const NOTE_TYPE_OPTIONS = [
   { labelKey: 'picker.type.plain_text', noteTypes: ['plain_text'] },
   { labelKey: 'picker.type.img_text', noteTypes: ['img_text'] },
   { labelKey: 'picker.type.link', noteTypes: ['link'] },
   { labelKey: 'picker.type.audio_note', noteTypes: [...INTERNAL_AUDIO_NOTE_TYPES] },
+  { labelKey: 'picker.type.ref', noteTypes: ['ref'] },
   { labelKey: 'picker.type.unknown', noteTypes: ['blogger_post'] },
 ];
 

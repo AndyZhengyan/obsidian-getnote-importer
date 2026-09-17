@@ -46,6 +46,7 @@ export type KnownNoteType =
   | 'plain_text'
   | 'img_text'
   | 'link'
+  | 'ref'
   | 'immediate_audio'
   | 'recorder_audio'
   | 'recorder_flash_audio'
@@ -367,6 +368,7 @@ export const CANONICAL_NOTE_TYPES: readonly string[] = [
   'plain_text',
   'img_text',
   'link',
+  'ref',
   ...INTERNAL_AUDIO_NOTE_TYPES,
   'blogger_post',
 ];

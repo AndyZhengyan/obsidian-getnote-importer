@@ -48,6 +48,11 @@ describe('t() - Chinese translations', () => {
     expect(i18n.t('settings.desc')).toBe('得到大脑（原Get笔记） ↔ Obsidian，双向同步，自动整理，永久免费，');
   });
 
+  it('returns Chinese sync taglines', () => {
+    expect(i18n.t('settings.scheduled.desc')).toBe('让得到大脑与 Obsidian 自动保持同步');
+    expect(i18n.t('settings.manualSync.desc')).toBe('选择所需内容，随时发起单次同步');
+  });
+
   it('returns Chinese for settings.community', () => {
     expect(i18n.t('settings.community')).toBe('欢迎交流、留下star');
   });
@@ -105,6 +110,11 @@ describe('t() - English translations', () => {
 
   it('returns English for settings.desc', () => {
     expect(i18n.t('settings.desc')).toBe('得到大脑（原Get笔记） ↔ Obsidian, one-click sync');
+  });
+
+  it('returns English sync taglines', () => {
+    expect(i18n.t('settings.scheduled.desc')).toBe('Keep Dedao Brain and Obsidian in sync automatically');
+    expect(i18n.t('settings.manualSync.desc')).toBe('Choose what you need and run a one-time sync');
   });
 
   it('returns English for settings.community', () => {
@@ -281,7 +291,7 @@ describe('t() - New settings keys', () => {
 
   it('settings connection health states', () => {
     expect(i18n.t('settings.connectionHealth.unverified')).toBe('未验证');
-    expect(i18n.t('settings.connectionHealth.healthy')).toBe('连接正常');
+    expect(i18n.t('settings.connectionHealth.healthy')).toBe('认证成功');
     expect(i18n.t('settings.connectionHealth.error')).toBe('连接异常');
     expect(i18n.t('settings.syncStatus.lastFailed')).toBe('上次同步失败');
   });
@@ -327,7 +337,7 @@ describe('t() - New settings keys', () => {
     expect(i18n.t('settings.testConnection')).toBe('Test Connection');
     expect(i18n.t('settings.connectionSuccess')).toBe('Connection successful');
     expect(i18n.t('settings.connectionHealth.unverified')).toBe('Not verified');
-    expect(i18n.t('settings.connectionHealth.healthy')).toBe('Connection healthy');
+    expect(i18n.t('settings.connectionHealth.healthy')).toBe('Authentication successful');
     expect(i18n.t('settings.connectionHealth.error')).toBe('Connection issue');
     expect(i18n.t('settings.syncStatus.lastFailed')).toBe('Last sync failed');
     expect(i18n.t('settings.maxDays.hint')).toBe('0 = no limit');

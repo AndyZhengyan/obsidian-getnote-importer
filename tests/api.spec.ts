@@ -513,6 +513,30 @@ describe('web auth mode', () => {
     }
   });
 
+  it('validates the supplied token without substituting or refreshing the saved session', async () => {
+    const refresh = vi.fn().mockResolvedValue('Bearer renewed-token');
+    setWebTokenRefreshHandler({ getToken: () => 'Bearer saved-token', refresh });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({ message: 'LoginRequired' }, 401) as Response,
+    );
+
+    try {
+      await expect(fetchNotes({
+        token: 'Bearer entered-token',
+        clientId: '',
+        authMode: 'web',
+        skipWebTokenRefresh: true,
+      })).rejects.toThrow('Web Token 已过期');
+      expect(globalThis.fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer entered-token' }),
+      }));
+      expect(refresh).not.toHaveBeenCalled();
+    } finally {
+      setWebTokenRefreshHandler(null);
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
   it('does not trigger session renewal for a non-auth Web API failure', async () => {
     const refresh = vi.fn().mockResolvedValue('Bearer should-not-be-used');
     setWebTokenRefreshHandler({

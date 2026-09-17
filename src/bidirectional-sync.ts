@@ -26,13 +26,16 @@ export interface SyncConflict { path: string; local: EditableContent; remote: Ed
 export type ResolveSyncConflict = (conflict: SyncConflict) => Promise<ConflictChoice>;
 
 /**
- * Maximum age (in ms) we trust the cached `dedao_bidirectional_hash` and
- * `dedao_remote_hash` before forcing a `fetchNoteDetail` to re-verify the
- * remote state. Bounds how long a remote-only change can be missed when the
- * user never edits a file locally.
+ * Wall-clock timestamp (ms since epoch) of the last full reverse-sync pass,
+ * tracked on the settings object. Read by the early-exit to skip files whose
+ * local mtime is older than this — meaning no local edits since the last
+ * successful sync, so the cached `dedao_remote_hash` can be trusted. Written
+ * at the end of each `BidirectionalSyncEngine.sync()` call so the timestamp
+ * always reflects "the last time we successfully processed this directory."
+ *
+ * `0` (the default) means no reverse sync has ever completed; files will all
+ * fetch on the first run so we can populate the cached remote baselines.
  */
-export const REVERSE_FULL_SYNC_STALENESS_MS = 24 * 60 * 60 * 1000;
-
 export function insideSyncFolder(path: string, folder: string): boolean {
   const normalized = folder.replace(/^\/+|\/+$/g, '');
   return !normalized || path.startsWith(`${normalized}/`);
@@ -181,14 +184,16 @@ export class BidirectionalSyncEngine {
     if (this.controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
   }
   /**
-   * Returns true when the cached `dedao_bidirectional_hash` / `dedao_remote_hash`
-   * baselines are older than the staleness threshold, or when no full reverse
-   * sync has ever been recorded. Forces a `fetchNoteDetail` re-verify.
+   * Returns true when a previous reverse sync completed AND the file's
+   * local mtime is older than that timestamp — meaning no local edits have
+   * been saved since the last sync, so the cached remote baseline can be
+   * trusted and `fetchNoteDetail` can be skipped. Returns false when no
+   * reverse sync has completed yet (`lastReverseFullSyncAt` is 0 or unset).
    */
-  private isReverseSyncCacheStale(): boolean {
+  private canSkipUnchangedEntry(file: TFile): boolean {
     const last = this.settings.reverseSync?.lastReverseFullSyncAt;
-    if (!last) return true;
-    return Date.now() - last > REVERSE_FULL_SYNC_STALENESS_MS;
+    if (!last) return false;
+    return file.stat.mtime < last;
   }
   private uploadTarget(draft: LocalDraft, categoryOverride?: string): string {
     const createdAt = new Date().toISOString();
@@ -352,23 +357,16 @@ export class BidirectionalSyncEngine {
       result.total++;
       try {
         if (counts.get(local.uid) !== 1) throw new Error(t('bidirectional.duplicate'));
-        // Baseline-equals-local early-exit: if the local content hash matches
-        // its recorded baseline (either `dedao_bidirectional_hash` from a prior
-        // reverse sync, or `dedao_source_hash` from the one-way importer),
-        // local has not changed since the file was last written. Trust the
-        // cached remote state and skip the `fetchNoteDetail` round-trip —
-        // unless we are in download-only mode (force a remote pull) or the
-        // cached state is older than the staleness threshold (force a full
-        // re-verify). This is the fix for the auto-sync quota exhaustion: in
-        // 'both' mode, every file used to trigger a fetch even when local was
-        // unchanged, ballooning each cycle to 11-13 minutes for users with
-        // hundreds of notes.
-        if (
-          mode !== 'download'
-          && local.baseline
-          && local.baseline === contentHash(local)
-          && !this.isReverseSyncCacheStale()
-        ) {
+        // mtime-based early-exit: if the file's local mtime is older than the last
+        // successful reverse sync, no one has saved this file locally since we
+        // last processed it — so the cached `dedao_remote_hash` still reflects
+        // the authoritative remote state and we can skip `fetchNoteDetail`.
+        // Skip in any mode except explicit download (which always pulls the
+        // latest remote content). This is the fix for the auto-sync quota
+        // exhaustion: in 'both' mode, every file used to trigger a fetch even
+        // when local was unchanged, ballooning each cycle to 11-13 minutes for
+        // users with hundreds of notes.
+        if (mode !== 'download' && this.canSkipUnchangedEntry(file)) {
           result.skipped++; result.items!.push(item);
           continue;
         }
@@ -434,8 +432,8 @@ export class BidirectionalSyncEngine {
       result[item.status]++; result.items!.push(item);
     }
     // Mark the reverse-sync pass complete so the next run can short-circuit
-    // unchanged entries via the baseline-equals-local early-exit. Mutating
-    // settings in place mirrors the existing pattern used by main.tsx for
+    // untouched files via the mtime-based early-exit. Mutating settings in
+    // place mirrors the existing pattern used by main.tsx for
     // lastSyncEndTimestamp.
     this.settings.reverseSync = {
       ...this.settings.reverseSync,

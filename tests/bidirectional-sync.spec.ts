@@ -4,23 +4,7 @@ import { BidirectionalSyncEngine, syncDirection, insideSyncFolder, readSyncNote,
 import { addNotesToKnowledgeBase, createNote, fetchNoteDetail } from '../src/api';
 import { updateNote } from '../src/api-clients/openapi-client';
 import { renderNote } from '../src/note-parser';
-import { createSourceHash } from '../src/source-body';
 import { DEFAULT_SETTINGS, type GetNoteNote } from '../src/types';
-
-const REVERSE_FULL_SYNC_STALENESS_MS = 24 * 60 * 60 * 1000;
-
-/** Build a fixture file with dedao_bidirectional_hash and dedao_remote_hash set to its current content hash. */
-function fixtureWithBaselines(body = renderNote(remote)): ReturnType<typeof fixture> {
-  const f = fixture(body);
-  const parsed = readSyncNote(f.contents.get(f.file.path)!)!;
-  const hash = createSourceHash(parsed.title, parsed.tags, parsed.body);
-  const patched = f.contents.get(f.file.path)!.replace(
-    /\n---(?:\r?\n)/,
-    `\ndedao_bidirectional_hash: "${hash}"\ndedao_remote_hash: "${hash}"\n---\n`,
-  );
-  f.contents.set(f.file.path, patched);
-  return f;
-}
 
 vi.mock('../src/api', () => ({ fetchNoteDetail: vi.fn(), createNote: vi.fn(), addNotesToKnowledgeBase: vi.fn() }));
 vi.mock('../src/api-clients/openapi-client', () => ({ updateNote: vi.fn() }));
@@ -40,6 +24,10 @@ const remote: GetNoteNote = { id: '90071992547409999', note_id: '900719925474099
 function fixture(body = renderNote(remote)) {
   const app = new App();
   const file = new TFile('Sync/纯文本/笔记.md');
+  // Default mtime of 0 mirrors a freshly imported legacy file — older than
+  // any reverse-sync timestamp set during the test, so the early-exit would
+  // skip it once `lastReverseFullSyncAt` is set.
+  file.stat = { ctime: 0, mtime: 0, size: 0 };
   const contents = new Map([[file.path, body]]);
   app.vault.getMarkdownFiles = () => [file];
   app.vault.getAbstractFileByPath = path => path === file.path ? file : null;
@@ -297,64 +285,47 @@ describe('bidirectional engine', () => {
     await expect(new BidirectionalSyncEngine(f.app, { ...f.settings, authMode: 'web' }).sync()).rejects.toThrow();
     expect(updateNote).not.toHaveBeenCalled();
   });
-  it('skips fetchNoteDetail in both mode when local baseline matches content and reverse sync is fresh', async () => {
-    const f = fixtureWithBaselines();
+  it('skips fetchNoteDetail in both mode when file mtime is older than the last reverse sync', async () => {
+    const f = fixture();
+    // Pretend a previous reverse sync completed recently. The fixture file's
+    // default mtime is 0, which is older than Date.now(), so the mtime-based
+    // early-exit should fire and skip fetchNoteDetail.
     f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: Date.now() };
     const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
     expect(fetchNoteDetail).not.toHaveBeenCalled();
     expect(result.skipped).toBe(1);
     expect(result.failed).toBe(0);
   });
-  it('forces a fetch on the first run when lastReverseFullSyncAt is unset (no prior baseline cache)', async () => {
-    const f = fixtureWithBaselines();
-    // Explicitly unset lastReverseFullSyncAt to simulate the very first run
+  it('forces a fetch on the first run when lastReverseFullSyncAt is unset', async () => {
+    const f = fixture();
+    // Explicitly unset lastReverseFullSyncAt to simulate the very first run.
+    // canSkipUnchangedEntry returns false (last=0), so every file is fetched
+    // and the cached remote baselines are populated.
     f.settings.reverseSync = { ...f.settings.reverseSync };
     delete f.settings.reverseSync.lastReverseFullSyncAt;
     const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
     expect(fetchNoteDetail).toHaveBeenCalled();
     expect(f.settings.reverseSync.lastReverseFullSyncAt).toBeGreaterThan(0);
   });
-  it('forces a fetch when lastReverseFullSyncAt is older than the staleness threshold', async () => {
-    const f = fixtureWithBaselines();
-    f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: Date.now() - REVERSE_FULL_SYNC_STALENESS_MS - 1 };
-    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
-    expect(fetchNoteDetail).toHaveBeenCalled();
-  });
-  it('does not skip when local content has diverged from its baseline', async () => {
-    const f = fixtureWithBaselines();
-    f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: Date.now() };
-    f.contents.set(f.file.path, f.contents.get(f.file.path)!.replace('原文', '本地修改'));
-    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
-    expect(fetchNoteDetail).toHaveBeenCalled();
-    expect(result.skipped).toBe(0);
-  });
-  it('does not skip when remote baseline is missing but staleness gate is fresh', async () => {
+  it('forces a fetch when the file was saved locally after the last reverse sync', async () => {
     const f = fixture();
-    // Patch only dedao_bidirectional_hash; leave dedao_remote_hash unset. This
-    // mirrors a partially-bootstrapped file where a previous sync wrote the
-    // local baseline but never cached the remote state. The staleness gate is
-    // the safety net here: when it is fresh, we trust the local baseline and
-    // skip the fetch — remote will be re-verified at the next staleness window.
-    const parsed = readSyncNote(f.contents.get(f.file.path)!)!;
-    const hash = createSourceHash(parsed.title, parsed.tags, parsed.body);
-    const patched = f.contents.get(f.file.path)!.replace(
-      /\n---(?:\r?\n)/,
-      `\ndedao_bidirectional_hash: "${hash}"\n---\n`,
-    );
-    f.contents.set(f.file.path, patched);
-    f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: Date.now() };
-    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
-    expect(fetchNoteDetail).not.toHaveBeenCalled();
-    expect(result.skipped).toBe(1);
+    const lastSync = Date.now();
+    f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: lastSync };
+    // User edited the file locally after the last sync — mtime is now newer
+    // than lastSync, so we must fetch to check the remote state and decide
+    // between upload, download, or conflict.
+    f.file.stat.mtime = lastSync + 1000;
+    await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    expect(fetchNoteDetail).toHaveBeenCalled();
   });
-  it('does not skip in download direction even with matching baselines', async () => {
-    const f = fixtureWithBaselines();
+  it('does not skip in download direction even when mtime is older than the last sync', async () => {
+    const f = fixture();
     f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: Date.now() };
     const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'download' });
     expect(fetchNoteDetail).toHaveBeenCalled();
   });
   it('updates lastReverseFullSyncAt after a successful sync run', async () => {
-    const f = fixtureWithBaselines();
+    const f = fixture();
     f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: 0 };
     const before = Date.now();
     await new BidirectionalSyncEngine(f.app, f.settings).sync();

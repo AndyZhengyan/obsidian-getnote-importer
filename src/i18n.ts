@@ -320,6 +320,7 @@ export const translations: Record<string, Record<string, string>> = {
     'picker.type.img_text': '图片笔记',
     'picker.type.link': '链接笔记',
     'picker.type.audio_note': '录音笔记',
+    'picker.type.ref': '划线笔记',
     'picker.type.unknown': '其他',
 
     // === Search View ===
@@ -779,6 +780,7 @@ export const translations: Record<string, Record<string, string>> = {
     'picker.type.img_text': 'Image Note',
     'picker.type.link': 'Link Note',
     'picker.type.audio_note': 'Audio Note',
+    'picker.type.ref': 'Highlight Note',
     'picker.type.unknown': 'Other',
 
     // === Search View ===

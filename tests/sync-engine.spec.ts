@@ -3241,6 +3241,98 @@ describe('SyncEngine — link original sync', () => {
   });
 });
 
+describe('SyncEngine — ref note sync (#310)', () => {
+  // ref 笔记（划线/引用）列表接口返回空 title/content，必须走详情接口补全。
+  const refNoteFromList = makeNote({
+    note_id: 'ref_001',
+    title: '',
+    content: '',
+    note_type: 'ref',
+    tags: [{ name: '划线' }],
+    created_at: '2026-05-09T10:00:00+08:00',
+    updated_at: '2026-05-09T10:05:00+08:00',
+  });
+  const refDetailBody = {
+    title: '教育部印发通知的内容',
+    content: '2019年底，教育部印发《关于加强"三个课堂"应用的指导意见》……',
+  };
+
+  it('renders ref note content after detail enrichment', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url: unknown) => {
+      const urlStr = typeof url === 'string' ? url : (url as Request).url;
+      if (urlStr.includes('/resource/note/list')) {
+        return Promise.resolve(mockFetchResponse({
+          data: { notes: [refNoteFromList], has_more: false, next_cursor: '' },
+        }) as Response);
+      }
+      if (urlStr.includes('/resource/note/detail')) {
+        return Promise.resolve(mockFetchResponse({
+          success: true,
+          data: { note: { ...refNoteFromList, ...refDetailBody } },
+        }) as Response);
+      }
+      throw new Error(`Unexpected request: ${urlStr}`);
+    });
+
+    const app = makeMockApp();
+
+    try {
+      const engine = new SyncEngine(app, makeSettings({ maxDays: 0 }));
+      const result = await engine.sync();
+
+      expect(result.created).toBe(1);
+      const mainFile = app.vault.getAbstractFileByPath(
+        '得到大脑/其他/教育部印发通知的内容.md'
+      ) as { content: string } | null;
+      expect(mainFile).not.toBeNull();
+      expect(mainFile?.content).toContain('教育部印发');
+      expect(mainFile?.content).toContain('2019年底');
+      // 详情接口返回的 title 不应再让文件名变成 (无标题)
+      expect(mainFile?.content).not.toMatch(/无标题/);
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
+  it('skips detail fetch when ref note already has content from list', async () => {
+    const populatedRefNote = makeNote({
+      note_id: 'ref_002',
+      title: '已有正文的划线',
+      content: '列表接口已返回的正文',
+      note_type: 'ref',
+      created_at: '2026-05-09T10:00:00+08:00',
+      updated_at: '2026-05-09T10:05:00+08:00',
+    });
+    const requestedUrls: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url: unknown) => {
+      const urlStr = typeof url === 'string' ? url : (url as Request).url;
+      requestedUrls.push(urlStr);
+      if (urlStr.includes('/resource/note/list')) {
+        return Promise.resolve(mockFetchResponse({
+          data: { notes: [populatedRefNote], has_more: false, next_cursor: '' },
+        }) as Response);
+      }
+      throw new Error(`Unexpected detail request for populated ref: ${urlStr}`);
+    });
+
+    const app = makeMockApp();
+
+    try {
+      const engine = new SyncEngine(app, makeSettings({ maxDays: 0 }));
+      const result = await engine.sync();
+
+      expect(result.created).toBe(1);
+      expect(requestedUrls.some(url => url.includes('/resource/note/detail'))).toBe(false);
+      const mainFile = app.vault.getAbstractFileByPath(
+        '得到大脑/其他/已有正文的划线.md'
+      ) as { content: string } | null;
+      expect(mainFile?.content).toContain('列表接口已返回的正文');
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+});
+
 describe('SyncEngine — selective sync cancellation', () => {
   describe('SyncEngine — preCheckNote', () => {
     it('不存在 uidIndex 时返回 { exists: false }', () => {

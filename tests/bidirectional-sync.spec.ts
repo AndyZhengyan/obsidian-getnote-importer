@@ -24,6 +24,10 @@ const remote: GetNoteNote = { id: '90071992547409999', note_id: '900719925474099
 function fixture(body = renderNote(remote)) {
   const app = new App();
   const file = new TFile('Sync/纯文本/笔记.md');
+  // Default mtime of 0 mirrors a freshly imported legacy file — older than
+  // any reverse-sync timestamp set during the test, so the early-exit would
+  // skip it once `lastReverseFullSyncAt` is set.
+  file.stat = { ctime: 0, mtime: 0, size: 0 };
   const contents = new Map([[file.path, body]]);
   app.vault.getMarkdownFiles = () => [file];
   app.vault.getAbstractFileByPath = path => path === file.path ? file : null;
@@ -281,6 +285,52 @@ describe('bidirectional engine', () => {
     await expect(new BidirectionalSyncEngine(f.app, { ...f.settings, authMode: 'web' }).sync()).rejects.toThrow();
     expect(updateNote).not.toHaveBeenCalled();
   });
+  it('skips fetchNoteDetail in both mode when file mtime is older than the last reverse sync', async () => {
+    const f = fixture();
+    // Pretend a previous reverse sync completed recently. The fixture file's
+    // default mtime is 0, which is older than Date.now(), so the mtime-based
+    // early-exit should fire and skip fetchNoteDetail.
+    f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: Date.now() };
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    expect(fetchNoteDetail).not.toHaveBeenCalled();
+    expect(result.skipped).toBe(1);
+    expect(result.failed).toBe(0);
+  });
+  it('forces a fetch on the first run when lastReverseFullSyncAt is unset', async () => {
+    const f = fixture();
+    // Explicitly unset lastReverseFullSyncAt to simulate the very first run.
+    // canSkipUnchangedEntry returns false (last=0), so every file is fetched
+    // and the cached remote baselines are populated.
+    f.settings.reverseSync = { ...f.settings.reverseSync };
+    delete f.settings.reverseSync.lastReverseFullSyncAt;
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    expect(fetchNoteDetail).toHaveBeenCalled();
+    expect(f.settings.reverseSync.lastReverseFullSyncAt).toBeGreaterThan(0);
+  });
+  it('forces a fetch when the file was saved locally after the last reverse sync', async () => {
+    const f = fixture();
+    const lastSync = Date.now();
+    f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: lastSync };
+    // User edited the file locally after the last sync — mtime is now newer
+    // than lastSync, so we must fetch to check the remote state and decide
+    // between upload, download, or conflict.
+    f.file.stat.mtime = lastSync + 1000;
+    await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    expect(fetchNoteDetail).toHaveBeenCalled();
+  });
+  it('does not skip in download direction even when mtime is older than the last sync', async () => {
+    const f = fixture();
+    f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: Date.now() };
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'download' });
+    expect(fetchNoteDetail).toHaveBeenCalled();
+  });
+  it('updates lastReverseFullSyncAt after a successful sync run', async () => {
+    const f = fixture();
+    f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: 0 };
+    const before = Date.now();
+    await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    expect(f.settings.reverseSync.lastReverseFullSyncAt).toBeGreaterThanOrEqual(before);
+  });
 });
 
 describe('independent sync directions', () => {
@@ -304,6 +354,10 @@ describe('independent sync directions', () => {
   });
   it('upload does not fetch or download changes when local content is unchanged', async () => {
     const f = fixture();
+    // Pretend a previous reverse sync already verified the remote state, so the
+    // baseline-equals-local early-exit can trust the cached baselines and skip
+    // fetchNoteDetail.
+    f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: Date.now() };
     vi.mocked(fetchNoteDetail).mockResolvedValue({ ...remote, content: '远端修改' });
     await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'upload' });
     expect(fetchNoteDetail).not.toHaveBeenCalled(); expect(f.app.vault.process).not.toHaveBeenCalled();

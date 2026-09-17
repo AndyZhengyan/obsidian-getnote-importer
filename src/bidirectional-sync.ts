@@ -25,6 +25,17 @@ export type ConflictChoice = 'upload' | 'download' | 'skip';
 export interface SyncConflict { path: string; local: EditableContent; remote: EditableContent }
 export type ResolveSyncConflict = (conflict: SyncConflict) => Promise<ConflictChoice>;
 
+/**
+ * Wall-clock timestamp (ms since epoch) of the last full reverse-sync pass,
+ * tracked on the settings object. Read by the early-exit to skip files whose
+ * local mtime is older than this — meaning no local edits since the last
+ * successful sync, so the cached `dedao_remote_hash` can be trusted. Written
+ * at the end of each `BidirectionalSyncEngine.sync()` call so the timestamp
+ * always reflects "the last time we successfully processed this directory."
+ *
+ * `0` (the default) means no reverse sync has ever completed; files will all
+ * fetch on the first run so we can populate the cached remote baselines.
+ */
 export function insideSyncFolder(path: string, folder: string): boolean {
   const normalized = folder.replace(/^\/+|\/+$/g, '');
   return !normalized || path.startsWith(`${normalized}/`);
@@ -171,6 +182,18 @@ export class BidirectionalSyncEngine {
   cancel(): void { this.controller.abort(); }
   private checkCancelled(): void {
     if (this.controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+  }
+  /**
+   * Returns true when a previous reverse sync completed AND the file's
+   * local mtime is older than that timestamp — meaning no local edits have
+   * been saved since the last sync, so the cached remote baseline can be
+   * trusted and `fetchNoteDetail` can be skipped. Returns false when no
+   * reverse sync has completed yet (`lastReverseFullSyncAt` is 0 or unset).
+   */
+  private canSkipUnchangedEntry(file: TFile): boolean {
+    const last = this.settings.reverseSync?.lastReverseFullSyncAt;
+    if (!last) return false;
+    return file.stat.mtime < last;
   }
   private uploadTarget(draft: LocalDraft, categoryOverride?: string): string {
     const createdAt = new Date().toISOString();
@@ -334,7 +357,16 @@ export class BidirectionalSyncEngine {
       result.total++;
       try {
         if (counts.get(local.uid) !== 1) throw new Error(t('bidirectional.duplicate'));
-        if (mode === 'upload' && local.baseline === contentHash(local)) {
+        // mtime-based early-exit: if the file's local mtime is older than the last
+        // successful reverse sync, no one has saved this file locally since we
+        // last processed it — so the cached `dedao_remote_hash` still reflects
+        // the authoritative remote state and we can skip `fetchNoteDetail`.
+        // Skip in any mode except explicit download (which always pulls the
+        // latest remote content). This is the fix for the auto-sync quota
+        // exhaustion: in 'both' mode, every file used to trigger a fetch even
+        // when local was unchanged, ballooning each cycle to 11-13 minutes for
+        // users with hundreds of notes.
+        if (mode !== 'download' && this.canSkipUnchangedEntry(file)) {
           result.skipped++; result.items!.push(item);
           continue;
         }
@@ -399,6 +431,14 @@ export class BidirectionalSyncEngine {
       }
       result[item.status]++; result.items!.push(item);
     }
+    // Mark the reverse-sync pass complete so the next run can short-circuit
+    // untouched files via the mtime-based early-exit. Mutating settings in
+    // place mirrors the existing pattern used by main.tsx for
+    // lastSyncEndTimestamp.
+    this.settings.reverseSync = {
+      ...this.settings.reverseSync,
+      lastReverseFullSyncAt: Date.now(),
+    };
     return result;
   }
 }

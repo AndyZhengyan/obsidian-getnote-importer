@@ -20,7 +20,13 @@ function parseDraftFields(text: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 export type SyncDirection = 'equal' | 'upload' | 'download' | 'conflict';
-export interface SyncOptions { direction?: 'upload' | 'download' | 'both'; paths?: string[]; folder?: string }
+export interface SyncOptions {
+  direction?: 'upload' | 'download' | 'both';
+  paths?: string[];
+  folder?: string;
+  /** Only reconcile UID-bearing notes whose local content differs from its stored baseline. */
+  changedOnly?: boolean;
+}
 export type ConflictChoice = 'upload' | 'download' | 'skip';
 export interface SyncConflict { path: string; local: EditableContent; remote: EditableContent }
 export type ResolveSyncConflict = (conflict: SyncConflict) => Promise<ConflictChoice>;
@@ -317,8 +323,10 @@ export class BidirectionalSyncEngine {
         if (selectedIds && (typeof metadata.uid !== 'string' || !selectedIds.includes(metadata.uid))) continue;
         if (metadata.note_type !== undefined && metadata.note_type !== 'plain_text') continue;
         const local = readSyncNote(raw, file.basename);
-        if (mode !== 'download' && local && (metadata.dedao_upload_state === 'archive' || metadata.dedao_upload_state === 'attach')) {
-          await this.uploadNewFile(file, undefined, { folder });
+        const hasPendingUpload = metadata.dedao_upload_state === 'archive' || metadata.dedao_upload_state === 'attach';
+        let pendingItem: SyncResultItem | undefined;
+        if (mode !== 'download' && local && hasPendingUpload) {
+          pendingItem = await this.uploadNewFile(file, undefined, { folder });
         }
         if (!local) {
           if (mode === 'download' || selectedIds || file.path.split('/').some(part => part === 'asset' || part === 'assets' || part === '_original' || part.startsWith('.'))) continue;
@@ -327,7 +335,18 @@ export class BidirectionalSyncEngine {
           continue;
         }
         if (selectedIds && !selectedIds.includes(local.uid)) continue;
-        entries.push({ file, local: readSyncNote(await this.app.vault.read(file), file.basename)! }); counts.set(local.uid, (counts.get(local.uid) ?? 0) + 1);
+        const currentLocal = readSyncNote(await this.app.vault.read(file), file.basename)!;
+        counts.set(currentLocal.uid, (counts.get(currentLocal.uid) ?? 0) + 1);
+        if (pendingItem) {
+          if (options.changedOnly) {
+            result.total++;
+            result[pendingItem.status]++;
+            result.items!.push(pendingItem);
+            continue;
+          }
+        }
+        if (options.changedOnly && currentLocal.baseline && contentHash(currentLocal) === currentLocal.baseline) continue;
+        entries.push({ file, local: currentLocal });
       } catch (error) {
         this.checkCancelled();
         // Unsupported files are visible, but never written through the text API.

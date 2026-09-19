@@ -64,6 +64,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     vi.spyOn(SyncEngine.prototype, 'sync').mockResolvedValue({ created: 0, updated: 0, failed: 0, skipped: 0, total: 0, items: [] });
     await plugin['runSync']('auto', { maxDays: 0, syncStartDate: '' });
     expect(changes).toHaveBeenCalledOnce();
+    expect(changes).toHaveBeenCalledWith(undefined, { direction: 'both', changedOnly: true });
     expect(plugin.syncHistory.at(-1)).toMatchObject({ status: 'partial', result: { updated: 1, failed: 1 } });
   });
 

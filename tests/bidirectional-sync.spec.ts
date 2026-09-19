@@ -144,6 +144,27 @@ describe('bidirectional engine', () => {
     expect(f.contents.get(f.file.path)).toContain('uid: "12345678901234567890"');
     expect(fetchNoteDetail).not.toHaveBeenCalled();
   });
+  it('skips unchanged UID notes during changed-only reconciliation', async () => {
+    const f = fixture();
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'both', changedOnly: true });
+    expect(result.total).toBe(0);
+    expect(fetchNoteDetail).not.toHaveBeenCalled();
+  });
+  it('reconciles locally changed UID notes during changed-only reconciliation', async () => {
+    const f = fixture(renderNote(remote).replace('\n原文\n', '\n本地修改\n'));
+    vi.mocked(fetchNoteDetail).mockResolvedValueOnce(remote).mockResolvedValueOnce(remote)
+      .mockResolvedValueOnce({ ...remote, content: '本地修改' });
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'both', changedOnly: true });
+    expect(result.updated).toBe(1);
+    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ id: remote.note_id, content: '本地修改' }));
+  });
+  it('still uploads UID-less drafts during changed-only reconciliation', async () => {
+    const f = fixture('本地新笔记');
+    vi.mocked(createNote).mockResolvedValue({ noteId: '12345678901234567890' });
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'both', changedOnly: true });
+    expect(result.created).toBe(1);
+    expect(createNote).toHaveBeenCalledTimes(1);
+  });
   it('creates a local draft in its knowledge base and keeps the local knowledge-base path', async () => {
     const f = fixture('本地知识库笔记');
     f.file.path = 'Sync/知识库/我的知识库/本地知识库笔记.md';

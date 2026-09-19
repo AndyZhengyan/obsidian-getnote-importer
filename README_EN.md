@@ -14,15 +14,12 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 * * *
 
-## 🎉 1.6.0 — Latest Update
+## 🎉 1.6.1 — Latest Update
 
-- **🔄 Automatically send local edits back**: automatic sync can now upload linked text-note edits from the sync folder. If both sides changed, it preserves both copies for manual conflict resolution.
-- **📝 Upload and archive local drafts once**: a new Markdown text note in the sync folder can be created in Dedao Brain, receive its `uid`, and move to its canonical path. Existing target files are preserved and reported as conflicts.
-- **📚 Keep knowledge-base ownership**: drafts under `知识库/<name>/` join the matching writable remote knowledge base. Upload stops when ownership is unknown or read-only, preventing unassigned notes.
-- **🎛️ Simpler automatic-sync controls**: one nested toggle selects download-only or download-and-upload behavior, and empty syncs now produce a clear result.
-- **🧪 Updated toolchain**: test and build dependencies now include Vitest 5, with authentication behavior covered for both OpenAPI and Web API modes.
+- **🚦 Auto-sync no longer exhausts the upstream rate limit**: fixed a bug where every synced file triggered a `fetchNoteDetail` call on every cycle — now only files whose local mtime has advanced are re-fetched. Interrupted syncs also resume from the last checkpoint instead of restarting from scratch.
+- **📝 Highlights sync with their content**: ref/highlight notes no longer arrive as an empty body with a `(无标题)` filename — the original highlight text and title are preserved.
 
-Automatic upload is off by default and requires OpenAPI. Enable “Auto-upload local changes” under Automatic Sync when you want it.
+A stability fix; recommended for everyone running automatic sync.
 
 The README keeps only the current release highlights. See [GitHub Releases](https://github.com/AndyZhengyan/obsidian-dedao-brain-sync/releases) for the complete version history.
 

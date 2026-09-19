@@ -18,6 +18,7 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 - **🚦 Auto-sync no longer exhausts the upstream rate limit**: fixed a bug where every synced file triggered a `fetchNoteDetail` call on every cycle — now only files whose local mtime has advanced are re-fetched. Interrupted syncs also resume from the last checkpoint instead of restarting from scratch.
 - **📝 Highlights sync with their content**: ref/highlight notes no longer arrive as an empty body with a `(无标题)` filename — the original highlight text and title are preserved.
+- **📄 Plain-text notes no longer lose their body**: text notes whose list payload came back empty now fetch the actual content from the detail API, so they no longer land as empty bodies with `(无标题)` filenames (#309).
 
 A stability fix; recommended for everyone running automatic sync.
 

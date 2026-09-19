@@ -679,9 +679,12 @@ export class SyncEngine {
     return LINK_NOTE_TYPES.has(note.note_type) && !note.linkOriginal;
   }
 
-  // ref 笔记（划线/引用）：列表接口返回空 title/content，必须从详情接口拉取。
+  // 列表接口对部分类型返回的 content/title 不可用，需要走详情接口补全：
+  // - ref 笔记（划线/引用）：列表接口必然返回空 title/content
+  // - plain_text 笔记：偶发返回空 content（少见但已在线上观察到，见 #309）
   private needsRefDetail(note: GetNoteNote): boolean {
-    return REF_NOTE_TYPES.has(note.note_type) && (!note.content || !note.title);
+    const typeRequiresDetail = REF_NOTE_TYPES.has(note.note_type) || note.note_type === 'plain_text';
+    return typeRequiresDetail && (!note.content || !note.title);
   }
 
   private async enrichNoteRelationships(note: GetNoteNote, signal: AbortSignal): Promise<GetNoteNote> {

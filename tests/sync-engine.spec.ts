@@ -3333,6 +3333,98 @@ describe('SyncEngine — ref note sync (#310)', () => {
   });
 });
 
+describe('SyncEngine — plain_text note empty content (#309)', () => {
+  // plain_text 笔记偶发出现列表接口返回空 content 的情况，需要走详情接口补全。
+  const plainTextFromList = makeNote({
+    note_id: 'plain_text_empty_001',
+    title: '',
+    content: '',
+    note_type: 'plain_text',
+    tags: [{ name: '工作笔记' }],
+    created_at: '2026-06-12T09:00:00+08:00',
+    updated_at: '2026-06-12T09:05:00+08:00',
+  });
+  const plainTextDetailBody = {
+    title: '今天的工作复盘',
+    content: '完成了 obsidian-getnote-importer 的反向同步修复，准备下一阶段发布。',
+  };
+
+  it('renders plain_text note content after detail enrichment', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url: unknown) => {
+      const urlStr = typeof url === 'string' ? url : (url as Request).url;
+      if (urlStr.includes('/resource/note/list')) {
+        return Promise.resolve(mockFetchResponse({
+          data: { notes: [plainTextFromList], has_more: false, next_cursor: '' },
+        }) as Response);
+      }
+      if (urlStr.includes('/resource/note/detail')) {
+        return Promise.resolve(mockFetchResponse({
+          success: true,
+          data: { note: { ...plainTextFromList, ...plainTextDetailBody } },
+        }) as Response);
+      }
+      throw new Error(`Unexpected request: ${urlStr}`);
+    });
+
+    const app = makeMockApp();
+
+    try {
+      const engine = new SyncEngine(app, makeSettings({ maxDays: 0 }));
+      const result = await engine.sync();
+
+      expect(result.created).toBe(1);
+      const mainFile = app.vault.getAbstractFileByPath(
+        '得到大脑/纯文本/今天的工作复盘.md'
+      ) as { content: string } | null;
+      expect(mainFile).not.toBeNull();
+      expect(mainFile?.content).toContain('反向同步修复');
+      expect(mainFile?.content).toContain('下一阶段发布');
+      // 详情接口返回的 title 应写入正文 frontmatter，文件名不该再是 (无标题)
+      expect(mainFile?.content).not.toMatch(/无标题/);
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+
+  it('skips detail fetch when plain_text note already has content from list', async () => {
+    const populatedPlainText = makeNote({
+      note_id: 'plain_text_populated_001',
+      title: '已有正文的工作笔记',
+      content: '列表接口已返回的正文片段',
+      note_type: 'plain_text',
+      created_at: '2026-06-12T09:00:00+08:00',
+      updated_at: '2026-06-12T09:05:00+08:00',
+    });
+    const requestedUrls: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url: unknown) => {
+      const urlStr = typeof url === 'string' ? url : (url as Request).url;
+      requestedUrls.push(urlStr);
+      if (urlStr.includes('/resource/note/list')) {
+        return Promise.resolve(mockFetchResponse({
+          data: { notes: [populatedPlainText], has_more: false, next_cursor: '' },
+        }) as Response);
+      }
+      throw new Error(`Unexpected detail request for populated plain_text: ${urlStr}`);
+    });
+
+    const app = makeMockApp();
+
+    try {
+      const engine = new SyncEngine(app, makeSettings({ maxDays: 0 }));
+      const result = await engine.sync();
+
+      expect(result.created).toBe(1);
+      expect(requestedUrls.some(url => url.includes('/resource/note/detail'))).toBe(false);
+      const mainFile = app.vault.getAbstractFileByPath(
+        '得到大脑/纯文本/已有正文的工作笔记.md'
+      ) as { content: string } | null;
+      expect(mainFile?.content).toContain('列表接口已返回的正文片段');
+    } finally {
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+});
+
 describe('SyncEngine — selective sync cancellation', () => {
   describe('SyncEngine — preCheckNote', () => {
     it('不存在 uidIndex 时返回 { exists: false }', () => {

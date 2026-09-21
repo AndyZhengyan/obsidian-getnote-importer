@@ -2699,6 +2699,10 @@ describe('SyncEngine — audio note sync', () => {
       expect(createdFiles.some(f => f.includes('/asset/'))).toBe(true);
       expect(createdFiles).toContain('得到大脑/录音笔记/asset/我的录音笔记_1908723638246504120_audio.mp3');
       expect(createdFiles).toContain('得到大脑/录音笔记/asset/我的录音笔记_1908723638246504120_transcript.md');
+      expect(vi.mocked(mockApp.vault.create)).toHaveBeenCalledWith(
+        '得到大脑/录音笔记/asset/我的录音笔记_1908723638246504120_transcript.md',
+        expect.stringContaining('dedao_generated_asset: transcript'),
+      );
       expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledWith(
         'https://mediacdn.umiwi.com/test.mp3',
         { redirect: 'error' },

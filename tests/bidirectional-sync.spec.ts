@@ -60,8 +60,8 @@ describe('bidirectional content decisions', () => {
   });
   it('recognizes generated asset folders and filenames', () => {
     expect(isGeneratedAssetPath('Sync/录音笔记/asset/note_transcript.md')).toBe(true);
-    expect(isGeneratedAssetPath('Sync/纯文本/note_transcript.md')).toBe(true);
-    expect(isGeneratedAssetPath('Sync/纯文本/note_original.md')).toBe(true);
+    expect(isGeneratedAssetPath('Sync/纯文本/note_transcript.md')).toBe(false);
+    expect(isGeneratedAssetPath('Sync/纯文本/note_original.md')).toBe(false);
     expect(isGeneratedAssetPath('Sync/纯文本/my transcript.md')).toBe(false);
   });
   it('preserves local frontmatter and appendix while changing only source content', () => {
@@ -89,13 +89,23 @@ describe('bidirectional engine', () => {
     'Sync/录音笔记/asset/note.md',
     'Sync/录音笔记/assets/note.md',
     'Sync/_original/note.md',
-    'Sync/纯文本/note_transcript.md',
-    'Sync/纯文本/note_original.md',
   ])('does not upload generated asset %s', async path => {
     const f = fixture('generated content');
     f.file.path = path;
     f.contents.clear(); f.contents.set(path, 'generated content');
     await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    expect(createNote).not.toHaveBeenCalled();
+  });
+  it('uploads a user-authored draft whose filename ends in transcript', async () => {
+    const f = fixture('user transcript');
+    f.file.path = 'Sync/纯文本/interview_transcript.md';
+    f.contents.clear(); f.contents.set(f.file.path, 'user transcript');
+    vi.mocked(createNote).mockResolvedValue({ noteId: remote.note_id });
+    expect((await new BidirectionalSyncEngine(f.app, f.settings).sync()).created).toBe(1);
+  });
+  it('does not upload a generated asset marked in frontmatter outside an asset folder', async () => {
+    const f = fixture('---\ndedao_generated_asset: transcript\ndedao_parent_uid: "parent"\n---\ngenerated');
+    expect((await new BidirectionalSyncEngine(f.app, f.settings).sync()).total).toBe(0);
     expect(createNote).not.toHaveBeenCalled();
   });
   it('stops the draft batch after the first rate limit and preserves the previous checkpoint', async () => {
@@ -108,6 +118,18 @@ describe('bidirectional engine', () => {
     vi.mocked(createNote).mockRejectedValue(new Error('API 调用频率过高，请稍后再试'));
     const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
     expect(result.failed).toBe(1);
+    expect(createNote).toHaveBeenCalledTimes(1);
+    expect(f.settings.reverseSync.lastReverseFullSyncAt).toBe(123);
+  });
+  it('also stops a draft batch when the daily quota is exhausted', async () => {
+    const f = fixture('first draft');
+    const second = new TFile('Sync/Inbox/second.md');
+    f.contents.set(second.path, 'second draft');
+    f.app.vault.getMarkdownFiles = () => [f.file, second];
+    f.app.vault.getAbstractFileByPath = path => path === f.file.path ? f.file : path === second.path ? second : null;
+    f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: 123 };
+    vi.mocked(createNote).mockRejectedValue(new Error('API 配额已用完，请明天再试'));
+    expect((await new BidirectionalSyncEngine(f.app, f.settings).sync()).failed).toBe(1);
     expect(createNote).toHaveBeenCalledTimes(1);
     expect(f.settings.reverseSync.lastReverseFullSyncAt).toBe(123);
   });
@@ -464,5 +486,18 @@ describe('independent sync directions', () => {
     await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'upload' });
     expect(addNotesToKnowledgeBase).toHaveBeenCalledTimes(2); expect(createNote).toHaveBeenCalledTimes(1);
     expect(f.contents.get(f.file.path)).toContain('dedao_upload_state: "complete"');
+  });
+  it('stops and preserves the checkpoint when pending attachment recovery is rate limited', async () => {
+    const f = fixture('draft');
+    f.file.path = 'Sync/知识库/KB/new.md'; f.contents.set(f.file.path, 'draft');
+    f.settings.knowledgeBaseCache = { updatedAt: 1, entries: [{ topicId: 'kb', name: 'KB', source: 'created' }] };
+    vi.mocked(createNote).mockResolvedValue({ noteId: remote.note_id });
+    vi.mocked(addNotesToKnowledgeBase).mockRejectedValueOnce(new Error('temporary failure'));
+    await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'upload' });
+    f.settings.reverseSync.lastReverseFullSyncAt = 123;
+    vi.mocked(addNotesToKnowledgeBase).mockRejectedValueOnce(new Error('API 调用频率过高，请稍后再试'));
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'upload' });
+    expect(result.failed).toBe(1);
+    expect(f.settings.reverseSync.lastReverseFullSyncAt).toBe(123);
   });
 });

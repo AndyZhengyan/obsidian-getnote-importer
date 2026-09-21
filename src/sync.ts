@@ -411,7 +411,7 @@ export class SyncEngine {
       }
 
       const targetPath = `${assetDir}/${this.getAudioAssetBaseName(note)}_transcript.md`;
-      const content = `# ${generateDisplayTitle(note) || t('picker.noTitle')}\n\n${note.audio}`;
+      const content = `---\ndedao_generated_asset: transcript\ndedao_parent_uid: ${JSON.stringify(note.note_id)}\n---\n# ${generateDisplayTitle(note) || t('picker.noTitle')}\n\n${note.audio}`;
       const existing = this.app.vault.getAbstractFileByPath(targetPath);
       if (existing) return targetPath;
       await this.app.vault.create(targetPath, content);

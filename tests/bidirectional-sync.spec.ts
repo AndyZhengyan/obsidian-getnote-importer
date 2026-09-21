@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { App, TFile } from 'obsidian';
-import { BidirectionalSyncEngine, syncDirection, insideSyncFolder, readSyncNote, replaceSyncContent } from '../src/bidirectional-sync';
+import { BidirectionalSyncEngine, syncDirection, insideSyncFolder, isGeneratedAssetPath, readSyncNote, replaceSyncContent } from '../src/bidirectional-sync';
 import { addNotesToKnowledgeBase, createNote, fetchNoteDetail } from '../src/api';
 import { updateNote } from '../src/api-clients/openapi-client';
 import { renderNote } from '../src/note-parser';
@@ -58,6 +58,12 @@ describe('bidirectional content decisions', () => {
     expect(insideSyncFolder('Sync/sub/a.md', '/Sync/')).toBe(true);
     expect(insideSyncFolder('a.md', '')).toBe(true);
   });
+  it('recognizes generated asset folders and filenames', () => {
+    expect(isGeneratedAssetPath('Sync/录音笔记/asset/note_transcript.md')).toBe(true);
+    expect(isGeneratedAssetPath('Sync/纯文本/note_transcript.md')).toBe(true);
+    expect(isGeneratedAssetPath('Sync/纯文本/note_original.md')).toBe(true);
+    expect(isGeneratedAssetPath('Sync/纯文本/my transcript.md')).toBe(false);
+  });
   it('preserves local frontmatter and appendix while changing only source content', () => {
     const raw = renderNote(remote).replace('uid:', 'custom: "keep"\nuid:') + '\n我的附注 [[链接]]';
     const parsed = readSyncNote(raw)!;
@@ -78,6 +84,32 @@ describe('bidirectional engine', () => {
     const f = fixture('new note');
     await new BidirectionalSyncEngine(f.app, f.settings).sync([remote.note_id]);
     expect(createNote).not.toHaveBeenCalled();
+  });
+  it.each([
+    'Sync/录音笔记/asset/note.md',
+    'Sync/录音笔记/assets/note.md',
+    'Sync/_original/note.md',
+    'Sync/纯文本/note_transcript.md',
+    'Sync/纯文本/note_original.md',
+  ])('does not upload generated asset %s', async path => {
+    const f = fixture('generated content');
+    f.file.path = path;
+    f.contents.clear(); f.contents.set(path, 'generated content');
+    await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    expect(createNote).not.toHaveBeenCalled();
+  });
+  it('stops the draft batch after the first rate limit and preserves the previous checkpoint', async () => {
+    const f = fixture('first draft');
+    const second = new TFile('Sync/Inbox/second.md');
+    f.contents.set(second.path, 'second draft');
+    f.app.vault.getMarkdownFiles = () => [f.file, second];
+    f.app.vault.getAbstractFileByPath = path => path === f.file.path ? f.file : path === second.path ? second : null;
+    f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: 123 };
+    vi.mocked(createNote).mockRejectedValue(new Error('API 调用频率过高，请稍后再试'));
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    expect(result.failed).toBe(1);
+    expect(createNote).toHaveBeenCalledTimes(1);
+    expect(f.settings.reverseSync.lastReverseFullSyncAt).toBe(123);
   });
   it('blocks a second POST after an uncertain network outcome across engine instances', async () => {
     const f = fixture('new note');
@@ -324,7 +356,7 @@ describe('bidirectional engine', () => {
     // and the cached remote baselines are populated.
     f.settings.reverseSync = { ...f.settings.reverseSync };
     delete f.settings.reverseSync.lastReverseFullSyncAt;
-    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    await new BidirectionalSyncEngine(f.app, f.settings).sync();
     expect(fetchNoteDetail).toHaveBeenCalled();
     expect(f.settings.reverseSync.lastReverseFullSyncAt).toBeGreaterThan(0);
   });
@@ -342,7 +374,7 @@ describe('bidirectional engine', () => {
   it('does not skip in download direction even when mtime is older than the last sync', async () => {
     const f = fixture();
     f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: Date.now() };
-    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'download' });
+    await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'download' });
     expect(fetchNoteDetail).toHaveBeenCalled();
   });
   it('updates lastReverseFullSyncAt after a successful sync run', async () => {

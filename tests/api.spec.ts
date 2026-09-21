@@ -450,6 +450,28 @@ describe('fetchNotes limit', () => {
       vi.mocked(globalThis.fetch).mockRestore();
     }
   });
+
+  it('429 月配额耗尽时不重试', async () => {
+    const timeoutSpy = vi.spyOn(window, 'setTimeout').mockImplementation((fn: TimerHandler) => {
+      if (typeof fn === 'function') fn();
+      return 1;
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({
+        success: false,
+        error: { code: 10203, message: 'monthly quota exhausted', reason: 'quota_monthly_exceeded' },
+      }, 429) as Response
+    );
+
+    try {
+      await expect(fetchNotes({ token: 'test-token', clientId: 'test-client' })).rejects.toThrow('API 配额已用完');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(timeoutSpy).not.toHaveBeenCalled();
+    } finally {
+      timeoutSpy.mockRestore();
+      vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
 });
 
 describe('web auth mode', () => {

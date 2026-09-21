@@ -46,6 +46,18 @@ export function insideSyncFolder(path: string, folder: string): boolean {
   const normalized = folder.replace(/^\/+|\/+$/g, '');
   return !normalized || path.startsWith(`${normalized}/`);
 }
+export function isGeneratedAssetPath(path: string): boolean {
+  const parts = path.split('/');
+  return parts.some(part => part === 'asset' || part === 'assets' || part === '_original' || part.startsWith('.'));
+}
+function isGeneratedAssetMetadata(fields: Record<string, unknown>): boolean {
+  return fields.dedao_generated_asset === 'transcript' || fields.dedao_generated_asset === 'original';
+}
+function isRateLimitedOrQuotaExceeded(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message === t('error.rateLimited') || message === t('error.quotaExceeded')
+    || /\b429\b|rate limit|quota_(?:day|month)/i.test(message);
+}
 export function contentHash(note: EditableContent): string {
   return createSourceHash(note.title, note.tags, note.body);
 }
@@ -245,6 +257,7 @@ export class BidirectionalSyncEngine {
     if (prepared && prepared.raw !== raw) throw new Error(t('bidirectional.changed'));
     const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
     const fields = block ? parseDraftFields(block[1]) : {};
+    if (isGeneratedAssetPath(file.path) || isGeneratedAssetMetadata(fields)) throw new Error(t('bidirectional.generatedAsset'));
     if ((fields?.dedao_upload_state === 'archive' || fields?.dedao_upload_state === 'attach')
       && typeof fields.uid === 'string' && typeof fields.dedao_upload_target === 'string') {
       if (fields.dedao_upload_state === 'attach') {
@@ -313,6 +326,7 @@ export class BidirectionalSyncEngine {
     const files = this.app.vault.getMarkdownFiles().filter(file => inScope(file) && (!options.paths || options.paths.includes(file.path)));
     const entries: Array<{ file: TFile; local: LocalSyncNote }> = [];
     const drafts: TFile[] = [];
+    let rateLimited = false;
     const counts = new Map<string, number>();
     for (const file of files) {
       this.checkCancelled();
@@ -322,6 +336,7 @@ export class BidirectionalSyncEngine {
         const metadata = block ? parseDraftFields(block[1]) : {};
         if (selectedIds && (typeof metadata.uid !== 'string' || !selectedIds.includes(metadata.uid))) continue;
         if (metadata.note_type !== undefined && metadata.note_type !== 'plain_text') continue;
+        if (isGeneratedAssetPath(file.path) || isGeneratedAssetMetadata(metadata)) continue;
         const local = readSyncNote(raw, file.basename);
         const hasPendingUpload = metadata.dedao_upload_state === 'archive' || metadata.dedao_upload_state === 'attach';
         let pendingItem: SyncResultItem | undefined;
@@ -329,7 +344,7 @@ export class BidirectionalSyncEngine {
           pendingItem = await this.uploadNewFile(file, undefined, { folder });
         }
         if (!local) {
-          if (mode === 'download' || selectedIds || file.path.split('/').some(part => part === 'asset' || part === 'assets' || part === '_original' || part.startsWith('.'))) continue;
+          if (mode === 'download' || selectedIds || isGeneratedAssetPath(file.path)) continue;
           readLocalDraft(raw, file.basename);
           drafts.push(file);
           continue;
@@ -349,9 +364,12 @@ export class BidirectionalSyncEngine {
         entries.push({ file, local: currentLocal });
       } catch (error) {
         this.checkCancelled();
+        if (isRateLimitedOrQuotaExceeded(error)) rateLimited = true;
         // Unsupported files are visible, but never written through the text API.
-        result.skipped++; result.total++;
-        result.items!.push({ noteId: file.path, title: file.basename, noteType: '', updatedAt: '', status: 'skipped', error: String(error) });
+        const status = rateLimited ? 'failed' : 'skipped';
+        result[status]++; result.total++;
+        result.items!.push({ noteId: file.path, title: file.basename, noteType: '', updatedAt: '', status, error: String(error) });
+        if (rateLimited) break;
       }
     }
     for (const file of drafts) {
@@ -367,8 +385,12 @@ export class BidirectionalSyncEngine {
       })();
       result[item.status]++;
       result.items!.push(item);
+      if (isRateLimitedOrQuotaExceeded(item.error)) {
+        rateLimited = true;
+        break;
+      }
     }
-    for (const entry of entries) {
+    for (const entry of rateLimited ? [] : entries) {
       const { file } = entry;
       let { local } = entry;
       this.checkCancelled();
@@ -449,15 +471,21 @@ export class BidirectionalSyncEngine {
         item.error = isRemoteNoteMissing(error) ? t('bidirectional.remoteMissing') : error instanceof Error ? error.message : String(error);
       }
       result[item.status]++; result.items!.push(item);
+      if (isRateLimitedOrQuotaExceeded(item.error)) {
+        rateLimited = true;
+        break;
+      }
     }
     // Mark the reverse-sync pass complete so the next run can short-circuit
     // untouched files via the mtime-based early-exit. Mutating settings in
     // place mirrors the existing pattern used by main.tsx for
     // lastSyncEndTimestamp.
-    this.settings.reverseSync = {
-      ...this.settings.reverseSync,
-      lastReverseFullSyncAt: Date.now(),
-    };
+    if (!rateLimited) {
+      this.settings.reverseSync = {
+        ...this.settings.reverseSync,
+        lastReverseFullSyncAt: Date.now(),
+      };
+    }
     return result;
   }
 }

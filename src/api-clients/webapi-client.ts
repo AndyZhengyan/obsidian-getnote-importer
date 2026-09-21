@@ -124,7 +124,7 @@ async function handleRateLimit<T>(
   const json = tryParseJsonObject(text);
   const err = (json.error ?? json) as Record<string, unknown>;
   const reason = err.reason as string | undefined;
-  if (reason === 'quota_day' || reason === 'quota_month') {
+  if (reason === 'quota_day' || reason === 'quota_daily_exceeded' || reason === 'quota_month' || reason === 'quota_monthly_exceeded') {
     throw new Error(t('error.quotaExceeded'));
   }
   if (retries > 0) {

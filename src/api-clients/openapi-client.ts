@@ -127,8 +127,9 @@ async function handleRateLimit<T>(
   const json = parseErrorBody(text);
   const errObj = (json.error ?? json) as Record<string, unknown>;
   const reason = errObj.reason as string | undefined;
-  if (reason === 'quota_day' || reason === 'quota_month') {
-    lastQuota = { exhausted: true, reason, checkedAt: Date.now() };
+  if (reason === 'quota_day' || reason === 'quota_daily_exceeded' || reason === 'quota_month' || reason === 'quota_monthly_exceeded') {
+    const quotaReason = reason === 'quota_month' || reason === 'quota_monthly_exceeded' ? 'quota_month' : 'quota_day';
+    lastQuota = { exhausted: true, reason: quotaReason, checkedAt: Date.now() };
     throw new FatalOpenApiError(t('error.quotaExceeded'));
   }
   if (retries > 0) {

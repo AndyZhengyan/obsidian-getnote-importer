@@ -450,6 +450,19 @@ describe('SettingsComponent information architecture (#257)', () => {
     expect(details.textContent).toContain('仅上传同步目录中新增或修改的文字笔记');
   });
 
+  it('explains why two-way sync is unavailable with temporary auth', () => {
+    const { container } = renderSettings(makeSettings({
+      authMode: 'web',
+      webApiToken: 'web-token',
+    }));
+
+    const details = container.querySelector<HTMLElement>('#getnote-scheduled-details')!;
+    const toggle = details.querySelector<HTMLInputElement>('input[aria-label="启动双向同步"]')!;
+    expect(toggle.disabled).toBe(true);
+    expect(details.textContent).toContain('启动双向同步需要 OpenAPI 鉴权（PRO 会员）');
+    expect(details.textContent).toContain('临时鉴权仅支持下载同步');
+  });
+
   it('replaces configured copy with an unverified connection indicator', () => {
     const { container } = renderSettings(makeSettings({
       authMode: 'openapi',

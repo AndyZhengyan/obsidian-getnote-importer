@@ -1294,6 +1294,11 @@ export function SettingsComponent({
                 />
               </span>
             </div>
+            {authMode !== 'openapi' && (
+              <div className="getnote-input-hint getnote-bidirectional-hint">
+                {t('bidirectional.openApiOnly')}
+              </div>
+            )}
             {bidirectional && (
               <div className="getnote-input-hint getnote-bidirectional-hint">
                 {t('settings.scheduled.autoUploadLocalChanges.hint')}

@@ -14,13 +14,13 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 * * *
 
-## 🎉 1.6.1 — Latest Update
+## 🎉 1.6.2 — Latest Update
 
-- **🚦 Auto-sync no longer exhausts the upstream rate limit**: fixed a bug where every synced file triggered a `fetchNoteDetail` call on every cycle — now only files whose local mtime has advanced are re-fetched. Interrupted syncs also resume from the last checkpoint instead of restarting from scratch.
-- **📝 Highlights sync with their content**: ref/highlight notes no longer arrive as an empty body with a `(无标题)` filename — the original highlight text and title are preserved.
-- **📄 Plain-text notes no longer lose their body**: text notes whose list payload came back empty now fetch the actual content from the detail API, so they no longer land as empty bodies with `(无标题)` filenames (#309).
+- **🚦 Auto-sync handles limits cleanly**: unchanged local notes no longer repeatedly fetch remote detail. When upstream throttling or a daily/monthly quota is exhausted, the current batch stops instead of accumulating failed requests.
+- **🎙️ Audio transcripts stay assets**: plugin-generated transcripts and source-content attachments remain in asset folders with an explicit marker; they are not uploaded as standalone Dedao Brain notes.
+- **📊 Accurate quota state**: the plugin now recognizes the upstream monthly-quota response, stops automatic sync, and tells you to turn it back on after the quota resets.
 
-A stability fix; recommended for everyone running automatic sync.
+A sync-stability update, recommended for everyone using two-way or automatic sync.
 
 The README keeps only the current release highlights. See [GitHub Releases](https://github.com/AndyZhengyan/obsidian-dedao-brain-sync/releases) for the complete version history.
 

@@ -458,7 +458,7 @@ describe('SettingsComponent information architecture (#257)', () => {
 
     const details = container.querySelector<HTMLElement>('#getnote-scheduled-details')!;
     const toggle = details.querySelector<HTMLInputElement>('input[aria-label="启动双向同步"]')!;
-    const control = toggle.closest<HTMLElement>('.getnote-scheduled-row-control')!;
+    const control = toggle.closest<HTMLElement>('.checkbox-container')!;
     expect(toggle.disabled).toBe(true);
     expect(control.title).toContain('启动双向同步需要 OpenAPI 鉴权（PRO 会员）');
     expect(control.title).toContain('临时鉴权仅支持下载同步');

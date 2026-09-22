@@ -5,6 +5,7 @@ interface ToggleProps {
   onChange: (value: boolean) => void;
   ariaLabel: string;
   disabled?: boolean;
+  title?: string;
 }
 
 /**
@@ -20,7 +21,7 @@ interface ToggleProps {
  * `new ToggleComponent(hostEl)`; here we just inline the resulting
  * structure so the visual treatment stays identical.
  */
-export function Toggle({ value, onChange, ariaLabel, disabled }: ToggleProps) {
+export function Toggle({ value, onChange, ariaLabel, disabled, title }: ToggleProps) {
   const [currentValue, setCurrentValue] = useState(value);
   const currentValueRef = useRef(value);
   const onChangeRef = useRef(onChange);
@@ -62,6 +63,7 @@ export function Toggle({ value, onChange, ariaLabel, disabled }: ToggleProps) {
       className={`checkbox-container${currentValue ? ' is-enabled' : ''}${disabled ? ' is-disabled' : ''}`}
       onClick={handleContainerClick}
       aria-disabled={disabled}
+      title={title}
     >
       <input
         type="checkbox"

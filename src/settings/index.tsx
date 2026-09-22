@@ -1282,14 +1282,12 @@ export function SettingsComponent({
             </div>
             <div className="getnote-scheduled-row">
               <span className="getnote-scheduled-row-label">{t('settings.scheduled.autoUploadLocalChanges')}</span>
-              <span
-                className="getnote-scheduled-row-control"
-                title={authMode === 'openapi' ? undefined : t('bidirectional.openApiOnly')}
-              >
+              <span className="getnote-scheduled-row-control">
                 <Toggle
                   ariaLabel={t('settings.scheduled.autoUploadLocalChanges')}
                   value={bidirectional}
                   disabled={isSyncing || authMode !== 'openapi'}
+                  title={authMode === 'openapi' ? undefined : t('bidirectional.openApiOnly')}
                   onChange={enabled => {
                     setBidirectional(enabled);
                     updateSetting('reverseSync', { ...settings.reverseSync, enabled, autoUpload: undefined });

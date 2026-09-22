@@ -18,7 +18,7 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 - **🚦 Auto-sync handles limits cleanly**: unchanged local notes no longer repeatedly fetch remote detail. When upstream throttling or a daily/monthly quota is exhausted, the current batch stops instead of accumulating failed requests.
 - **🎙️ Audio transcripts stay assets**: plugin-generated transcripts and source-content attachments remain in asset folders with an explicit marker; they are not uploaded as standalone Dedao Brain notes.
-- **📊 Accurate quota state**: the plugin now recognizes the upstream monthly-quota response and pauses automatic sync until the quota is available again.
+- **📊 Accurate quota state**: the plugin now recognizes the upstream monthly-quota response, stops automatic sync, and tells you to turn it back on after the quota resets.
 
 A sync-stability update, recommended for everyone using two-way or automatic sync.
 

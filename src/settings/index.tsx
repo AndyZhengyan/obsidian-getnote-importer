@@ -1282,7 +1282,10 @@ export function SettingsComponent({
             </div>
             <div className="getnote-scheduled-row">
               <span className="getnote-scheduled-row-label">{t('settings.scheduled.autoUploadLocalChanges')}</span>
-              <span className="getnote-scheduled-row-control">
+              <span
+                className="getnote-scheduled-row-control"
+                title={authMode === 'openapi' ? undefined : t('bidirectional.openApiOnly')}
+              >
                 <Toggle
                   ariaLabel={t('settings.scheduled.autoUploadLocalChanges')}
                   value={bidirectional}
@@ -1294,11 +1297,6 @@ export function SettingsComponent({
                 />
               </span>
             </div>
-            {authMode !== 'openapi' && (
-              <div className="getnote-input-hint getnote-bidirectional-hint">
-                {t('bidirectional.openApiOnly')}
-              </div>
-            )}
             {bidirectional && (
               <div className="getnote-input-hint getnote-bidirectional-hint">
                 {t('settings.scheduled.autoUploadLocalChanges.hint')}

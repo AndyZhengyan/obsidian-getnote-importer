@@ -450,7 +450,7 @@ describe('SettingsComponent information architecture (#257)', () => {
     expect(details.textContent).toContain('仅上传同步目录中新增或修改的文字笔记');
   });
 
-  it('explains why two-way sync is unavailable with temporary auth', () => {
+  it('explains the temporary-auth restriction when hovering the disabled two-way sync toggle', () => {
     const { container } = renderSettings(makeSettings({
       authMode: 'web',
       webApiToken: 'web-token',
@@ -458,9 +458,11 @@ describe('SettingsComponent information architecture (#257)', () => {
 
     const details = container.querySelector<HTMLElement>('#getnote-scheduled-details')!;
     const toggle = details.querySelector<HTMLInputElement>('input[aria-label="启动双向同步"]')!;
+    const control = toggle.closest<HTMLElement>('.getnote-scheduled-row-control')!;
     expect(toggle.disabled).toBe(true);
-    expect(details.textContent).toContain('启动双向同步需要 OpenAPI 鉴权（PRO 会员）');
-    expect(details.textContent).toContain('临时鉴权仅支持下载同步');
+    expect(control.title).toContain('启动双向同步需要 OpenAPI 鉴权（PRO 会员）');
+    expect(control.title).toContain('临时鉴权仅支持下载同步');
+    expect(details.textContent).not.toContain('启动双向同步需要 OpenAPI 鉴权（PRO 会员）');
   });
 
   it('replaces configured copy with an unverified connection indicator', () => {

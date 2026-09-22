@@ -435,10 +435,10 @@ describe('SettingsComponent information architecture (#257)', () => {
     expect(container.querySelector('#getnote-sync-direction')).toBeNull();
 
     const details = container.querySelector<HTMLElement>('#getnote-scheduled-details')!;
-    const toggle = details.querySelector<HTMLInputElement>('input[aria-label="本地修改自动上传"]')!;
+    const toggle = details.querySelector<HTMLInputElement>('input[aria-label="启动双向同步"]')!;
     const row = toggle.closest('.getnote-scheduled-row');
     expect(row?.parentElement).toBe(details);
-    expect(row?.querySelector('.getnote-scheduled-row-label')?.textContent).toBe('本地修改自动上传');
+    expect(row?.querySelector('.getnote-scheduled-row-label')?.textContent).toBe('启动双向同步');
     expect(row?.querySelector('.getnote-scheduled-row-control')).not.toBeNull();
     expect(toggle.checked).toBe(false);
 

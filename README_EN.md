@@ -144,7 +144,7 @@ A dedicated command syncs all subscribed knowledge bases in one run. Subscriptio
 
 ### 🕒 Scheduled sync
 
-When automatic sync is enabled, the plugin pulls remote changes at the configured interval and can also sync on startup. Turn on “Auto-upload local changes” to process new or edited text notes in the sync folder and its subfolders during the same run.
+When automatic sync is enabled, the plugin pulls remote changes at the configured interval and can also sync on startup. Turn on “Enable two-way sync” to process new or edited text notes in the sync folder and its subfolders during the same run.
 
 Automatic upload is off by default and requires OpenAPI. Deletions never propagate. When local and remote content both changed, the plugin preserves both copies and asks you to choose a version during manual sync.
 
@@ -157,7 +157,7 @@ Manual upload is **selection-based and create-only**, separate from automatic up
 - It mainly supports `plain_text` and `link` note types.
 - Notes with a `uid` that are confirmed to still exist remotely are skipped to avoid duplicates.
 - Existing Dedao Brain notes are not automatically overwritten.
-- Linked text-note edits inside the sync folder can be handled by “Auto-upload local changes.”
+- Linked text-note edits inside the sync folder can be handled by “Enable two-way sync.”
 - Uploaded tags are deduplicated and capped.
 
 ## 📁 Output layout
@@ -245,7 +245,7 @@ Migration is safe to re-run. When there is a target conflict, invalid metadata, 
 - 🔐 API credentials stay in local Obsidian plugin data.
 - 🏠 The plugin does not depend on an extra third-party relay backend.
 - ⬇️ Downloaded content goes directly from Dedao Brain into your vault.
-- ⬆️ Manual upload sends only the Markdown files you explicitly select. When “Auto-upload local changes” is enabled, eligible new or edited text notes in the sync folder and its subfolders are sent automatically.
+- ⬆️ Manual upload sends only the Markdown files you explicitly select. When “Enable two-way sync” is enabled, eligible new or edited text notes in the sync folder and its subfolders are sent automatically.
 - 📎 Attachments are downloaded only from URLs returned by Dedao Brain APIs.
 - 🛡️ Local path migration prefers skipping unsafe conflicts rather than overwriting files.
 

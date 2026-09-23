@@ -55,6 +55,14 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     return updateRuntimeState;
   }
 
+  it('never shows download completion as overall completion while sync is active', () => {
+    const plugin = makePlugin();
+    plugin['setProgress']({ processed: 10, total: 10, percent: 100 });
+    expect(plugin.syncProgress.percent).toBe(99);
+    plugin['setReconciliationProgress']({ message: '正在检查本地修改', count: '', percent: undefined, phase: 'active' });
+    expect(plugin.syncProgress).toMatchObject({ message: '正在检查本地修改', percent: undefined, phase: 'active' });
+  });
+
   it('includes bidirectional failures and updates in automatic sync history', async () => {
     const plugin = makePlugin();
     plugin.settings.reverseSync = { enabled: true };

@@ -3,7 +3,7 @@ import { addNotesToKnowledgeBase, createNote, fetchNoteDetail } from './api';
 import { updateNote } from './api-clients/openapi-client';
 import { createSourceHash, parseSourceBody, SOURCE_BODY_START, SOURCE_BODY_END } from './source-body';
 import { renderNote } from './note-parser';
-import { getAuthCredentials, getCategoryDir, type GetNoteNote, type Settings, type SyncResult, type SyncResultItem } from './types';
+import { getAuthCredentials, getCategoryDir, type GetNoteNote, type Settings, type SyncResult, type SyncResultItem, type SyncProgressDetail } from './types';
 import { t } from './i18n';
 import { buildCanonicalCategoryDir } from './date-paths';
 import { getFileName } from './sync-paths';
@@ -196,7 +196,12 @@ export function isRemoteNoteMissing(error: unknown): boolean {
 
 export class BidirectionalSyncEngine {
   private controller = new AbortController();
-  constructor(private app: App, private settings: Settings, private resolve?: ResolveSyncConflict) {}
+  constructor(private app: App, private settings: Settings, private resolve?: ResolveSyncConflict, private onProgress?: (progress: SyncProgressDetail) => void) {}
+  private reportProgress(stage: 'checking' | 'uploading' | 'comparing', current?: number, total?: number): void {
+    this.onProgress?.({ message: t(`bidirectional.progress.${stage}`),
+      count: current !== undefined && total !== undefined ? t('sync.processingCount', { current, total }) : '',
+      percent: undefined, phase: 'active' });
+  }
   cancel(): void { this.controller.abort(); }
   private checkCancelled(): void {
     if (this.controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -323,13 +328,16 @@ export class BidirectionalSyncEngine {
     const inScope = (file: TFile) => insideSyncFolder(file.path, folder);
     const auth = getAuthCredentials(this.settings);
     if (mode !== 'download' && auth.authMode !== 'openapi') throw new Error(t('bidirectional.openApiOnly'));
+    this.reportProgress('checking');
     const files = this.app.vault.getMarkdownFiles().filter(file => inScope(file) && (!options.paths || options.paths.includes(file.path)));
     const entries: Array<{ file: TFile; local: LocalSyncNote }> = [];
     const drafts: TFile[] = [];
     let rateLimited = false;
     const counts = new Map<string, number>();
+    let scanned = 0;
     for (const file of files) {
       this.checkCancelled();
+      this.reportProgress('checking', ++scanned, files.length);
       try {
         const raw = await this.app.vault.read(file);
         const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
@@ -341,6 +349,7 @@ export class BidirectionalSyncEngine {
         const hasPendingUpload = metadata.dedao_upload_state === 'archive' || metadata.dedao_upload_state === 'attach';
         let pendingItem: SyncResultItem | undefined;
         if (mode !== 'download' && local && hasPendingUpload) {
+          this.reportProgress('uploading');
           pendingItem = await this.uploadNewFile(file, undefined, { folder });
         }
         if (!local) {
@@ -372,11 +381,13 @@ export class BidirectionalSyncEngine {
         if (rateLimited) break;
       }
     }
+    let uploaded = 0;
     for (const file of drafts) {
       this.checkCancelled();
       result.total++;
       const item = await (async (): Promise<SyncResultItem> => {
         try {
+          this.reportProgress('uploading', ++uploaded, drafts.length);
           return await this.uploadNewFile(file, undefined, { folder });
         } catch (error) {
           if (error instanceof DOMException && error.name === 'AbortError') throw error;
@@ -390,7 +401,9 @@ export class BidirectionalSyncEngine {
         break;
       }
     }
+    let compared = 0;
     for (const entry of rateLimited ? [] : entries) {
+      this.reportProgress('comparing', ++compared, entries.length);
       const { file } = entry;
       let { local } = entry;
       this.checkCancelled();
@@ -447,6 +460,7 @@ export class BidirectionalSyncEngine {
             || await this.app.vault.read(file) !== local.raw) throw new Error(t('bidirectional.changed'));
           let next: EditableContent = direction === 'download' ? remote : local;
           if (direction === 'upload') {
+            this.reportProgress('uploading', compared, entries.length);
             const tagsChanged = createSourceHash('', local.tags, '') !== createSourceHash('', remote.tags, '');
             await updateNote({ token: auth.token, clientId: auth.clientId, id: local.uid, signal: this.controller.signal,
               ...(local.title !== remote.title ? { title: local.title } : {}),

@@ -603,7 +603,7 @@ export default class GetNoteSyncPlugin extends Plugin {
       .map(item => item.noteId))];
     if (!ids.length) return;
     const reconciler = new BidirectionalSyncEngine(this.app, this.settings,
-      automatic ? undefined : conflict => resolveSyncConflict(this.app, conflict, 'download'));
+      automatic ? undefined : conflict => resolveSyncConflict(this.app, conflict, 'download'), progress => this.setReconciliationProgress(progress));
     this.currentSyncEngine = reconciler;
     let changes: SyncResult;
     try {
@@ -663,7 +663,7 @@ export default class GetNoteSyncPlugin extends Plugin {
         : await engine.sync();
       if (type === 'auto' && this.settings.reverseSync.enabled && credentials.authMode === 'openapi') {
         const reconciler = new BidirectionalSyncEngine(this.app, this.settings,
-          type === 'auto' ? undefined : conflict => resolveSyncConflict(this.app, conflict, 'both'));
+          type === 'auto' ? undefined : conflict => resolveSyncConflict(this.app, conflict, 'both'), progress => this.setReconciliationProgress(progress));
         this.currentSyncEngine = reconciler;
         const changes = await reconciler.sync(undefined, { direction: 'both', changedOnly: true });
         const reconciledIds = new Set((changes.items ?? []).map(item => item.noteId));
@@ -848,13 +848,18 @@ export default class GetNoteSyncPlugin extends Plugin {
     void this.runSync('auto', scopeOptions);
   }
 
+  private setReconciliationProgress(progress: SyncProgressDetail): void {
+    this.syncProgress = progress;
+    this.updateSettingsRuntimeState();
+  }
+
   private setProgress(info: { page?: number; processed?: number; total?: number; created?: number; updated?: number; skipped?: number; failed?: number; percent?: number }) {
     this.syncProgress = {
       message: info.page ? t('sync.fetching', { page: info.page }) : t('sync.syncing'),
       count: info.processed && info.total
         ? t('sync.processingCount', { current: info.processed, total: info.total })
         : '',
-      percent: info.percent,
+      percent: info.percent === undefined ? undefined : Math.min(info.percent, 99),
       phase: 'active',
     };
     const now = Date.now();

@@ -75,6 +75,30 @@ describe('bidirectional content decisions', () => {
   });
 });
 describe('bidirectional engine', () => {
+  it('reports local scanning and upload progress before the remote request completes', async () => {
+    const f = fixture('new draft');
+    const progress = vi.fn();
+    vi.mocked(createNote).mockImplementation(async () => {
+      expect(progress).toHaveBeenLastCalledWith(expect.objectContaining({
+        message: '正在上传本地内容', count: expect.stringContaining('1'), percent: undefined, phase: 'active',
+      }));
+      return { noteId: remote.note_id };
+    });
+    await new BidirectionalSyncEngine(f.app, f.settings, undefined, progress).sync();
+    expect(progress).toHaveBeenCalledWith(expect.objectContaining({ message: '正在检查本地修改', percent: undefined }));
+    expect(createNote).toHaveBeenCalledOnce();
+  });
+  it('reports remote comparison before waiting for a detail response', async () => {
+    const f = fixture();
+    const progress = vi.fn();
+    vi.mocked(fetchNoteDetail).mockImplementation(async () => {
+      expect(progress).toHaveBeenLastCalledWith(expect.objectContaining({ message: '正在核对远端笔记', percent: undefined }));
+      return remote;
+    });
+    await new BidirectionalSyncEngine(f.app, f.settings, undefined, progress).sync();
+    expect(fetchNoteDetail).toHaveBeenCalled();
+  });
+
   it.each(['', '   ', '---\nuid: 123\n---\ntext', '---\nnote_type: "link"\n---\ntext'])('does not create invalid drafts (%s)', async raw => {
     const f = fixture(raw);
     await new BidirectionalSyncEngine(f.app, f.settings).sync();

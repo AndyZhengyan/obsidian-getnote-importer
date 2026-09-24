@@ -75,6 +75,30 @@ describe('bidirectional content decisions', () => {
   });
 });
 describe('bidirectional engine', () => {
+  it('preserves an unquoted unsafe UID through selected sync without creating a note', async () => {
+    const f = fixture(renderNote(remote).replace(`uid: "${remote.note_id}"`, `uid: ${remote.note_id}`));
+    expect(readSyncNote(f.contents.get(f.file.path)!)?.uid).toBe(remote.note_id);
+    await new BidirectionalSyncEngine(f.app, f.settings).sync([remote.note_id], { direction: 'download' });
+    expect(fetchNoteDetail).toHaveBeenCalledWith(remote.note_id, expect.anything(), expect.anything(), expect.anything(), 'openapi');
+    expect(createNote).not.toHaveBeenCalled();
+  });
+  it('does not hide missing baseline errors behind a previous full-sync timestamp', async () => {
+    const raw = `---\nuid: "${remote.note_id}"\ntitle: "标题"\ntags: ["工作"]\n---\n本地修改`;
+    const f = fixture(raw);
+    f.settings.reverseSync.lastReverseFullSyncAt = Date.now();
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { changedOnly: true });
+    expect(result.items?.[0].error).toContain('同步基线');
+    f.settings.syncHistory = [{ id: 'previous', startedAt: 1, finishedAt: 2, durationMs: 1, timestamp: 2, type: 'auto', status: 'partial', result }];
+    vi.mocked(fetchNoteDetail).mockClear();
+    const repeat = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { changedOnly: true });
+    expect(repeat.items?.[0].error).toBe(result.items?.[0].error);
+    expect(fetchNoteDetail).not.toHaveBeenCalled();
+    await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'download' });
+    expect(fetchNoteDetail).toHaveBeenCalled();
+    expect(f.contents.get(f.file.path)).toBe(raw);
+    expect(updateNote).not.toHaveBeenCalled();
+  });
+
   it('reports local scanning and upload progress before the remote request completes', async () => {
     const f = fixture('new draft');
     const progress = vi.fn();

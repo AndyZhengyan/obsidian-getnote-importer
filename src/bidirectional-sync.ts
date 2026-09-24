@@ -14,7 +14,10 @@ export interface LocalSyncNote extends EditableContent {
 }
 interface LocalDraft extends EditableContent { raw: string; frontmatterEnd: number; topicId?: string }
 function parseDraftFields(text: string): Record<string, unknown> {
-  const parsed: unknown = parseYaml(text);
+  // Quote decimal identities before YAML can round them to unsafe JS numbers.
+  const preserved = text.replace(/^(uid|prime_id|topic_id):[ \t]*([0-9]+)[ \t]*(?=\r?$|#)/gm,
+    (_match, key: string, id: string) => `${key}: "${id}" `);
+  const parsed: unknown = parseYaml(preserved);
   if (parsed === null || parsed === undefined) return {};
   if (typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(t('bidirectional.invalid'));
   return parsed as Record<string, unknown>;
@@ -72,7 +75,7 @@ export function syncDirection(local: string, remote: string, baseline?: string, 
 export function readSyncNote(raw: string, fallbackTitle = ''): LocalSyncNote | null {
   const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
   if (!block) return null;
-  const fm: unknown = parseYaml(block[1]);
+  const fm: unknown = parseDraftFields(block[1]);
   if (!fm || typeof fm !== 'object') return null;
   const fields = fm as Record<string, unknown>;
   if (typeof fields.uid !== 'string' || !fields.uid) return null;
@@ -334,6 +337,12 @@ export class BidirectionalSyncEngine {
     const drafts: TFile[] = [];
     let rateLimited = false;
     const counts = new Map<string, number>();
+    const previousErrors = new Map<string, string | undefined>();
+    for (const history of [...(this.settings.syncHistory ?? [])].reverse()) {
+      for (const item of history.result.items ?? []) {
+        if (!previousErrors.has(item.noteId)) previousErrors.set(item.noteId, item.error);
+      }
+    }
     let scanned = 0;
     for (const file of files) {
       this.checkCancelled();
@@ -369,7 +378,7 @@ export class BidirectionalSyncEngine {
             continue;
           }
         }
-        if (options.changedOnly && currentLocal.baseline && contentHash(currentLocal) === currentLocal.baseline) continue;
+        if (options.changedOnly && currentLocal.baseline && contentHash(currentLocal) === currentLocal.baseline && !previousErrors.get(currentLocal.uid)) continue;
         entries.push({ file, local: currentLocal });
       } catch (error) {
         this.checkCancelled();
@@ -420,7 +429,8 @@ export class BidirectionalSyncEngine {
         // exhaustion: in 'both' mode, every file used to trigger a fetch even
         // when local was unchanged, ballooning each cycle to 11-13 minutes for
         // users with hundreds of notes.
-        if (mode !== 'download' && this.canSkipUnchangedEntry(file)) {
+        if (mode !== 'download' && this.canSkipUnchangedEntry(file) && ((local.baseline && contentHash(local) === local.baseline) || previousErrors.get(local.uid))) {
+          item.error = previousErrors.get(local.uid);
           result.skipped++; result.items!.push(item);
           continue;
         }

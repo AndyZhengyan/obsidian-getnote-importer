@@ -682,7 +682,7 @@ export default class GetNoteSyncPlugin extends Plugin {
       }
       else await this.reconcileDownloadedNotes(result, type === 'auto');
 
-      const status: SyncHistoryEntry['status'] = result.failed > 0 ? 'partial' : 'success';
+      const status: SyncHistoryEntry['status'] = result.failed > 0 || result.items?.some(item => item.error) ? 'partial' : 'success';
       await this.recordSyncHistory(result, type, startedAt, resolvedScope, status);
       const hasSyncedNotes = result.created > 0 || result.updated > 0 || result.skipped > 0;
 

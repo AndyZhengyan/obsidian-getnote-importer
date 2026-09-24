@@ -63,6 +63,14 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     expect(plugin.syncProgress).toMatchObject({ message: '正在检查本地修改', percent: undefined, phase: 'active' });
   });
 
+  it('records unresolved skipped notes as partial instead of success', async () => {
+    const plugin = makePlugin();
+    vi.spyOn(SyncEngine.prototype, 'sync').mockResolvedValue({ created: 0, updated: 0, skipped: 1, failed: 0, total: 1,
+      items: [{ noteId: 'old', title: 'old', noteType: '', updatedAt: '', status: 'skipped', error: 'needs verification' }] });
+    await plugin['runSync']('full', { maxDays: 0, syncStartDate: '' });
+    expect(plugin.syncHistory.at(-1)?.status).toBe('partial');
+  });
+
   it('includes bidirectional failures and updates in automatic sync history', async () => {
     const plugin = makePlugin();
     plugin.settings.reverseSync = { enabled: true };

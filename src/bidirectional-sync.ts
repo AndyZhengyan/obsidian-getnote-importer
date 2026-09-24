@@ -177,7 +177,7 @@ function remoteContent(note: Partial<GetNoteNote>, uid: string): EditableContent
 function bootstrapLegacy(local: LocalSyncNote, remote: EditableContent): string | undefined {
   if (local.baseline || parseSourceBody(local.raw.slice(local.frontmatterEnd)).kind !== 'absent') return undefined;
   const fields = parseDraftFields(local.raw.slice(0, local.frontmatterEnd).replace(/^---\r?\n/, '').replace(/\r?\n---(?:\r?\n)?$/, ''));
-  const imported = fields.source === '得到大脑' && fields.created !== undefined;
+  const imported = (fields.source === '得到大脑' || fields.source === 'Get笔记') && fields.created !== undefined;
   const fallback = remote.body.slice(0, 10).replace(/[\\/:*?"<>|]/g, '').trim();
   if (local.title !== remote.title && !(imported && local.title.trim() === fallback)) return undefined;
   if (createSourceHash('', local.tags, '') !== createSourceHash('', remote.tags, '')) return undefined;

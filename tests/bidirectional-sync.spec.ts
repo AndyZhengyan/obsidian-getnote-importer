@@ -384,6 +384,22 @@ describe('bidirectional engine', () => {
     expect((await new BidirectionalSyncEngine(f.app, f.settings).sync()).failed).toBe(0);
     expect(updateNote).not.toHaveBeenCalled();
   });
+  it.each(['Get笔记', '得到大脑'])('restores a baseline for %s legacy generated titles without changing content', async source => {
+    const oldRemote = { ...remote, title: '远端标题', content: '0123456789 原始正文' };
+    const raw = `---\nuid: "${remote.note_id}"\ntitle: "0123456789"\ntags: ["工作"]\nsource: ${source}\ncreated: 2026-01-01\n---\n${oldRemote.content}\n`;
+    const f = fixture(raw);
+    vi.mocked(fetchNoteDetail).mockResolvedValue(oldRemote);
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    const local = readSyncNote(f.contents.get(f.file.path)!)!;
+    expect(result.items?.[0].error).toBeUndefined();
+    expect(local.baseline).toBeTruthy();
+    expect(local.title).toBe('0123456789');
+    expect(local.body).toBe(oldRemote.content);
+    expect(local.remoteBaseline).not.toBe(local.baseline);
+    expect(updateNote).not.toHaveBeenCalled();
+    expect(createNote).not.toHaveBeenCalled();
+  });
+
   it('does not bootstrap substantive legacy edits or report them as proven conflicts in automatic sync', async () => {
     const f = fixture(`---\nuid: "${remote.note_id}"\ntitle: "标题"\ntags: ["工作"]\n---\n本地修改`);
     const before = f.contents.get(f.file.path);

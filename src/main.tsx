@@ -849,8 +849,13 @@ export default class GetNoteSyncPlugin extends Plugin {
   }
 
   private setReconciliationProgress(progress: SyncProgressDetail): void {
+    const stageChanged = this.syncProgress.message !== progress.message;
     this.syncProgress = progress;
-    this.updateSettingsRuntimeState();
+    const now = Date.now();
+    if (stageChanged || now - this.lastProgressUpdate > 300) {
+      this.lastProgressUpdate = now;
+      this.updateSettingsRuntimeState();
+    }
   }
 
   private setProgress(info: { page?: number; processed?: number; total?: number; created?: number; updated?: number; skipped?: number; failed?: number; percent?: number }) {

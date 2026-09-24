@@ -2032,7 +2032,7 @@ describe('SyncEngine — lastSyncEndTimestamp boundary re-check', () => {
     vi.mocked(globalThis.fetch).mockRestore();
   });
 
-  it('recreates a previously synced boundary note when the local file is missing', async () => {
+  it.each(['success', 'partial'] as const)('recreates a previously synced boundary note from a %s run when the local file is missing', async status => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       mockFetchResponse({
         data: {
@@ -2064,7 +2064,7 @@ describe('SyncEngine — lastSyncEndTimestamp boundary re-check', () => {
             timestamp: 2,
             type: 'auto',
             mode: 'auto',
-            status: 'success',
+            status,
             scope: { maxDays: 0, syncStartDate: '2026-05-09T12:00:00+08:00' },
             result: {
               created: 1,

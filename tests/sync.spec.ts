@@ -55,6 +55,23 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     return updateRuntimeState;
   }
 
+  it('throttles repeated reconciliation updates but displays stage changes immediately', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const plugin = makePlugin();
+    const render = watchSettingsRuntimeUpdate(plugin);
+    for (let index = 0; index < 100; index++) {
+      plugin['setReconciliationProgress']({ message: 'checking', count: String(index), phase: 'active' });
+    }
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(plugin.syncProgress.count).toBe('99');
+    vi.advanceTimersByTime(301);
+    plugin['setReconciliationProgress']({ message: 'checking', count: '100', phase: 'active' });
+    expect(render).toHaveBeenCalledTimes(2);
+    plugin['setReconciliationProgress']({ message: 'uploading', count: '1', phase: 'active' });
+    expect(render).toHaveBeenCalledTimes(3);
+  });
+
   it('never shows download completion as overall completion while sync is active', () => {
     const plugin = makePlugin();
     plugin['setProgress']({ processed: 10, total: 10, percent: 100 });

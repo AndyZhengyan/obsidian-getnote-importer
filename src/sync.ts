@@ -962,9 +962,9 @@ export class SyncEngine {
   private buildPreviouslySyncedNoteIdSet(): Set<string> {
     const noteIds = new Set<string>();
     for (const entry of this.settings.syncHistory ?? []) {
-      if (entry.status !== 'success') continue;
+      if (entry.status !== 'success' && entry.status !== 'partial') continue;
       for (const item of entry.result.items ?? []) {
-        if (item.status !== 'failed') {
+        if (item.status !== 'failed' && !item.error) {
           noteIds.add(item.noteId);
         }
       }

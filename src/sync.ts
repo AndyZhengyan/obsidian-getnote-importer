@@ -1,3 +1,4 @@
+import { isArchivedSyncNote } from './sync-note-state';
 import { App, TFile } from 'obsidian';
 import { fetchAllNotes, fetchNoteChildren, fetchNoteDetail, fetchNoteOriginal, fetchSubscribedKnowledgeNotes } from './api';
 import { renderNote, renderNoteWithTemplate, generateDisplayTitle } from './note-parser';
@@ -476,6 +477,7 @@ export class SyncEngine {
 
   private async readCurrentUid(file: TFile): Promise<string | undefined> {
     const content = await this.app.vault.read(file);
+    if (isArchivedSyncNote(content)) return undefined;
     const frontmatter = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content);
     if (!frontmatter) return undefined;
     // Parse the scalar as text: YAML numeric parsing can round large note IDs.

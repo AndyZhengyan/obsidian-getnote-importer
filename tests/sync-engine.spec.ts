@@ -2286,6 +2286,16 @@ describe('SyncEngine — fresh UID ownership', () => {
 });
 
 describe('SyncEngine — buildUidIndex', () => {
+  it('excludes an archived duplicate even when cached frontmatter is stale', async () => {
+    const app = makeMockApp();
+    app.vault._addFile('得到大脑/纯文本/current.md', '---\nuid: "1900000000000000016"\n---\ncurrent');
+    app.vault._addFile('得到大脑/纯文本/archive.md', '---\nuid: "1900000000000000016"\ndedao_sync_archived: true\n---\nlocal variant');
+    const engine = new SyncEngine(app, makeSettings());
+    const index = await engine['buildUidIndex']();
+    expect(index.get('1900000000000000016')?.path).toBe('得到大脑/纯文本/current.md');
+    expect(await engine['isOwnedByNote'](app.vault.getAbstractFileByPath('得到大脑/纯文本/archive.md') as TFile, '1900000000000000016')).toBe(false);
+  });
+
   it('返回空 Map 当 vault 没有 md 文件', async () => {
     const app = makeMockApp();
     const engine = new SyncEngine(app, makeSettings());

@@ -1,3 +1,4 @@
+import { isArchivedSyncNote } from './sync-note-state';
 import type { App, CachedMetadata, TFile } from 'obsidian';
 import { buildCanonicalCategoryDir, formatCreatedDatePath } from './date-paths';
 import { getCategoryDir } from './types';
@@ -733,6 +734,7 @@ export async function migrateDatePaths(
       skipped: false,
     };
     candidates.push(candidate);
+    if (isArchivedSyncNote(await app.vault.read(file))) continue;
 
     const source = readRequiredString(cache?.frontmatter, 'source');
     if (!source || !PLUGIN_SOURCES.has(source)) {

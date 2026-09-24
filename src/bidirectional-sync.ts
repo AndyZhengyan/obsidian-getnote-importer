@@ -1,3 +1,4 @@
+import { isArchivedSyncNote } from './sync-note-state';
 import { parseYaml, type App, type TFile } from 'obsidian';
 import { addNotesToKnowledgeBase, createNote, fetchNoteDetail } from './api';
 import { updateNote } from './api-clients/openapi-client';
@@ -262,6 +263,7 @@ export class BidirectionalSyncEngine {
     if (auth.authMode !== 'openapi') throw new Error(t('bidirectional.openApiOnly'));
     const raw = await this.app.vault.read(file);
     if (!insideSyncFolder(file.path, options?.folder ?? this.settings.folderName)) throw new Error(t('bidirectional.invalid'));
+    if (isArchivedSyncNote(raw)) throw new Error(t('bidirectional.archived'));
     if (prepared && prepared.raw !== raw) throw new Error(t('bidirectional.changed'));
     const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
     const fields = block ? parseDraftFields(block[1]) : {};
@@ -349,6 +351,7 @@ export class BidirectionalSyncEngine {
       this.reportProgress('checking', ++scanned, files.length);
       try {
         const raw = await this.app.vault.read(file);
+        if (isArchivedSyncNote(raw)) continue;
         const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
         const metadata = block ? parseDraftFields(block[1]) : {};
         if (selectedIds && (typeof metadata.uid !== 'string' || !selectedIds.includes(metadata.uid))) continue;

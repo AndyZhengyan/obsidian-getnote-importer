@@ -187,6 +187,15 @@ describe('migrateDatePaths', () => {
     });
   };
 
+  it('leaves archived note paths and bytes intact even with stale metadata', async () => {
+    const source = '得到大脑/纯文本/归档.md';
+    const raw = '---\nuid: "1909193892067130512"\ndedao_sync_archived: true\n---\nlocal variant';
+    app.vault.addFile(source, raw, pluginCache());
+    const result = await migrate({ enabled: true, format: 'YYYY/MM' });
+    expect(result.moved).toBe(0);
+    expect(app.vault.content(source)).toBe(raw);
+  });
+
   it('enables created-date paths for normal notes without changing markdown bytes', async () => {
     const source = '得到大脑/纯文本/历史.md';
     const original = '---\r\nuid: "1909193892067130512"\r\n---\r\n正文\r\n';

@@ -4,6 +4,7 @@ import { BidirectionalSyncEngine, syncDirection, insideSyncFolder, isGeneratedAs
 import { addNotesToKnowledgeBase, createNote, fetchNoteDetail } from '../src/api';
 import { updateNote } from '../src/api-clients/openapi-client';
 import { renderNote } from '../src/note-parser';
+import { parseJsonPreservingIds } from '../src/api-clients/api-client-utils';
 import { DEFAULT_SETTINGS, type GetNoteNote } from '../src/types';
 
 vi.mock('../src/api', () => ({ fetchNoteDetail: vi.fn(), createNote: vi.fn(), addNotesToKnowledgeBase: vi.fn() }));
@@ -82,6 +83,33 @@ describe('bidirectional engine', () => {
     expect(fetchNoteDetail).toHaveBeenCalledWith(remote.note_id, expect.anything(), expect.anything(), expect.anything(), 'openapi');
     expect(createNote).not.toHaveBeenCalled();
   });
+  it.each(['9007199254740993', '1900000000000000016', '1900000000000000100'])('round-trips numeric API identity %s through rendering and legacy YAML without rounding or trimming zeros', async uid => {
+    const parsed = parseJsonPreservingIds(`{"note_id":${uid}}`) as { note_id: string };
+    const note = { ...remote, id: parsed.note_id, note_id: parsed.note_id };
+    const rendered = renderNote(note);
+    expect(rendered).toContain(`uid: "${uid}"`);
+    for (const raw of [rendered, rendered.replace(`uid: "${uid}"`, `uid: ${uid}`)]) {
+      const f = fixture(raw);
+      vi.mocked(fetchNoteDetail).mockResolvedValue(note);
+      expect(readSyncNote(raw)?.uid).toBe(uid);
+      await new BidirectionalSyncEngine(f.app, f.settings).sync([uid], { direction: 'download' });
+      expect(fetchNoteDetail).toHaveBeenLastCalledWith(uid, expect.anything(), expect.anything(), expect.anything(), 'openapi');
+      expect(readSyncNote(f.contents.get(f.file.path)!)?.uid).toBe(uid);
+    }
+    expect(createNote).not.toHaveBeenCalled();
+  });
+
+  it('never reconciles or explicitly uploads an archived identity copy', async () => {
+    const raw = renderNote(remote).replace('uid:', 'dedao_sync_archived: true\nuid:');
+    const f = fixture(raw);
+    const engine = new BidirectionalSyncEngine(f.app, f.settings);
+    expect((await engine.sync([remote.note_id])).total).toBe(0);
+    await expect(engine.uploadNewFile(f.file)).rejects.toThrow('归档');
+    expect(fetchNoteDetail).not.toHaveBeenCalled();
+    expect(createNote).not.toHaveBeenCalled();
+    expect(f.contents.get(f.file.path)).toBe(raw);
+  });
+
   it('does not hide missing baseline errors behind a previous full-sync timestamp', async () => {
     const raw = `---\nuid: "${remote.note_id}"\ntitle: "标题"\ntags: ["工作"]\n---\n本地修改`;
     const f = fixture(raw);

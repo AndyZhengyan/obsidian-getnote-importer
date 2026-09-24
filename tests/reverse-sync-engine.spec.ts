@@ -133,6 +133,18 @@ afterEach(() => {
 });
 
 describe('ReverseSyncEngine', () => {
+  it.each(['openapi', 'web'] as const)('blocks explicitly selected archived copies before any %s request', async authMode => {
+    const app = makeMockApp();
+    const raw = '---\nuid: "1900000000000000100"\nprime_id: "1900000000000000200"\ndedao_sync_archived: true\n---\nlocal variant';
+    app.vault._addFile('得到大脑/归档副本.md', raw);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('unexpected request'));
+    const result = await new ReverseSyncEngine(toObsidianApp(app), makeSettings({ authMode, webApiToken: 'test-web' })).syncFiles(app.vault.getMarkdownFiles().map(toTFile));
+    expect(result.skipped).toBe(1);
+    expect(result.items[0].error).toContain('归档');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(app.vault._getFile('得到大脑/归档副本.md')?.content).toBe(raw);
+  });
+
   it('retries a failed manual archive without creating another remote identity', async () => {
     const app = makeMockApp();
     app.vault._addFile('得到大脑/retry.md', 'Body');

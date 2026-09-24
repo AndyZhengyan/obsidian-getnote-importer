@@ -99,6 +99,18 @@ describe('bidirectional engine', () => {
     expect(updateNote).not.toHaveBeenCalled();
   });
 
+  it('rechecks a transient error rather than carrying it forward forever', async () => {
+    const f = fixture();
+    f.settings.reverseSync.lastReverseFullSyncAt = Date.now();
+    f.settings.syncHistory = [{ id: 'previous', startedAt: 1, finishedAt: 2, durationMs: 1, timestamp: 2, type: 'auto', status: 'partial', result: {
+      created: 0, updated: 0, skipped: 1, failed: 0, total: 1,
+      items: [{ noteId: remote.note_id, title: remote.title, noteType: '', updatedAt: '', status: 'skipped', error: 'temporary network error' }],
+    } }];
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { changedOnly: true });
+    expect(result.items?.[0].error).toBeUndefined();
+    expect(fetchNoteDetail).toHaveBeenCalledOnce();
+  });
+
   it('reports local scanning and upload progress before the remote request completes', async () => {
     const f = fixture('new draft');
     const progress = vi.fn();

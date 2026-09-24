@@ -429,8 +429,11 @@ export class BidirectionalSyncEngine {
         // exhaustion: in 'both' mode, every file used to trigger a fetch even
         // when local was unchanged, ballooning each cycle to 11-13 minutes for
         // users with hundreds of notes.
-        if (mode !== 'download' && this.canSkipUnchangedEntry(file) && ((local.baseline && contentHash(local) === local.baseline) || previousErrors.get(local.uid))) {
-          item.error = previousErrors.get(local.uid);
+        const previousError = previousErrors.get(local.uid);
+        const baselineError = previousError === t('bidirectional.baselineMissing');
+        const unresolvedBaseline = !local.baseline && baselineError;
+        if (mode !== 'download' && this.canSkipUnchangedEntry(file) && ((local.baseline && contentHash(local) === local.baseline && (!previousError || baselineError)) || unresolvedBaseline)) {
+          if (unresolvedBaseline) item.error = previousErrors.get(local.uid);
           result.skipped++; result.items!.push(item);
           continue;
         }

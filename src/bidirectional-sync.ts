@@ -172,6 +172,17 @@ function remoteContent(note: Partial<GetNoteNote>, uid: string): EditableContent
   return projected;
 }
 
+function comparableLegacyBody(body: string): string {
+  return body.replace(/(!?\[[^\]\r\n]*\]\()([^)]+)(\))/g, (_match, open: string, target: string, close: string) => {
+    if (!/(?:get-notes\.umiwi\.com|aliyuncs\.com)/i.test(target)
+      || !/(?:Signature|OSSAccessKeyId)=/i.test(target)) return open + target + close;
+    let decoded: string;
+    try { decoded = decodeURIComponent(target); } catch { return open + target + close; }
+    const asset = /\b(getnotes_img_[A-Za-z0-9]+\.(?:jpe?g|png|webp|gif))\b/i.exec(decoded);
+    return open + (asset ? `dedao-asset:${asset[1]}` : target) + close;
+  }).replace(/\r\n?/g, '\n').trim();
+}
+
 // Old importer versions had no source markers and appended relation links.
 // Bootstrap only a byte-equivalent body (apart from edge whitespace and known
 // generated relation links), never use modification times as overwrite authority.
@@ -179,6 +190,11 @@ function bootstrapLegacy(local: LocalSyncNote, remote: EditableContent): string 
   if (local.baseline || parseSourceBody(local.raw.slice(local.frontmatterEnd)).kind !== 'absent') return undefined;
   const fields = parseDraftFields(local.raw.slice(0, local.frontmatterEnd).replace(/^---\r?\n/, '').replace(/\r?\n---(?:\r?\n)?$/, ''));
   const imported = (fields.source === '得到大脑' || fields.source === 'Get笔记') && fields.created !== undefined;
+  // A legacy import with the same prose and image identities can take the
+  // remote projection, including title, tags and refreshed signed URLs.
+  if (imported && comparableLegacyBody(local.body) === comparableLegacyBody(remote.body)) {
+    return replaceSyncContent(local, remote);
+  }
   const fallback = remote.body.slice(0, 10).replace(/[\\/:*?"<>|]/g, '').trim();
   if (local.title !== remote.title && !(imported && local.title.trim() === fallback)) return undefined;
   if (createSourceHash('', local.tags, '') !== createSourceHash('', remote.tags, '')) return undefined;

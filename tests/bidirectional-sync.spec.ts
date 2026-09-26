@@ -4,6 +4,7 @@ import { BidirectionalSyncEngine, syncDirection, insideSyncFolder, isGeneratedAs
 import { addNotesToKnowledgeBase, createNote, fetchNoteDetail } from '../src/api';
 import { updateNote } from '../src/api-clients/openapi-client';
 import { renderNote } from '../src/note-parser';
+import { parseJsonPreservingIds } from '../src/api-clients/api-client-utils';
 import { DEFAULT_SETTINGS, type GetNoteNote } from '../src/types';
 
 vi.mock('../src/api', () => ({ fetchNoteDetail: vi.fn(), createNote: vi.fn(), addNotesToKnowledgeBase: vi.fn() }));
@@ -75,6 +76,93 @@ describe('bidirectional content decisions', () => {
   });
 });
 describe('bidirectional engine', () => {
+  it('preserves an unquoted unsafe UID through selected sync without creating a note', async () => {
+    const f = fixture(renderNote(remote).replace(`uid: "${remote.note_id}"`, `uid: ${remote.note_id}`));
+    expect(readSyncNote(f.contents.get(f.file.path)!)?.uid).toBe(remote.note_id);
+    await new BidirectionalSyncEngine(f.app, f.settings).sync([remote.note_id], { direction: 'download' });
+    expect(fetchNoteDetail).toHaveBeenCalledWith(remote.note_id, expect.anything(), expect.anything(), expect.anything(), 'openapi');
+    expect(createNote).not.toHaveBeenCalled();
+  });
+  it.each(['9007199254740993', '1900000000000000016', '1900000000000000100'])('round-trips numeric API identity %s through rendering and legacy YAML without rounding or trimming zeros', async uid => {
+    const parsed = parseJsonPreservingIds(`{"note_id":${uid}}`) as { note_id: string };
+    const note = { ...remote, id: parsed.note_id, note_id: parsed.note_id };
+    const rendered = renderNote(note);
+    expect(rendered).toContain(`uid: "${uid}"`);
+    for (const raw of [rendered, rendered.replace(`uid: "${uid}"`, `uid: ${uid}`)]) {
+      const f = fixture(raw);
+      vi.mocked(fetchNoteDetail).mockResolvedValue(note);
+      expect(readSyncNote(raw)?.uid).toBe(uid);
+      await new BidirectionalSyncEngine(f.app, f.settings).sync([uid], { direction: 'download' });
+      expect(fetchNoteDetail).toHaveBeenLastCalledWith(uid, expect.anything(), expect.anything(), expect.anything(), 'openapi');
+      expect(readSyncNote(f.contents.get(f.file.path)!)?.uid).toBe(uid);
+    }
+    expect(createNote).not.toHaveBeenCalled();
+  });
+
+  it('never reconciles or explicitly uploads an archived identity copy', async () => {
+    const raw = renderNote(remote).replace('uid:', 'dedao_sync_archived: true\nuid:');
+    const f = fixture(raw);
+    const engine = new BidirectionalSyncEngine(f.app, f.settings);
+    expect((await engine.sync([remote.note_id])).total).toBe(0);
+    await expect(engine.uploadNewFile(f.file)).rejects.toThrow('归档');
+    expect(fetchNoteDetail).not.toHaveBeenCalled();
+    expect(createNote).not.toHaveBeenCalled();
+    expect(f.contents.get(f.file.path)).toBe(raw);
+  });
+
+  it('does not hide missing baseline errors behind a previous full-sync timestamp', async () => {
+    const raw = `---\nuid: "${remote.note_id}"\ntitle: "标题"\ntags: ["工作"]\n---\n本地修改`;
+    const f = fixture(raw);
+    f.settings.reverseSync.lastReverseFullSyncAt = Date.now();
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { changedOnly: true });
+    expect(result.items?.[0].error).toContain('同步基线');
+    f.settings.syncHistory = [{ id: 'previous', startedAt: 1, finishedAt: 2, durationMs: 1, timestamp: 2, type: 'auto', status: 'partial', result }];
+    vi.mocked(fetchNoteDetail).mockClear();
+    const repeat = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { changedOnly: true });
+    expect(repeat.items?.[0].error).toBe(result.items?.[0].error);
+    expect(fetchNoteDetail).not.toHaveBeenCalled();
+    await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'download' });
+    expect(fetchNoteDetail).toHaveBeenCalled();
+    expect(f.contents.get(f.file.path)).toBe(raw);
+    expect(updateNote).not.toHaveBeenCalled();
+  });
+
+  it('rechecks a transient error rather than carrying it forward forever', async () => {
+    const f = fixture();
+    f.settings.reverseSync.lastReverseFullSyncAt = Date.now();
+    f.settings.syncHistory = [{ id: 'previous', startedAt: 1, finishedAt: 2, durationMs: 1, timestamp: 2, type: 'auto', status: 'partial', result: {
+      created: 0, updated: 0, skipped: 1, failed: 0, total: 1,
+      items: [{ noteId: remote.note_id, title: remote.title, noteType: '', updatedAt: '', status: 'skipped', error: 'temporary network error' }],
+    } }];
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { changedOnly: true });
+    expect(result.items?.[0].error).toBeUndefined();
+    expect(fetchNoteDetail).toHaveBeenCalledOnce();
+  });
+
+  it('reports local scanning and upload progress before the remote request completes', async () => {
+    const f = fixture('new draft');
+    const progress = vi.fn();
+    vi.mocked(createNote).mockImplementation(async () => {
+      expect(progress).toHaveBeenLastCalledWith(expect.objectContaining({
+        message: '正在上传本地内容', count: expect.stringContaining('1'), percent: undefined, phase: 'active',
+      }));
+      return { noteId: remote.note_id };
+    });
+    await new BidirectionalSyncEngine(f.app, f.settings, undefined, progress).sync();
+    expect(progress).toHaveBeenCalledWith(expect.objectContaining({ message: '正在检查本地修改', percent: undefined }));
+    expect(createNote).toHaveBeenCalledOnce();
+  });
+  it('reports remote comparison before waiting for a detail response', async () => {
+    const f = fixture();
+    const progress = vi.fn();
+    vi.mocked(fetchNoteDetail).mockImplementation(async () => {
+      expect(progress).toHaveBeenLastCalledWith(expect.objectContaining({ message: '正在核对远端笔记', percent: undefined }));
+      return remote;
+    });
+    await new BidirectionalSyncEngine(f.app, f.settings, undefined, progress).sync();
+    expect(fetchNoteDetail).toHaveBeenCalled();
+  });
+
   it.each(['', '   ', '---\nuid: 123\n---\ntext', '---\nnote_type: "link"\n---\ntext'])('does not create invalid drafts (%s)', async raw => {
     const f = fixture(raw);
     await new BidirectionalSyncEngine(f.app, f.settings).sync();
@@ -324,6 +412,73 @@ describe('bidirectional engine', () => {
     expect((await new BidirectionalSyncEngine(f.app, f.settings).sync()).failed).toBe(0);
     expect(updateNote).not.toHaveBeenCalled();
   });
+  it('adopts remote metadata and signed image URL while preserving legacy relation links', async () => {
+    const oldUrl = 'httpsget-notes.umiwi.com/get_notes_prod%2Fgetnotes_img_abc123.jpeg?OSSAccessKeyId=old&Signature=old';
+    const newUrl = 'https://example.oss-accelerate.aliyuncs.com/get_notes_prod%2Fgetnotes_img_abc123.jpeg?OSSAccessKeyId=new&Signature=new';
+    const oldBody = `相同文字\n![图](${oldUrl})`;
+    const newBody = `相同文字\n![图](${newUrl})`;
+    const relation = '\n\n> ⬆️ 主笔记: [[主笔记]]\n> ⬇️ 追加笔记: [[子笔记]]\n';
+    const raw = `---\nuid: "${remote.note_id}"\ntitle: "本地旧标题"\ntags: ["旧标签"]\nsource: Get笔记\ncreated: 2026-01-01\n---\n${oldBody}${relation}`;
+    const f = fixture(raw);
+    vi.mocked(fetchNoteDetail).mockResolvedValue({ ...remote, title: '远端标题', tags: [{ name: '新标签' }], content: newBody });
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    const current = f.contents.get(f.file.path)!;
+    const local = readSyncNote(current)!;
+    expect(result.failed).toBe(0);
+    expect(result.items?.[0].error).toBeUndefined();
+    expect(local.title).toBe('远端标题');
+    expect(local.tags).toEqual(['新标签']);
+    expect(local.body).toBe(newBody);
+    expect(local.baseline).toBe(local.remoteBaseline);
+    expect(current).toContain(relation);
+    expect(updateNote).not.toHaveBeenCalled();
+  });
+  it.each(['Get笔记', '得到大脑'])('uses the remote title when a %s legacy note has the same body', async source => {
+    const oldRemote = { ...remote, title: '远端标题', content: '0123456789 原始正文' };
+    const raw = `---\nuid: "${remote.note_id}"\ntitle: "0123456789"\ntags: ["工作"]\nsource: ${source}\ncreated: 2026-01-01\n---\n${oldRemote.content}\n`;
+    const f = fixture(raw);
+    vi.mocked(fetchNoteDetail).mockResolvedValue(oldRemote);
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    const local = readSyncNote(f.contents.get(f.file.path)!)!;
+    expect(result.items?.[0].error).toBeUndefined();
+    expect(local.baseline).toBeTruthy();
+    expect(local.title).toBe('远端标题');
+    expect(local.body).toBe(oldRemote.content);
+    expect(local.remoteBaseline).toBe(local.baseline);
+    expect(updateNote).not.toHaveBeenCalled();
+    expect(createNote).not.toHaveBeenCalled();
+  });
+
+  it('treats refreshed signatures for the same imported image as equal and adopts the remote projection', async () => {
+    const oldUrl = 'httpsget-notes.umiwi.com/get_notes_prod%2Fgetnotes_img_abc123.jpeg?Expires=1&OSSAccessKeyId=old&Signature=old';
+    const newUrl = 'https://example.oss-accelerate.aliyuncs.com/get_notes_prod%2Fgetnotes_img_abc123.jpeg?Expires=2&OSSAccessKeyId=new&Signature=new';
+    const body = (url: string) => `相同文字\n![图](${url})`;
+    const f = fixture(`---\nuid: "${remote.note_id}"\ntitle: "本地标题"\ntags: ["旧标签"]\nsource: 得到大脑\ncreated: 2026-01-01\n---\n${body(oldUrl)}`);
+    vi.mocked(fetchNoteDetail).mockResolvedValue({ ...remote, title: '远端标题', tags: [{ name: '新标签' }], content: body(newUrl) });
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    const local = readSyncNote(f.contents.get(f.file.path)!)!;
+    expect(result.failed).toBe(0);
+    expect(local.title).toBe('远端标题');
+    expect(local.tags).toEqual(['新标签']);
+    expect(local.body).toBe(body(newUrl));
+    expect(local.baseline).toBe(local.remoteBaseline);
+    expect(updateNote).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['different prose', '修改文字\n![图](https://example.oss-accelerate.aliyuncs.com/get_notes_prod%2Fgetnotes_img_abc123.jpeg?OSSAccessKeyId=new&Signature=new)'],
+    ['different image', '相同文字\n![图](https://example.oss-accelerate.aliyuncs.com/get_notes_prod%2Fgetnotes_img_other.jpeg?OSSAccessKeyId=new&Signature=new)'],
+  ])('keeps a missing baseline when a legacy note has %s', async (_case, remoteBody) => {
+    const localBody = '相同文字\n![图](httpsget-notes.umiwi.com/get_notes_prod%2Fgetnotes_img_abc123.jpeg?OSSAccessKeyId=old&Signature=old)';
+    const raw = `---\nuid: "${remote.note_id}"\ntitle: "本地标题"\ntags: ["工作"]\nsource: 得到大脑\ncreated: 2026-01-01\n---\n${localBody}`;
+    const f = fixture(raw);
+    vi.mocked(fetchNoteDetail).mockResolvedValue({ ...remote, content: remoteBody });
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    expect(result.items?.[0].error).toContain('同步基线');
+    expect(f.contents.get(f.file.path)).toBe(raw);
+    expect(updateNote).not.toHaveBeenCalled();
+  });
+
   it('does not bootstrap substantive legacy edits or report them as proven conflicts in automatic sync', async () => {
     const f = fixture(`---\nuid: "${remote.note_id}"\ntitle: "标题"\ntags: ["工作"]\n---\n本地修改`);
     const before = f.contents.get(f.file.path);

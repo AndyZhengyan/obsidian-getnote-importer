@@ -1,3 +1,4 @@
+import { isArchivedSyncNote } from './sync-note-state';
 import type { App, TFile } from 'obsidian';
 import { createNote, fetchNoteDetail, type CreateNoteResult } from './api';
 import { t } from './i18n';
@@ -206,6 +207,9 @@ export class ReverseSyncEngine {
 
   private async readLocalNote(file: TFile): Promise<LocalReadResult> {
     const content = await this.app.vault.read(file);
+    if (isArchivedSyncNote(content)) {
+      return { skippedItem: this.createLocalItem(file, 'skipped', { error: t('bidirectional.archived') }) };
+    }
     const cache = this.app.metadataCache.getFileCache(file);
     const parsed = parseFrontmatterBlock(content);
     const frontmatter = { ...(cache?.frontmatter ?? {}), ...(parsed?.frontmatter ?? {}) };

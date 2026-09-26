@@ -1,9 +1,10 @@
+import { isArchivedSyncNote } from './sync-note-state';
 import { parseYaml, type App, type TFile } from 'obsidian';
 import { addNotesToKnowledgeBase, createNote, fetchNoteDetail } from './api';
 import { updateNote } from './api-clients/openapi-client';
 import { createSourceHash, parseSourceBody, SOURCE_BODY_START, SOURCE_BODY_END } from './source-body';
 import { renderNote } from './note-parser';
-import { getAuthCredentials, getCategoryDir, type GetNoteNote, type Settings, type SyncResult, type SyncResultItem } from './types';
+import { getAuthCredentials, getCategoryDir, type GetNoteNote, type Settings, type SyncResult, type SyncResultItem, type SyncProgressDetail } from './types';
 import { t } from './i18n';
 import { buildCanonicalCategoryDir } from './date-paths';
 import { getFileName } from './sync-paths';
@@ -14,7 +15,10 @@ export interface LocalSyncNote extends EditableContent {
 }
 interface LocalDraft extends EditableContent { raw: string; frontmatterEnd: number; topicId?: string }
 function parseDraftFields(text: string): Record<string, unknown> {
-  const parsed: unknown = parseYaml(text);
+  // Quote decimal identities before YAML can round them to unsafe JS numbers.
+  const preserved = text.replace(/^(uid|prime_id|topic_id):[ \t]*([0-9]+)[ \t]*(?=\r?$|#)/gm,
+    (_match, key: string, id: string) => `${key}: "${id}" `);
+  const parsed: unknown = parseYaml(preserved);
   if (parsed === null || parsed === undefined) return {};
   if (typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(t('bidirectional.invalid'));
   return parsed as Record<string, unknown>;
@@ -72,7 +76,7 @@ export function syncDirection(local: string, remote: string, baseline?: string, 
 export function readSyncNote(raw: string, fallbackTitle = ''): LocalSyncNote | null {
   const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
   if (!block) return null;
-  const fm: unknown = parseYaml(block[1]);
+  const fm: unknown = parseDraftFields(block[1]);
   if (!fm || typeof fm !== 'object') return null;
   const fields = fm as Record<string, unknown>;
   if (typeof fields.uid !== 'string' || !fields.uid) return null;
@@ -168,13 +172,38 @@ function remoteContent(note: Partial<GetNoteNote>, uid: string): EditableContent
   return projected;
 }
 
+function comparableLegacyBody(body: string): string {
+  return body.replace(/(!?\[[^\]\r\n]*\]\()([^)]+)(\))/g, (_match, open: string, target: string, close: string) => {
+    if (!/(?:get-notes\.umiwi\.com|aliyuncs\.com)/i.test(target)
+      || !/(?:Signature|OSSAccessKeyId)=/i.test(target)) return open + target + close;
+    let decoded: string;
+    try { decoded = decodeURIComponent(target); } catch { return open + target + close; }
+    const asset = /\b(getnotes_img_[A-Za-z0-9]+\.(?:jpe?g|png|webp|gif))\b/i.exec(decoded);
+    return open + (asset ? `dedao-asset:${asset[1]}` : target) + close;
+  }).replace(/\r\n?/g, '\n').trim();
+}
+
 // Old importer versions had no source markers and appended relation links.
 // Bootstrap only a byte-equivalent body (apart from edge whitespace and known
 // generated relation links), never use modification times as overwrite authority.
 function bootstrapLegacy(local: LocalSyncNote, remote: EditableContent): string | undefined {
   if (local.baseline || parseSourceBody(local.raw.slice(local.frontmatterEnd)).kind !== 'absent') return undefined;
   const fields = parseDraftFields(local.raw.slice(0, local.frontmatterEnd).replace(/^---\r?\n/, '').replace(/\r?\n---(?:\r?\n)?$/, ''));
-  const imported = fields.source === '得到大脑' && fields.created !== undefined;
+  const imported = (fields.source === '得到大脑' || fields.source === 'Get笔记') && fields.created !== undefined;
+  const relationSuffix = /((?:\s*> (?:⬆️ 主笔记|⬇️ 追加笔记): \[\[[^\]\r\n]+\]\])+\s*)$/.exec(local.body);
+  const comparableLocalBody = relationSuffix ? local.body.slice(0, relationSuffix.index) : local.body;
+  // A legacy import with the same prose and image identities can take the
+  // remote projection, including title, tags and refreshed signed URLs.
+  if (imported && comparableLegacyBody(comparableLocalBody) === comparableLegacyBody(remote.body)) {
+    if (!relationSuffix) return replaceSyncContent(local, remote);
+    const core = remote.body.replace(/\r\n?/g, '\n').trim();
+    const leading = local.body.slice(0, local.body.length - local.body.trimStart().length);
+    const marked = local.raw.slice(0, local.frontmatterEnd) + leading
+      + SOURCE_BODY_START + '\n' + core + '\n' + SOURCE_BODY_END + relationSuffix[1];
+    const hash = contentHash({ ...remote, body: core });
+    return uploadFields(marked, { title: remote.title, tags: remote.tags, dedao_sync_schema: 1,
+      dedao_source_hash: hash, dedao_bidirectional_hash: hash, dedao_remote_hash: contentHash(remote) });
+  }
   const fallback = remote.body.slice(0, 10).replace(/[\\/:*?"<>|]/g, '').trim();
   if (local.title !== remote.title && !(imported && local.title.trim() === fallback)) return undefined;
   if (createSourceHash('', local.tags, '') !== createSourceHash('', remote.tags, '')) return undefined;
@@ -196,7 +225,12 @@ export function isRemoteNoteMissing(error: unknown): boolean {
 
 export class BidirectionalSyncEngine {
   private controller = new AbortController();
-  constructor(private app: App, private settings: Settings, private resolve?: ResolveSyncConflict) {}
+  constructor(private app: App, private settings: Settings, private resolve?: ResolveSyncConflict, private onProgress?: (progress: SyncProgressDetail) => void) {}
+  private reportProgress(stage: 'checking' | 'uploading' | 'comparing', current?: number, total?: number): void {
+    this.onProgress?.({ message: t(`bidirectional.progress.${stage}`),
+      count: current !== undefined && total !== undefined ? t('sync.processingCount', { current, total }) : '',
+      percent: undefined, phase: 'active' });
+  }
   cancel(): void { this.controller.abort(); }
   private checkCancelled(): void {
     if (this.controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -254,6 +288,7 @@ export class BidirectionalSyncEngine {
     if (auth.authMode !== 'openapi') throw new Error(t('bidirectional.openApiOnly'));
     const raw = await this.app.vault.read(file);
     if (!insideSyncFolder(file.path, options?.folder ?? this.settings.folderName)) throw new Error(t('bidirectional.invalid'));
+    if (isArchivedSyncNote(raw)) throw new Error(t('bidirectional.archived'));
     if (prepared && prepared.raw !== raw) throw new Error(t('bidirectional.changed'));
     const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
     const fields = block ? parseDraftFields(block[1]) : {};
@@ -323,15 +358,25 @@ export class BidirectionalSyncEngine {
     const inScope = (file: TFile) => insideSyncFolder(file.path, folder);
     const auth = getAuthCredentials(this.settings);
     if (mode !== 'download' && auth.authMode !== 'openapi') throw new Error(t('bidirectional.openApiOnly'));
+    this.reportProgress('checking');
     const files = this.app.vault.getMarkdownFiles().filter(file => inScope(file) && (!options.paths || options.paths.includes(file.path)));
     const entries: Array<{ file: TFile; local: LocalSyncNote }> = [];
     const drafts: TFile[] = [];
     let rateLimited = false;
     const counts = new Map<string, number>();
+    const previousErrors = new Map<string, string | undefined>();
+    for (const history of [...(this.settings.syncHistory ?? [])].reverse()) {
+      for (const item of history.result.items ?? []) {
+        if (!previousErrors.has(item.noteId)) previousErrors.set(item.noteId, item.error);
+      }
+    }
+    let scanned = 0;
     for (const file of files) {
       this.checkCancelled();
+      this.reportProgress('checking', ++scanned, files.length);
       try {
         const raw = await this.app.vault.read(file);
+        if (isArchivedSyncNote(raw)) continue;
         const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
         const metadata = block ? parseDraftFields(block[1]) : {};
         if (selectedIds && (typeof metadata.uid !== 'string' || !selectedIds.includes(metadata.uid))) continue;
@@ -341,6 +386,7 @@ export class BidirectionalSyncEngine {
         const hasPendingUpload = metadata.dedao_upload_state === 'archive' || metadata.dedao_upload_state === 'attach';
         let pendingItem: SyncResultItem | undefined;
         if (mode !== 'download' && local && hasPendingUpload) {
+          this.reportProgress('uploading');
           pendingItem = await this.uploadNewFile(file, undefined, { folder });
         }
         if (!local) {
@@ -360,7 +406,7 @@ export class BidirectionalSyncEngine {
             continue;
           }
         }
-        if (options.changedOnly && currentLocal.baseline && contentHash(currentLocal) === currentLocal.baseline) continue;
+        if (options.changedOnly && currentLocal.baseline && contentHash(currentLocal) === currentLocal.baseline && !previousErrors.get(currentLocal.uid)) continue;
         entries.push({ file, local: currentLocal });
       } catch (error) {
         this.checkCancelled();
@@ -372,11 +418,13 @@ export class BidirectionalSyncEngine {
         if (rateLimited) break;
       }
     }
+    let uploaded = 0;
     for (const file of drafts) {
       this.checkCancelled();
       result.total++;
       const item = await (async (): Promise<SyncResultItem> => {
         try {
+          this.reportProgress('uploading', ++uploaded, drafts.length);
           return await this.uploadNewFile(file, undefined, { folder });
         } catch (error) {
           if (error instanceof DOMException && error.name === 'AbortError') throw error;
@@ -390,7 +438,9 @@ export class BidirectionalSyncEngine {
         break;
       }
     }
+    let compared = 0;
     for (const entry of rateLimited ? [] : entries) {
+      this.reportProgress('comparing', ++compared, entries.length);
       const { file } = entry;
       let { local } = entry;
       this.checkCancelled();
@@ -407,7 +457,11 @@ export class BidirectionalSyncEngine {
         // exhaustion: in 'both' mode, every file used to trigger a fetch even
         // when local was unchanged, ballooning each cycle to 11-13 minutes for
         // users with hundreds of notes.
-        if (mode !== 'download' && this.canSkipUnchangedEntry(file)) {
+        const previousError = previousErrors.get(local.uid);
+        const baselineError = previousError === t('bidirectional.baselineMissing');
+        const unresolvedBaseline = !local.baseline && baselineError;
+        if (mode !== 'download' && this.canSkipUnchangedEntry(file) && ((local.baseline && contentHash(local) === local.baseline && (!previousError || baselineError)) || unresolvedBaseline)) {
+          if (unresolvedBaseline) item.error = previousErrors.get(local.uid);
           result.skipped++; result.items!.push(item);
           continue;
         }
@@ -447,6 +501,7 @@ export class BidirectionalSyncEngine {
             || await this.app.vault.read(file) !== local.raw) throw new Error(t('bidirectional.changed'));
           let next: EditableContent = direction === 'download' ? remote : local;
           if (direction === 'upload') {
+            this.reportProgress('uploading', compared, entries.length);
             const tagsChanged = createSourceHash('', local.tags, '') !== createSourceHash('', remote.tags, '');
             await updateNote({ token: auth.token, clientId: auth.clientId, id: local.uid, signal: this.controller.signal,
               ...(local.title !== remote.title ? { title: local.title } : {}),

@@ -205,4 +205,17 @@ describe('findSyncedNoteFile', () => {
 
     expect(findSyncedNoteFile(app, '得到大脑', '1909193892067130512')).toBe(matching);
   });
+  it('ignores archived and local-only copies when resolving a synced note', () => {
+    const archived = new TFile('得到大脑/纯文本/旧副本.md');
+    const active = new TFile('得到大脑/纯文本/当前笔记.md');
+    const app: Pick<App, 'vault' | 'metadataCache'> = {
+      vault: { getMarkdownFiles: () => [archived, active] },
+      metadataCache: { getFileCache: (file: TFile) => ({ frontmatter: {
+        uid: '1909193892067130512', ...(file === archived ? { dedao_sync_archived: true } : {}),
+      } }) },
+    };
+    expect(findSyncedNoteFile(app, '得到大脑', '1909193892067130512')).toBe(active);
+    app.vault.getMarkdownFiles = () => [archived];
+    expect(findSyncedNoteFile(app, '得到大脑', '1909193892067130512')).toBeNull();
+  });
 });

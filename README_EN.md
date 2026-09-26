@@ -14,13 +14,14 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 * * *
 
-## 🎉 1.6.2 — Latest Update
+## 🎉 1.6.3 — Latest Update
 
-- **🚦 Auto-sync handles limits cleanly**: unchanged local notes no longer repeatedly fetch remote detail. When upstream throttling or a daily/monthly quota is exhausted, the current batch stops instead of accumulating failed requests.
-- **🎙️ Audio transcripts stay assets**: plugin-generated transcripts and source-content attachments remain in asset folders with an explicit marker; they are not uploaded as standalone Dedao Brain notes.
-- **📊 Accurate quota state**: the plugin now recognizes the upstream monthly-quota response, stops automatic sync, and tells you to turn it back on after the quota resets.
+- **🔢 Large note IDs stay exact**: long numeric Dedao Brain IDs are stored and compared as strings, preventing precision loss and false sync identities.
+- **🔄 Clearer sync results**: unresolved differences remain visible; successful retries clear transient errors, and partial runs retain recovery evidence.
+- **🛡️ Safer legacy reconciliation**: old notes with matching prose and image identities can adopt the remote baseline. Archived or local-only copies leave sync and no longer appear as current search matches.
+- **⚙️ Clearer two-way sync setting**: the disabled toggle explains temporary authentication limits on hover.
 
-A sync-stability update, recommended for everyone using two-way or automatic sync.
+Recommended for everyone using two-way or automatic sync.
 
 The README keeps only the current release highlights. See [GitHub Releases](https://github.com/AndyZhengyan/obsidian-dedao-brain-sync/releases) for the complete version history.
 

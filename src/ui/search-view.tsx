@@ -24,7 +24,9 @@ export function findSyncedNoteFile(app: Pick<App, 'vault' | 'metadataCache'>, fo
   const prefix = `${folderName}/`;
   for (const file of app.vault.getMarkdownFiles()) {
     if (!file.path.startsWith(prefix)) continue;
-    const uid: unknown = app.metadataCache.getFileCache(file)?.frontmatter?.['uid'];
+    const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
+    if (frontmatter?.['dedao_sync_archived'] === true) continue;
+    const uid: unknown = frontmatter?.['uid'];
     if (String(uid ?? '') === noteId) return file;
   }
   return null;

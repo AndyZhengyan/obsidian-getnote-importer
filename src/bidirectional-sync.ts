@@ -190,10 +190,19 @@ function bootstrapLegacy(local: LocalSyncNote, remote: EditableContent): string 
   if (local.baseline || parseSourceBody(local.raw.slice(local.frontmatterEnd)).kind !== 'absent') return undefined;
   const fields = parseDraftFields(local.raw.slice(0, local.frontmatterEnd).replace(/^---\r?\n/, '').replace(/\r?\n---(?:\r?\n)?$/, ''));
   const imported = (fields.source === '得到大脑' || fields.source === 'Get笔记') && fields.created !== undefined;
+  const relationSuffix = /((?:\s*> (?:⬆️ 主笔记|⬇️ 追加笔记): \[\[[^\]\r\n]+\]\])+\s*)$/.exec(local.body);
+  const comparableLocalBody = relationSuffix ? local.body.slice(0, relationSuffix.index) : local.body;
   // A legacy import with the same prose and image identities can take the
   // remote projection, including title, tags and refreshed signed URLs.
-  if (imported && comparableLegacyBody(local.body) === comparableLegacyBody(remote.body)) {
-    return replaceSyncContent(local, remote);
+  if (imported && comparableLegacyBody(comparableLocalBody) === comparableLegacyBody(remote.body)) {
+    if (!relationSuffix) return replaceSyncContent(local, remote);
+    const core = remote.body.replace(/\r\n?/g, '\n').trim();
+    const leading = local.body.slice(0, local.body.length - local.body.trimStart().length);
+    const marked = local.raw.slice(0, local.frontmatterEnd) + leading
+      + SOURCE_BODY_START + '\n' + core + '\n' + SOURCE_BODY_END + relationSuffix[1];
+    const hash = contentHash({ ...remote, body: core });
+    return uploadFields(marked, { title: remote.title, tags: remote.tags, dedao_sync_schema: 1,
+      dedao_source_hash: hash, dedao_bidirectional_hash: hash, dedao_remote_hash: contentHash(remote) });
   }
   const fallback = remote.body.slice(0, 10).replace(/[\\/:*?"<>|]/g, '').trim();
   if (local.title !== remote.title && !(imported && local.title.trim() === fallback)) return undefined;

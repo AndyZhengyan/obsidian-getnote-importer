@@ -412,6 +412,27 @@ describe('bidirectional engine', () => {
     expect((await new BidirectionalSyncEngine(f.app, f.settings).sync()).failed).toBe(0);
     expect(updateNote).not.toHaveBeenCalled();
   });
+  it('adopts remote metadata and signed image URL while preserving legacy relation links', async () => {
+    const oldUrl = 'httpsget-notes.umiwi.com/get_notes_prod%2Fgetnotes_img_abc123.jpeg?OSSAccessKeyId=old&Signature=old';
+    const newUrl = 'https://example.oss-accelerate.aliyuncs.com/get_notes_prod%2Fgetnotes_img_abc123.jpeg?OSSAccessKeyId=new&Signature=new';
+    const oldBody = `相同文字\n![图](${oldUrl})`;
+    const newBody = `相同文字\n![图](${newUrl})`;
+    const relation = '\n\n> ⬆️ 主笔记: [[主笔记]]\n> ⬇️ 追加笔记: [[子笔记]]\n';
+    const raw = `---\nuid: "${remote.note_id}"\ntitle: "本地旧标题"\ntags: ["旧标签"]\nsource: Get笔记\ncreated: 2026-01-01\n---\n${oldBody}${relation}`;
+    const f = fixture(raw);
+    vi.mocked(fetchNoteDetail).mockResolvedValue({ ...remote, title: '远端标题', tags: [{ name: '新标签' }], content: newBody });
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+    const current = f.contents.get(f.file.path)!;
+    const local = readSyncNote(current)!;
+    expect(result.failed).toBe(0);
+    expect(result.items?.[0].error).toBeUndefined();
+    expect(local.title).toBe('远端标题');
+    expect(local.tags).toEqual(['新标签']);
+    expect(local.body).toBe(newBody);
+    expect(local.baseline).toBe(local.remoteBaseline);
+    expect(current).toContain(relation);
+    expect(updateNote).not.toHaveBeenCalled();
+  });
   it.each(['Get笔记', '得到大脑'])('uses the remote title when a %s legacy note has the same body', async source => {
     const oldRemote = { ...remote, title: '远端标题', content: '0123456789 原始正文' };
     const raw = `---\nuid: "${remote.note_id}"\ntitle: "0123456789"\ntags: ["工作"]\nsource: ${source}\ncreated: 2026-01-01\n---\n${oldRemote.content}\n`;

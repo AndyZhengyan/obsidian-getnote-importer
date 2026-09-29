@@ -1985,6 +1985,12 @@ button.getnote-settings-link:focus-visible {
   color: var(--text-error);
 }
 
+.getnote-history-header-counts {
+  color: var(--text-muted);
+  font-size: var(--font-smaller);
+  font-weight: 400;
+}
+
 .getnote-history-entry-body {
   padding: 12px 14px 14px;
 }

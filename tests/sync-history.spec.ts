@@ -222,6 +222,27 @@ describe('sync history entry error display', () => {
 });
 
 describe('sync history partial status rendering', () => {
+  it('shows the result beside the status even when an entry is collapsed', () => {
+    initI18n('zh-CN');
+    const openedModals: Modal[] = [];
+    vi.spyOn(Modal.prototype, 'open').mockImplementation(function (this: Modal) {
+      openedModals.push(this);
+      (this as Modal & { onOpen(): void }).onOpen();
+    });
+
+    openSyncHistoryModal(new App(), [
+      makeEntry({ id: 'changed', finishedAt: 1000, result: makeResult({ created: 2, updated: 1, skipped: 3 }) }),
+      makeEntry({ id: 'unchanged', finishedAt: 2000 }),
+      makeEntry({ id: 'partial', finishedAt: 3000, status: 'partial', result: makeResult({ updated: 1, failed: 1 }) }),
+    ]);
+
+    const entries = openedModals[0].contentEl.querySelectorAll<HTMLDetailsElement>('.getnote-history-entry');
+    expect(entries[0].querySelector('.getnote-history-header-counts')?.textContent).toBe(' · 更新 1 · 失败 1');
+    expect(entries[1].querySelector('.getnote-history-header-counts')?.textContent).toBe(' · 无需同步');
+    expect(entries[2].open).toBe(false);
+    expect(entries[2].querySelector('.getnote-history-header-counts')?.textContent).toBe(' · 新增 2 · 更新 1 · 跳过 3');
+  });
+
   it('expands partial and failed entries with warning icon and status text', () => {
     initI18n('zh-CN');
     const openedModals: Modal[] = [];

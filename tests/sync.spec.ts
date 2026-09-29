@@ -488,10 +488,48 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
         {
           maxDays: 0,
           syncStartDate: '2026-05-09T10:00:00+08:00',
+          missingNotesSince: '2026-05-02T02:00:00.000Z',
           enabledNoteTypes: ['link'],
         },
       ]);
     });
+  });
+
+  it('clamps automatic lookback to the configured local start date', () => {
+    const plugin = makePlugin();
+    plugin.settings.lastSyncEndTimestamp = '2026-05-09T10:00:00+08:00';
+    plugin.settings.syncStartDate = '2026-05-08';
+    const run = vi.spyOn(plugin as never, 'runSync').mockResolvedValue(undefined as never);
+    plugin['doAutoSync']();
+    expect(run).toHaveBeenCalledWith('auto', expect.objectContaining({
+      missingNotesSince: new Date('2026-05-08T00:00:00').toISOString(),
+    }));
+  });
+
+  it('does not move the checkpoint backwards when recovering a delayed note', async () => {
+    vi.spyOn(SyncEngine.prototype, 'sync').mockResolvedValue({
+      created: 1, updated: 0, skipped: 0, failed: 0, total: 1,
+      items: [], lastNoteTimestamp: '2026-09-28T22:13:43+08:00',
+    });
+    const plugin = makePlugin();
+    plugin.settings.lastSyncEndTimestamp = '2026-09-29T10:18:59.351Z';
+    await plugin['runSync']('auto', { syncStartDate: plugin.settings.lastSyncEndTimestamp, maxDays: 0 });
+    expect(plugin.settings.lastSyncEndTimestamp).toBe('2026-09-29T10:18:59.351Z');
+  });
+
+  it('retains completed items when cancelled without advancing the checkpoint', async () => {
+    const item = { noteId: 'completed', title: 'Completed', noteType: 'plain_text', updatedAt: '2026-09-29', status: 'created' as const };
+    vi.spyOn(SyncEngine.prototype, 'getCurrentResult').mockReturnValue({
+      created: 1, updated: 0, skipped: 0, failed: 0, total: 1, items: [item],
+    });
+    vi.spyOn(SyncEngine.prototype, 'sync').mockRejectedValue(new SyncCancelledError());
+    const plugin = makePlugin();
+    plugin.settings.lastSyncEndTimestamp = '2026-09-28T22:00:00+08:00';
+    await plugin['runSync']('auto');
+    expect(plugin.syncHistory.at(-1)).toEqual(expect.objectContaining({
+      status: 'cancelled', result: expect.objectContaining({ created: 1, items: [item] }),
+    }));
+    expect(plugin.settings.lastSyncEndTimestamp).toBe('2026-09-28T22:00:00+08:00');
   });
 
   it('disables maxDays when scheduled sync uses configured start date', async () => {

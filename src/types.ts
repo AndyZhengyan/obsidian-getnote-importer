@@ -187,6 +187,8 @@ export interface TagCache {
 export interface SyncScopeOptions {
   maxDays: number;
   syncStartDate: string;
+  /** Automatic-sync lookback for unseen, locally missing notes. */
+  missingNotesSince?: string;
   enabledNoteTypes?: string[];
   /**
    * Tag whitelist. Empty/undefined means no tag-based filter.
@@ -201,6 +203,7 @@ export interface SyncScopeOptions {
 export interface SyncHistoryScope {
   maxDays: number;
   syncStartDate: string;
+  missingNotesSince?: string;
   enabledNoteTypes?: string[];
   syncTags?: string[];
   selectedCount?: number;

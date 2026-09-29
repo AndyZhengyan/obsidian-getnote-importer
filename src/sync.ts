@@ -203,6 +203,7 @@ export class SyncEngine {
     this.scopeOptions = {
       maxDays: syncStartDate ? 0 : scopeOptions?.maxDays ?? settings.maxDays,
       syncStartDate,
+      ...(scopeOptions?.missingNotesSince ? { missingNotesSince: scopeOptions.missingNotesSince } : {}),
       ...(enabledNoteTypes !== undefined ? { enabledNoteTypes } : {}),
       ...(syncTags !== undefined && syncTags.length > 0 ? { syncTags } : {}),
       ...(syncKnowledgeBases !== undefined ? { syncKnowledgeBases } : {}),
@@ -962,7 +963,7 @@ export class SyncEngine {
   private buildPreviouslySyncedNoteIdSet(): Set<string> {
     const noteIds = new Set<string>();
     for (const entry of this.settings.syncHistory ?? []) {
-      if (entry.status !== 'success' && entry.status !== 'partial') continue;
+      if (entry.status !== 'success' && entry.status !== 'partial' && entry.status !== 'cancelled') continue;
       for (const item of entry.result.items ?? []) {
         if (item.status !== 'failed' && !item.error) {
           noteIds.add(item.noteId);
@@ -982,10 +983,16 @@ export class SyncEngine {
 
     const startTime = parseSyncBoundaryTime(syncStartDate);
     if (startTime === null) return notes;
+    const missingSince = this.scopeOptions.missingNotesSince
+      ? parseSyncBoundaryTime(this.scopeOptions.missingNotesSince)
+      : null;
 
     return notes.filter(note => {
       const updated = parseNoteUpdatedTime(note);
       if (updated !== null && updated > startTime) return true;
+      const created = parseNoteCreatedTime(note);
+      if (missingSince !== null && created !== null && created >= missingSince
+        && !uidIndex.has(note.note_id) && !previouslySyncedNoteIds.has(note.note_id)) return true;
       return updated === startTime && previouslySyncedNoteIds.has(note.note_id) && !uidIndex.has(note.note_id);
     });
   }
@@ -1030,10 +1037,16 @@ export class SyncEngine {
     const syncStartCutoff = this.scopeOptions.syncStartDate
       ? parseSyncBoundaryTime(this.scopeOptions.syncStartDate)
       : null;
+    const missingNotesCutoff = this.scopeOptions.missingNotesSince
+      ? parseSyncBoundaryTime(this.scopeOptions.missingNotesSince)
+      : null;
+    const scanStartCutoff = syncStartCutoff !== null && missingNotesCutoff !== null
+      ? Math.min(syncStartCutoff, missingNotesCutoff)
+      : syncStartCutoff;
     const maxDaysCutoff = this.scopeOptions.maxDays && this.scopeOptions.maxDays > 0
       ? Date.now() - this.scopeOptions.maxDays * 24 * 60 * 60 * 1000
       : null;
-    const cutoffTime = [syncStartCutoff, maxDaysCutoff]
+    const cutoffTime = [scanStartCutoff, maxDaysCutoff]
       .filter((t): t is number => t !== null)
       .reduce((max, t) => Math.max(max, t), 0) || null;
     let lastNoteTimestampTime: number | null = null;

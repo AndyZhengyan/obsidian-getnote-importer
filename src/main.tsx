@@ -28,6 +28,7 @@ import { createDesktopWebAuthManager, type DesktopWebAuthManager } from './deskt
 import { WebTokenRefreshCoordinator } from './web-token-refresh';
 
 const SYNC_HISTORY_RETENTION_DAYS = 30;
+const AUTO_SYNC_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 const SYNC_HISTORY_RETENTION_MS = SYNC_HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const TAG_MIGRATION_VERSION = 2;
 const LEGACY_PLUGIN_IDS = ['obsidian-getnote-importer', 'getnote-importer'] as const;
@@ -137,6 +138,7 @@ function normalizeSyncHistory(value: unknown): SyncHistoryEntry[] {
           ? {
             maxDays: typeof maybeScope.maxDays === 'number' ? maybeScope.maxDays : 0,
             syncStartDate: typeof maybeScope.syncStartDate === 'string' ? maybeScope.syncStartDate : '',
+            ...(typeof maybeScope.missingNotesSince === 'string' ? { missingNotesSince: maybeScope.missingNotesSince } : {}),
         enabledNoteTypes: 'enabledNoteTypes' in maybeScope && Array.isArray(maybeScope.enabledNoteTypes)
           ? maybeScope.enabledNoteTypes.filter((type): type is string => typeof type === 'string')
           : undefined,
@@ -556,7 +558,12 @@ export default class GetNoteSyncPlugin extends Plugin {
     // lastSyncEndTimestamp only belongs to auto sync
     // Ordinary partial failures may still advance; retryable knowledge-base failures keep the old checkpoint.
     if (type === 'auto' && (status === 'success' || status === 'partial') && !result.checkpointBlocked) {
-      this.settings.lastSyncEndTimestamp = result.lastNoteTimestamp ?? new Date(finishedAt).toISOString();
+      const nextCheckpoint = result.lastNoteTimestamp ?? new Date(finishedAt).toISOString();
+      // Recovering a delayed note must not move the incremental checkpoint backwards.
+      const previousTime = Date.parse(this.settings.lastSyncEndTimestamp);
+      if (!Number.isFinite(previousTime) || Date.parse(nextCheckpoint) > previousTime) {
+        this.settings.lastSyncEndTimestamp = nextCheckpoint;
+      }
     }
 
     if (updateLastSyncResult) this.lastSyncResult = entry;
@@ -641,6 +648,7 @@ export default class GetNoteSyncPlugin extends Plugin {
     const resolvedScope: SyncHistoryScope = {
       maxDays: resolvedSyncStartDate ? 0 : scopeOptions?.maxDays ?? this.settings.maxDays,
       syncStartDate: resolvedSyncStartDate,
+      ...(scopeOptions?.missingNotesSince ? { missingNotesSince: scopeOptions.missingNotesSince } : {}),
       ...(resolvedEnabledNoteTypes !== undefined ? { enabledNoteTypes: resolvedEnabledNoteTypes } : {}),
       ...(resolvedSyncTags !== undefined && resolvedSyncTags.length > 0 ? { syncTags: resolvedSyncTags } : {}),
       selectedCount: selectedIds?.length,
@@ -758,7 +766,10 @@ export default class GetNoteSyncPlugin extends Plugin {
       shouldResetSyncState = false;
     } catch (err) {
       if (err instanceof SyncCancelledError) {
-        await this.recordSyncHistory(emptySyncResult(), type, startedAt, resolvedScope, 'cancelled');
+        const partial = this.currentSyncEngine && 'getCurrentResult' in this.currentSyncEngine
+          ? (this.currentSyncEngine as { getCurrentResult(): SyncResult }).getCurrentResult()
+          : emptySyncResult();
+        await this.recordSyncHistory(partial, type, startedAt, resolvedScope, 'cancelled');
         this.finishSyncProgress('cancelled', t('modal.cancelled'));
         shouldResetSyncState = false;
       } else {
@@ -815,9 +826,18 @@ export default class GetNoteSyncPlugin extends Plugin {
   }
 
   private doAutoSync(): void {
-    // Auto sync uses lastSyncEndTimestamp as cutoff: skip notes already synced last time.
-    // This IS the early-exit mechanism — no separate lastSyncEndTimestamp logic needed in engine.
+    // Keep the incremental cutoff, but scan behind it for notes that became
+    // visible only after server-side recording processing completed.
     const syncStartDate = this.settings.lastSyncEndTimestamp || this.settings.syncStartDate;
+    const checkpointTime = Date.parse(this.settings.lastSyncEndTimestamp);
+    const configuredStart = this.settings.syncStartDate;
+    const configuredStartTime = configuredStart
+      ? Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(configuredStart) ? `${configuredStart}T00:00:00` : configuredStart)
+      : NaN;
+    const missingNotesSince = Number.isFinite(checkpointTime)
+      ? new Date(Math.max(checkpointTime - AUTO_SYNC_LOOKBACK_MS,
+        Number.isFinite(configuredStartTime) ? configuredStartTime : -Infinity)).toISOString()
+      : undefined;
     const enabledNoteTypes = this.settings.scheduledSync.enabledNoteTypes;
     const syncTags = this.settings.syncTags;
     const syncKnowledgeBases = this.settings.scheduledSync.syncKnowledgeBases;
@@ -831,6 +851,7 @@ export default class GetNoteSyncPlugin extends Plugin {
     const scopeOptions: Partial<SyncScopeOptions> = syncStartDate
       ? {
           syncStartDate,
+          ...(missingNotesSince ? { missingNotesSince } : {}),
           maxDays: 0,
           ...(enabledNoteTypes !== undefined ? { enabledNoteTypes } : {}),
           ...(syncTags !== undefined && syncTags.length > 0 ? { syncTags } : {}),

@@ -2221,6 +2221,114 @@ describe('SyncEngine — lastSyncEndTimestamp boundary re-check', () => {
   });
 });
 
+describe('SyncEngine — recently missing notes', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const scope = {
+    syncStartDate: '2026-05-12T12:00:00+08:00',
+    missingNotesSince: '2026-05-10T00:00:00+08:00',
+    maxDays: 0,
+  };
+  const lateNote = (overrides: Partial<GetNoteNote> = {}) => makeNote({
+    note_id: 'late_recording',
+    title: '迟到录音',
+    note_type: 'recorder_audio',
+    created_at: '2026-05-11T09:00:00+08:00',
+    updated_at: '2026-05-11T10:00:00+08:00',
+    ...overrides,
+  });
+
+  function mockPages(authMode: 'openapi' | 'web', pages: GetNoteNote[][]) {
+    let page = 0;
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const url = String(input);
+      const isList = authMode === 'web' ? url.includes('/notes?') : url.includes('/note/list?');
+      if (isList) {
+        const notes = pages[page++] ?? [];
+        return mockFetchResponse(authMode === 'web'
+          ? { c: { list: notes, has_more: page < pages.length } }
+          : { data: { notes, has_more: page < pages.length } }) as Response;
+      }
+      const detail = { ...lateNote(), audio: '完整原始录音转写', attachments: [] };
+      return mockFetchResponse(authMode === 'web' ? { c: detail } : { data: detail }) as Response;
+    });
+  }
+
+  it.each(['openapi', 'web'] as const)('%s imports a late recording older than the checkpoint with its transcript', async authMode => {
+    const fetch = mockPages(authMode, [[lateNote()]]);
+    const app = makeMockApp();
+    const engine = new SyncEngine(app, makeSettings({ authMode, webApiToken: 'web-token', maxDays: 0 }), undefined, scope);
+
+    const result = await engine.sync();
+
+    expect(result.created).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(result.items).toEqual([expect.objectContaining({ noteId: 'late_recording', status: 'created' })]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(app.vault.create).toHaveBeenCalledWith(
+      expect.stringContaining('_transcript.md'),
+      expect.stringContaining('完整原始录音转写'),
+    );
+  });
+
+  it.each(['openapi', 'web'] as const)('%s continues past an old first page to a late recording on page two', async authMode => {
+    const existing = lateNote({ note_id: 'existing_recording', created_at: '2026-05-11T11:00:00+08:00' });
+    const fetch = mockPages(authMode, [[existing], [lateNote()]]);
+    const app = makeMockApp();
+    app.vault._addFile('得到大脑/录音笔记/已有录音.md', '用户保留的正文', { uid: existing.note_id });
+    const engine = new SyncEngine(app, makeSettings({ authMode, webApiToken: 'web-token', maxDays: 0 }), undefined, scope);
+
+    const result = await engine.sync();
+
+    expect(result.created).toBe(1);
+    expect(result.items).toContainEqual(expect.objectContaining({ noteId: 'late_recording', status: 'created' }));
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(app.vault.modify).not.toHaveBeenCalled();
+    expect((app.vault.getAbstractFileByPath('得到大脑/录音笔记/已有录音.md') as StoredFile).content).toContain('用户保留的正文');
+    const detailCalls = fetch.mock.calls.filter(([input]) => {
+      const url = String(input);
+      return authMode === 'web' ? !url.includes('/notes?') : url.includes('/note/detail?');
+    });
+    expect(detailCalls).toHaveLength(1);
+    expect(String(detailCalls[0][0])).toContain('late_recording');
+  });
+
+  it.each(['success', 'partial', 'cancelled'] as const)('does not restore a previously imported recording deleted locally after a %s run', async status => {
+    const note = lateNote();
+    const fetch = mockPages('openapi', [[note]]);
+    const app = makeMockApp();
+    const engine = new SyncEngine(app, makeSettings({
+      maxDays: 0,
+      syncHistory: [{
+        id: 'previous-sync', startedAt: 1, finishedAt: 2, durationMs: 1, timestamp: 2,
+        type: 'auto', mode: 'auto', status, scope: { maxDays: 0 },
+        result: {
+          total: 1, created: 1, updated: 0, skipped: 0, failed: 0,
+          items: [{ noteId: note.note_id, title: note.title, noteType: note.note_type, updatedAt: note.updated_at, status: 'created' }],
+        },
+      }],
+    }), undefined, scope);
+
+    const result = await engine.sync();
+
+    expect(result.created).toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(app.vault.create).not.toHaveBeenCalled();
+  });
+
+  it('does not import a missing recording created before the lookback window', async () => {
+    const fetch = mockPages('openapi', [[lateNote({ created_at: '2026-05-09T23:59:59+08:00' })]]);
+    const app = makeMockApp();
+    const engine = new SyncEngine(app, makeSettings({ maxDays: 0 }), undefined, scope);
+
+    const result = await engine.sync();
+
+    expect(result.created).toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(app.vault.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('SyncEngine — fresh UID ownership', () => {
   it.each(['900719925474099312345', '"900719925474099312345"', "'900719925474099312345'"])(
     'recognizes freshly persisted UID %s at a moved path despite stale metadata', async (uid) => {

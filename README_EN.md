@@ -14,14 +14,12 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 * * *
 
-## 🎉 1.6.3 — Latest Update
+## 🎉 1.7.0 — Latest Update
 
-- **🔢 Large note IDs stay exact**: long numeric Dedao Brain IDs are stored and compared as strings, preventing precision loss and false sync identities.
-- **🔄 Clearer sync results**: unresolved differences remain visible; successful retries clear transient errors, and partial runs retain recovery evidence.
-- **🛡️ Safer legacy reconciliation**: old notes with matching prose and image identities can adopt the remote baseline. Archived or local-only copies leave sync and no longer appear as current search matches.
-- **⚙️ Clearer two-way sync setting**: the disabled toggle explains temporary authentication limits on hover.
+- **🎙️ Recover late recordings**: automatic sync scans the past seven days for notes that appeared after a checkpoint and imports missing notes without replacing existing local content.
+- **📊 See counts in sync history**: history rows show created, updated, skipped, and failed counts; successful runs with no changes say “No changes”.
 
-Recommended for everyone using two-way or automatic sync.
+Recommended for automatic sync users, especially those syncing recordings.
 
 The README keeps only the current release highlights. See [GitHub Releases](https://github.com/AndyZhengyan/obsidian-dedao-brain-sync/releases) for the complete version history.
 

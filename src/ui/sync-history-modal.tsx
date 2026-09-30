@@ -214,7 +214,12 @@ class SyncHistoryModal extends Modal {
           cls: `getnote-history-status-text is-${entry.status}`,
           text: formatStatus(entry.status),
         });
-        headerEl.setAttribute('data-counts', countsText);
+        if (countsText || entry.status === 'success') {
+          headerEl.createSpan({
+            cls: 'getnote-history-header-counts',
+            text: ` · ${countsText || t('syncHistory.items.noChanges')}`,
+          });
+        }
 
         const detailEl = entryEl.createDiv('getnote-history-entry-body');
         const metaEl = detailEl.createDiv('getnote-history-meta-grid');

@@ -29,6 +29,81 @@ async function flushPromises(times = 3): Promise<void> {
 }
 
 describe('SearchPanel', () => {
+  it('keeps semantic results and pages through keyword matches with a remote cursor', async () => {
+    const onSearch = vi.fn().mockResolvedValue([makeResult({ title: '语义结果' })]);
+    const onKeywordSearch = vi.fn().mockImplementation(async (_query: string, cursor: string) => cursor === '0'
+      ? { results: [makeResult({ note_id: 'first', title: '第一批 agent' })], nextCursor: '1909193892067130512', hasMore: true }
+      : { results: [makeResult({ note_id: 'second', title: '第二批 agent' })], nextCursor: '1909193892067130513', hasMore: false });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    await act(async () => {
+      render(h(SearchPanel, {
+        initialQuery: 'agent', autoSearchKey: 1, onSearch, onKeywordSearch,
+        resolveLocalFile: () => null, onOpenLocal: vi.fn(), onSyncNote: vi.fn(),
+      }), container);
+      await flushPromises();
+    });
+    await act(async () => { await flushPromises(); });
+    expect(container.textContent).toContain('语义结果');
+
+    await act(async () => {
+      (container.querySelector('.getnote-search-mode-keyword') as HTMLButtonElement).click();
+      await flushPromises();
+    });
+    expect(onKeywordSearch).toHaveBeenCalledWith('agent', '0', expect.any(AbortSignal));
+    expect(container.textContent).toContain('第一批 agent');
+    expect(container.textContent).not.toContain('语义结果');
+
+    await act(async () => {
+      (container.querySelector('.getnote-search-page-next') as HTMLButtonElement).click();
+      await flushPromises();
+    });
+    expect(onKeywordSearch).toHaveBeenCalledWith('agent', '1909193892067130512', expect.any(AbortSignal));
+    expect(container.textContent).toContain('第二批 agent');
+    expect(container.textContent).not.toContain('第一批 agent');
+
+    await act(async () => {
+      (container.querySelector('.getnote-search-page-prev') as HTMLButtonElement).click();
+    });
+    expect(onKeywordSearch).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain('第一批 agent');
+  });
+
+  it('can continue past an empty keyword batch without claiming there are no results', async () => {
+    const onKeywordSearch = vi.fn().mockImplementation(async (_query: string, cursor: string) => cursor === '0'
+      ? { results: [], nextCursor: '1909193892067130512', hasMore: true }
+      : { results: [makeResult({ title: '后来找到 agent' })], nextCursor: null, hasMore: false });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    await act(async () => {
+      render(h(SearchPanel, {
+        onSearch: vi.fn(), onKeywordSearch,
+        resolveLocalFile: () => null, onOpenLocal: vi.fn(), onSyncNote: vi.fn(),
+      }), container);
+      await flushPromises();
+    });
+    await act(async () => {
+      (container.querySelector('.getnote-search-mode-keyword') as HTMLButtonElement).click();
+      const input = container.querySelector('.getnote-search-input') as HTMLInputElement;
+      input.value = 'agent';
+      input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    });
+    await act(async () => {
+      (container.querySelector('.getnote-search-submit') as HTMLButtonElement).click();
+      await flushPromises();
+    });
+
+    expect(container.textContent).toContain('本批次没有匹配');
+    expect(container.querySelector('.getnote-search-page-next')).not.toBeNull();
+    await act(async () => {
+      (container.querySelector('.getnote-search-page-next') as HTMLButtonElement).click();
+      await flushPromises();
+    });
+    expect(container.textContent).toContain('后来找到 agent');
+  });
+
   it('renders search results with open/sync actions based on local uid lookup', async () => {
     const localFile = new TFile('得到大脑/纯文本/搜索结果.md');
     const onSearch = vi.fn().mockResolvedValue([

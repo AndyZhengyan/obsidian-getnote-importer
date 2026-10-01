@@ -449,7 +449,7 @@ async function removeEmptySubfolders(app: MigrationApp, rootFolder: string): Pro
     const hasFolders = app.vault.getAllFolders().some(other => (
       other.path !== folder.path && other.path.startsWith(`${folder.path}/`)
     ));
-    if (!hasFiles && !hasFolders) await app.vault.delete(folder, true);
+    if (!hasFiles && !hasFolders) await app.fileManager.trashFile(folder);
   }
 }
 

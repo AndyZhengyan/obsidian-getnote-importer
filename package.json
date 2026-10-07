@@ -30,7 +30,7 @@
     "vitest": "^5.0.3"
   },
   "dependencies": {
-    "preact": "^10.29.8",
+    "preact": "^11.0.0",
     "react": "npm:@preact/compat",
     "react-dom": "npm:@preact/compat"
   }

@@ -894,13 +894,23 @@ export function SettingsComponent({
                   onInput={(e) => handleClientIdOpenapiChange((e.target as HTMLInputElement).value)}
                 />
                 <div className="getnote-input-row">
-                  <input
-                    type={showApiToken ? 'text' : 'password'}
-                    className="getnote-input"
-                    placeholder={t('settings.apiToken.placeholder')}
-                    value={currentApiToken}
-                    onInput={(e) => handleApiTokenOpenapiChange((e.target as HTMLInputElement).value)}
-                  />
+                  {showApiToken ? (
+                    <input
+                      type="text"
+                      className="getnote-input"
+                      placeholder={t('settings.apiToken.placeholder')}
+                      value={currentApiToken}
+                      onInput={(e) => handleApiTokenOpenapiChange((e.target as HTMLInputElement).value)}
+                    />
+                  ) : (
+                    <input
+                      type="password"
+                      className="getnote-input"
+                      placeholder={t('settings.apiToken.placeholder')}
+                      value={currentApiToken}
+                      onInput={(e) => handleApiTokenOpenapiChange((e.target as HTMLInputElement).value)}
+                    />
+                  )}
                   <button
                     type="button"
                     className="getnote-input-toggle"
@@ -916,13 +926,23 @@ export function SettingsComponent({
             {authMode === 'web' && (
               <>
                 <div className="getnote-input-row">
-                  <input
-                    type={showApiToken ? 'text' : 'password'}
-                    className="getnote-input"
-                    placeholder={t('settings.webToken.placeholder')}
-                    value={currentApiToken}
-                    onInput={(e) => handleApiTokenWebChange((e.target as HTMLInputElement).value)}
-                  />
+                  {showApiToken ? (
+                    <input
+                      type="text"
+                      className="getnote-input"
+                      placeholder={t('settings.webToken.placeholder')}
+                      value={currentApiToken}
+                      onInput={(e) => handleApiTokenWebChange((e.target as HTMLInputElement).value)}
+                    />
+                  ) : (
+                    <input
+                      type="password"
+                      className="getnote-input"
+                      placeholder={t('settings.webToken.placeholder')}
+                      value={currentApiToken}
+                      onInput={(e) => handleApiTokenWebChange((e.target as HTMLInputElement).value)}
+                    />
+                  )}
                   <button
                     type="button"
                     className="getnote-input-toggle"

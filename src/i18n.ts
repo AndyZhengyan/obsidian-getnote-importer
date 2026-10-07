@@ -331,6 +331,13 @@ export const translations: Record<string, Record<string, string>> = {
 
     // === Search View ===
     'search.title': '得到大脑搜索',
+    'search.mode.label': '搜索方式',
+    'search.mode.semantic': '语义搜索',
+    'search.mode.keyword': '关键词搜索',
+    'search.noPageMatches': '本批次没有匹配，可继续查看下一批',
+    'search.page.prev': '上一批',
+    'search.page.next': '下一批',
+    'search.page.current': '第 {page} 批',
     'search.placeholder': '搜索得到大脑笔记...',
     'search.submit': '搜索',
     'search.searching': '搜索中...',
@@ -797,6 +804,13 @@ export const translations: Record<string, Record<string, string>> = {
 
     // === Search View ===
     'search.title': 'Dedao Brain Search',
+    'search.mode.label': 'Search mode',
+    'search.mode.semantic': 'Semantic search',
+    'search.mode.keyword': 'Keyword search',
+    'search.noPageMatches': 'No matches in this batch; continue to the next batch',
+    'search.page.prev': 'Previous batch',
+    'search.page.next': 'Next batch',
+    'search.page.current': 'Batch {page}',
     'search.placeholder': 'Search Dedao Brain notes...',
     'search.submit': 'Search',
     'search.searching': 'Searching...',

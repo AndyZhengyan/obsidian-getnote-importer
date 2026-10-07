@@ -1,6 +1,7 @@
 import type { App, TFile } from 'obsidian';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { RecallSearchResult } from '../types';
+import type { KeywordSearchPage } from '../keyword-search';
 import { t } from '../i18n';
 import { formatNoteTypeLabel } from '../utils/note-type';
 import { compactCardPreviewText } from './card-preview';
@@ -9,6 +10,7 @@ export interface SearchPanelProps {
   initialQuery?: string;
   autoSearchKey?: number;
   onSearch: (query: string, signal: AbortSignal) => Promise<RecallSearchResult[]>;
+  onKeywordSearch?: (query: string, cursor: string, signal: AbortSignal) => Promise<KeywordSearchPage>;
   resolveLocalFile: (noteId: string) => TFile | null;
   onOpenLocal: (file: TFile) => void | Promise<void>;
   onSyncNote: (noteId: string) => void | Promise<void>;
@@ -36,24 +38,30 @@ export function SearchPanel({
   initialQuery = '',
   autoSearchKey,
   onSearch,
+  onKeywordSearch,
   resolveLocalFile,
   onOpenLocal,
   onSyncNote,
 }: SearchPanelProps) {
   const [query, setQuery] = useState(initialQuery);
+  const [mode, setMode] = useState<'semantic' | 'keyword'>('semantic');
   const [results, setResults] = useState<RecallSearchResult[]>([]);
+  const [keywordPages, setKeywordPages] = useState<KeywordSearchPage[]>([]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [activeQuery, setActiveQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<Record<string, SyncState>>({});
   const abortRef = useRef<AbortController | null>(null);
 
-  const runSearch = useCallback(async (rawQuery: string) => {
+  const runSearch = useCallback(async (rawQuery: string, searchMode: 'semantic' | 'keyword') => {
     const nextQuery = rawQuery.trim();
     if (!nextQuery) {
       abortRef.current?.abort();
       setSearched(false);
       setResults([]);
+      setKeywordPages([]);
       setError(null);
       return;
     }
@@ -65,9 +73,16 @@ export function SearchPanel({
     setSearched(true);
     setError(null);
     setSyncState({});
+    setKeywordPages([]);
+    setPageIndex(0);
+    setActiveQuery(nextQuery);
     try {
-      const nextResults = await onSearch(nextQuery, controller.signal);
+      const keywordPage = searchMode === 'keyword'
+        ? await onKeywordSearch!(nextQuery, '0', controller.signal)
+        : null;
+      const nextResults = keywordPage?.results ?? await onSearch(nextQuery, controller.signal);
       if (!controller.signal.aborted) {
+        if (keywordPage) setKeywordPages([keywordPage]);
         setResults(nextResults);
       }
     } catch (err) {
@@ -77,12 +92,44 @@ export function SearchPanel({
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [onSearch]);
+  }, [onSearch, onKeywordSearch]);
+
+  const changePage = async (direction: -1 | 1) => {
+    const targetIndex = pageIndex + direction;
+    if (targetIndex < 0) return;
+    if (targetIndex < keywordPages.length) {
+      setPageIndex(targetIndex);
+      setResults(keywordPages[targetIndex].results);
+      setError(null);
+      return;
+    }
+    const currentPage = keywordPages[pageIndex];
+    if (!onKeywordSearch || !currentPage?.hasMore || !currentPage.nextCursor) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLoading(true);
+    setError(null);
+    try {
+      const nextPage = await onKeywordSearch(activeQuery, currentPage.nextCursor, controller.signal);
+      if (!controller.signal.aborted) {
+        setKeywordPages(previous => [...previous, nextPage]);
+        setPageIndex(targetIndex);
+        setResults(nextPage.results);
+      }
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === 'AbortError')) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  };
 
   useEffect(() => {
     setQuery(initialQuery);
     if (initialQuery.trim()) {
-      void runSearch(initialQuery);
+      void runSearch(initialQuery, 'semantic');
     }
     return () => abortRef.current?.abort();
   }, [autoSearchKey, initialQuery, runSearch]);
@@ -99,11 +146,25 @@ export function SearchPanel({
 
   return (
     <div className="getnote-search-view">
+      {onKeywordSearch && (
+        <div className="getnote-search-modes" role="group" aria-label={t('search.mode.label')}>
+          <button type="button" className="getnote-search-mode-semantic"
+            aria-pressed={mode === 'semantic'}
+            onClick={() => { setMode('semantic'); void runSearch(query, 'semantic'); }}>
+            {t('search.mode.semantic')}
+          </button>
+          <button type="button" className="getnote-search-mode-keyword"
+            aria-pressed={mode === 'keyword'}
+            onClick={() => { setMode('keyword'); void runSearch(query, 'keyword'); }}>
+            {t('search.mode.keyword')}
+          </button>
+        </div>
+      )}
       <form
         className="getnote-search-form"
         onSubmit={(event) => {
           event.preventDefault();
-          void runSearch(query);
+          void runSearch(query, mode);
         }}
       >
         <input
@@ -117,7 +178,7 @@ export function SearchPanel({
           type="button"
           className="mod-cta getnote-search-submit"
           disabled={loading}
-          onClick={() => void runSearch(query)}
+          onClick={() => void runSearch(query, mode)}
         >
           {loading ? t('search.searching') : t('search.submit')}
         </button>
@@ -132,7 +193,8 @@ export function SearchPanel({
       )}
 
       {searched && !loading && !error && results.length === 0 && (
-        <div className="getnote-search-empty">{t('search.noResults')}</div>
+        <div className="getnote-search-empty">{mode === 'keyword' && keywordPages[pageIndex]?.hasMore
+          ? t('search.noPageMatches') : t('search.noResults')}</div>
       )}
 
       {results.length > 0 && (
@@ -174,6 +236,20 @@ export function SearchPanel({
               </div>
             );
           })}
+        </div>
+      )}
+      {mode === 'keyword' && keywordPages.length > 0 && (
+        <div className="getnote-search-pagination">
+          <button type="button" className="getnote-search-page-prev"
+            disabled={loading || pageIndex === 0} onClick={() => void changePage(-1)}>
+            {t('search.page.prev')}
+          </button>
+          <span>{t('search.page.current', { page: pageIndex + 1 })}</span>
+          <button type="button" className="getnote-search-page-next"
+            disabled={loading || !keywordPages[pageIndex]?.hasMore}
+            onClick={() => void changePage(1)}>
+            {t('search.page.next')}
+          </button>
         </div>
       )}
     </div>

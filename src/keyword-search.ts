@@ -10,9 +10,9 @@ export function filterKeywordSearchPage(
   query: string,
   page: { notes: GetNoteNote[]; hasMore: boolean },
 ): KeywordSearchPage {
-  const needle = query.trim().normalize('NFKC').toLocaleLowerCase();
+  const needle = query.trim().normalize('NFKC').toLowerCase();
   const matches = (value: string | undefined) =>
-    (value ?? '').normalize('NFKC').toLocaleLowerCase().includes(needle);
+    (value ?? '').normalize('NFKC').toLowerCase().includes(needle);
   const results = page.notes
     .filter(note => matches(note.title) || matches(note.content)
       || note.tags?.some(tag => matches(tag.name)))

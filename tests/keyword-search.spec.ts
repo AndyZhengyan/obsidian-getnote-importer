@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { filterKeywordSearchPage } from '../src/keyword-search';
 import type { GetNoteNote } from '../src/types';
 
@@ -18,6 +18,10 @@ function note(noteId: string, overrides: Partial<GetNoteNote> = {}): GetNoteNote
 }
 
 describe('filterKeywordSearchPage', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('matches titles, bodies, and tags without changing large note IDs', () => {
     const page = filterKeywordSearchPage(' Agent ', {
       notes: [
@@ -45,6 +49,19 @@ describe('filterKeywordSearchPage', () => {
     expect(page.results).toEqual([]);
     expect(page.nextCursor).toBe('1909193892067130516');
     expect(page.hasMore).toBe(true);
+  });
+
+  it('matches ASCII I independently of the host locale', () => {
+    vi.spyOn(String.prototype, 'toLocaleLowerCase').mockImplementation(function (this: string) {
+      return this.replaceAll('I', 'ı').toLowerCase();
+    });
+
+    const page = filterKeywordSearchPage('istanbul', {
+      notes: [note('1909193892067130517', { title: 'Istanbul knowledge base' })],
+      hasMore: false,
+    });
+
+    expect(page.results.map(result => result.note_id)).toEqual(['1909193892067130517']);
   });
 
   it('stops paging when a remote page has no cursor progress', () => {

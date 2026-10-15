@@ -1,6 +1,6 @@
 // Central API entry point - delegates to client implementations based on authMode
 import { addNotesToKnowledgeBase as openapiAddNotesToKnowledgeBase, createNote as openapiCreateNote, fetchNotes as openapiFetchNotes, fetchNoteDetail as openapiFetchNoteDetail, fetchRecallSearch as openapiFetchRecallSearch, fetchSubscribedKnowledgeNotes as openapiFetchSubscribedKnowledgeNotes, fetchTopicBloggers as openapiFetchTopicBloggers, fetchTopicContentPreviewPage as openapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as openapiFetchTopicContentPreviews, fetchSubscribedTopics as openapiFetchSubscribedTopics } from './api-clients/openapi-client';
-import { createNote as webapiCreateNote, fetchNotes as webapiFetchNotes, fetchNoteChildren as webapiFetchNoteChildren, fetchNoteDetail as webapiFetchNoteDetail, fetchNoteOriginal as webapiFetchNoteOriginal, fetchSubscribedKnowledgeNotes as webapiFetchSubscribedKnowledgeNotes, fetchTopicContentPreviewPage as webapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as webapiFetchTopicContentPreviews, fetchSubscribedTopics as webapiFetchSubscribedTopics, isWebApiAuthenticationError } from './api-clients/webapi-client';
+import { createNote as webapiCreateNote, fetchNotes as webapiFetchNotes, fetchNoteChildren as webapiFetchNoteChildren, fetchNoteDetail as webapiFetchNoteDetail, fetchNoteOriginal as webapiFetchNoteOriginal, fetchAudioAiTranscript as webapiFetchAudioAiTranscript, fetchSubscribedKnowledgeNotes as webapiFetchSubscribedKnowledgeNotes, fetchTopicContentPreviewPage as webapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as webapiFetchTopicContentPreviews, fetchSubscribedTopics as webapiFetchSubscribedTopics, isWebApiAuthenticationError } from './api-clients/webapi-client';
 import type { GetNoteNote, AuthMode, LinkOriginal, RecallSearchResult, SubscribedTopic } from './types';
 import type { Blogger } from './api-clients/openapi-client';
 import { t } from './i18n';
@@ -118,6 +118,15 @@ export async function fetchNoteOriginal(
 ): Promise<LinkOriginal | null> {
   if (authMode !== 'web') return null;
   return requestWithWebTokenRefresh({ token, signal }, refreshedToken => webapiFetchNoteOriginal(id, refreshedToken, signal));
+}
+
+/** Reads an existing AI transcript through Web authentication, independently of sync auth mode. */
+export async function fetchAudioAiTranscript(
+  id: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  return requestWithWebTokenRefresh({ token, signal }, refreshedToken => webapiFetchAudioAiTranscript(id, refreshedToken, signal));
 }
 
 export async function fetchNoteChildren(

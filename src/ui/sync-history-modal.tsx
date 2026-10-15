@@ -162,6 +162,7 @@ class SyncHistoryModal extends Modal {
           const body = row.createDiv('getnote-history-write-body');
           body.createDiv('getnote-history-note-title').setText(item.title);
           body.createDiv('getnote-history-note-meta').setText(`${formatHistoryNoteType(item.noteType)} · ${formatTime(new Date(item.updatedAt).getTime())}`);
+          if (item.error) body.createDiv('getnote-history-error').setText(item.error);
         });
       };
 

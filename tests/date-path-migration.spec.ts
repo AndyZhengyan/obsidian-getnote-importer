@@ -110,6 +110,9 @@ function makeApp(): MigrationApp {
         entry.content = entry.content.replaceAll(sourceLink, targetLink);
       }
     }),
+    trashFile: vi.fn(async (folder: { path: string }) => {
+      folders.delete(folder.path);
+    }),
   };
 
   const metadataCache = {
@@ -414,7 +417,7 @@ describe('migrateDatePaths', () => {
     ]);
   });
 
-  it('removes empty legacy folders below the sync root after a rebuild', async () => {
+  it('trashes only empty legacy folders below the sync root after a rebuild', async () => {
     const root = 'notes/得到大脑';
     app.vault.addFile(`${root}/旧分类/待整理.md`, 'body', pluginCache({ uid: 'empty-folder-cleanup' }));
 
@@ -426,8 +429,64 @@ describe('migrateDatePaths', () => {
       beforeExecute: async () => {},
     });
 
-    expect(app.vault.delete).toHaveBeenCalledWith(expect.objectContaining({ path: `${root}/旧分类` }), true);
+    expect(app.fileManager.trashFile).toHaveBeenCalledWith(expect.objectContaining({ path: `${root}/旧分类` }));
+    expect(app.vault.delete).not.toHaveBeenCalled();
     expect(app.vault.getAllFolders().map(folder => folder.path)).not.toContain(`${root}/旧分类`);
+  });
+
+  it('preserves legacy folders containing a user file after a rebuild', async () => {
+    const root = 'notes/得到大脑';
+    app.vault.addFile(`${root}/旧分类/待整理.md`, 'body', pluginCache({ uid: 'empty-folder-cleanup' }));
+    app.vault.addFile(`${root}/旧分类/用户.md`, 'private', pluginCache({
+      uid: 'user-owned', source: '手工笔记',
+    }));
+
+    await migrateDatePaths(app, root, { enabled: true, format: 'YYYY/MM' }, {
+      source: { enabled: true, format: 'YYYY/MM' },
+      categoryOrigins: {},
+      assetMoveEvidence: {},
+      rebuildCategories: true,
+      beforeExecute: async () => {},
+    });
+
+    expect(app.fileManager.trashFile).not.toHaveBeenCalledWith(expect.objectContaining({ path: `${root}/旧分类` }));
+    expect(app.vault.content(`${root}/旧分类/用户.md`)).toBe('private');
+  });
+
+  it('preserves legacy folders containing a nonempty subfolder after a rebuild', async () => {
+    const root = 'notes/得到大脑';
+    app.vault.addFile(`${root}/旧分类/待整理.md`, 'body', pluginCache({ uid: 'nested-folder-cleanup' }));
+    app.vault.addFile(`${root}/旧分类/手工子目录/保留.md`, 'private', pluginCache({
+      uid: 'nested-user-owned', source: '手工笔记',
+    }));
+
+    await migrateDatePaths(app, root, { enabled: true, format: 'YYYY/MM' }, {
+      source: { enabled: true, format: 'YYYY/MM' },
+      categoryOrigins: {},
+      assetMoveEvidence: {},
+      rebuildCategories: true,
+      beforeExecute: async () => {},
+    });
+
+    expect(app.fileManager.trashFile).not.toHaveBeenCalledWith(expect.objectContaining({ path: `${root}/旧分类` }));
+    expect(app.vault.content(`${root}/旧分类/手工子目录/保留.md`)).toBe('private');
+  });
+
+  it('surfaces a trash failure and leaves the empty folder in place', async () => {
+    const root = 'notes/得到大脑';
+    app.vault.addFile(`${root}/旧分类/待整理.md`, 'body', pluginCache({ uid: 'trash-failure' }));
+    vi.mocked(app.fileManager.trashFile).mockRejectedValueOnce(new Error('trash failed'));
+
+    await expect(migrateDatePaths(app, root, { enabled: true, format: 'YYYY/MM' }, {
+      source: { enabled: true, format: 'YYYY/MM' },
+      categoryOrigins: {},
+      assetMoveEvidence: {},
+      rebuildCategories: true,
+      beforeExecute: async () => {},
+    })).rejects.toThrow('trash failed');
+
+    expect(app.vault.getAllFolders().map(folder => folder.path)).toContain(`${root}/旧分类`);
+    expect(app.vault.delete).not.toHaveBeenCalled();
   });
 
   it('does not rescan notes already archived in the duplicate-conflict folder', async () => {

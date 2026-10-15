@@ -3,6 +3,17 @@ import * as i18n from '../src/i18n';
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 
+describe('AI audio transcript failure messages', () => {
+  it.each(['zh-CN', 'en'])('interpolates the actual failure in %s', locale => {
+    i18n.initI18n(locale);
+    const message = i18n.t('error.audioAiTranscriptFailed', { message: 'disk full' });
+    expect(message).toContain('disk full');
+    expect(message).not.toContain('{message}');
+    expect(i18n.t('error.audioAiTranscriptUnavailable')).not.toBe('error.audioAiTranscriptUnavailable');
+    expect(i18n.t('error.audioAiTranscriptWebLogin')).not.toBe('error.audioAiTranscriptWebLogin');
+  });
+});
+
 describe('initI18n', () => {
   it('sets locale to zh for zh-CN', () => {
     i18n.initI18n('zh-CN');

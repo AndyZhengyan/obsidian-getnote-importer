@@ -29,6 +29,46 @@ async function flushPromises(times = 3): Promise<void> {
 }
 
 describe('SearchPanel', () => {
+  it('allows a new search after clearing a pending query and switching modes', async () => {
+    let finishSearch!: (results: RecallSearchResult[]) => void;
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    await act(async () => {
+      render(h(SearchPanel, {
+        initialQuery: 'agent',
+        onSearch: () => new Promise<RecallSearchResult[]>(resolve => { finishSearch = resolve; }),
+        onKeywordSearch: async () => ({
+          results: [makeResult({ title: '恢复后的关键词结果' })], nextCursor: null, hasMore: false,
+        }),
+        resolveLocalFile: () => null, onOpenLocal: vi.fn(), onSyncNote: vi.fn(),
+      }), container);
+      await flushPromises();
+    });
+    const submit = container.querySelector('.getnote-search-submit') as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    const input = container.querySelector('.getnote-search-input') as HTMLInputElement;
+    await act(async () => {
+      input.value = '';
+      input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    });
+    await act(async () => {
+      (container.querySelector('.getnote-search-mode-keyword') as HTMLButtonElement).click();
+      finishSearch([makeResult({ title: '已取消的旧结果' })]);
+      await flushPromises();
+    });
+    expect(submit.disabled).toBe(false);
+    expect(container.textContent).not.toContain('已取消的旧结果');
+    await act(async () => {
+      input.value = 'agent';
+      input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    });
+    await act(async () => {
+      submit.click();
+      await flushPromises();
+    });
+    expect(container.textContent).toContain('恢复后的关键词结果');
+  });
+
   it('keeps semantic results and pages through keyword matches with a remote cursor', async () => {
     const onSearch = vi.fn().mockResolvedValue([makeResult({ title: '语义结果' })]);
     const onKeywordSearch = vi.fn().mockImplementation(async (_query: string, cursor: string) => cursor === '0'

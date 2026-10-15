@@ -59,6 +59,7 @@ export function SearchPanel({
     const nextQuery = rawQuery.trim();
     if (!nextQuery) {
       abortRef.current?.abort();
+      setLoading(false);
       setSearched(false);
       setResults([]);
       setKeywordPages([]);

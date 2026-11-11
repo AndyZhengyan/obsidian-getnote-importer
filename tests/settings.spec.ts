@@ -613,7 +613,7 @@ describe('SettingsComponent information architecture (#257)', () => {
     expect(scheduled?.textContent).toContain('每 30 分钟');
     expect(scheduled?.textContent).toContain('启动时');
     expect(scheduled?.textContent).toContain('全部笔记');
-    expect(attachments?.textContent).toContain('全部附件');
+    expect(attachments?.querySelector('.getnote-setting-summary')?.textContent).toBe('图片文件、音频文件、音频口水稿、视频文件、文档文件');
 
     expect(scheduled?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.getAttribute('aria-label'))
       .toBe('启用自动同步');
@@ -1696,6 +1696,7 @@ describe('SettingsComponent auth credentials', () => {
       '图片文件',
       '音频文件',
       '音频口水稿',
+      '下载音频AI优化稿',
       '视频文件',
       '文档文件',
     ]);
@@ -1703,9 +1704,52 @@ describe('SettingsComponent auth credentials', () => {
     expect(container.querySelector('[data-attachment-settings] .getnote-hidden')).toBeNull();
   });
 
-  it('flips all five child toggles when the master attachment toggle is clicked', async () => {
+  it.each([undefined, { image: true, audio: true, video: true, document: true }])(
+    'keeps AI audio transcript opt-in off for default and legacy attachment settings (%j)',
+    attachmentImport => {
+      const { container } = renderSettings(makeSettings({ attachmentImport }));
+      const aiToggle = container.querySelector<HTMLInputElement>('input[aria-label="下载音频AI优化稿"]');
+      expect(aiToggle).not.toBeNull();
+      expect(aiToggle!.checked).toBe(false);
+      expect(container.querySelector<HTMLInputElement>('input[aria-label="下载附件"]')!.checked).toBe(false);
+      expect(container.querySelector<HTMLInputElement>('input[aria-label="音频口水稿"]')!.checked).toBe(true);
+      const summary = container.querySelector('[data-attachment-settings] .getnote-setting-summary');
+      expect(summary?.textContent).not.toContain('下载音频AI优化稿');
+      expect(summary?.textContent).not.toBe('全部附件');
+    }
+  );
+
+  it('persists AI transcript independently while keeping the original transcript and other attachment choices', async () => {
+    const { container, settings, updateSetting } = renderStatefulSettings(makeSettings({
+      attachmentImport: { image: false, audio: false, audioTranscript: true, video: false, document: false },
+    }));
+    const aiInput = container.querySelector<HTMLInputElement>('input[aria-label="下载音频AI优化稿"]');
+    expect(aiInput).not.toBeNull();
+    const row = aiInput!.closest('.getnote-attachment-option')!;
+    expect(row.textContent).toContain('Web');
+    expect(row.textContent).toContain('OpenAPI');
+    await act(() => row.querySelector('.checkbox-container')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(updateSetting).toHaveBeenCalledWith('attachmentImport', {
+      image: false, audio: false, audioTranscript: true, audioAiTranscript: true, video: false, document: false,
+    });
+    expect(settings.attachmentImport?.audioAiTranscript).toBe(true);
+    expect(container.querySelector('[data-attachment-settings] .getnote-setting-summary')?.textContent)
+      .toBe('音频口水稿、下载音频AI优化稿');
+
+    await act(() => container.querySelector('input[aria-label="音频口水稿"]')!
+      .closest('.checkbox-container')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(settings.attachmentImport).toEqual({
+      image: false, audio: false, audioTranscript: false, audioAiTranscript: true, video: false, document: false,
+    });
+    expect(aiInput!.checked).toBe(true);
+    expect(row.querySelector('.checkbox-container')!.classList.contains('is-disabled')).toBe(false);
+    await act(() => row.querySelector('.checkbox-container')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(settings.attachmentImport?.audioAiTranscript).toBe(false);
+  });
+
+  it('flips all six child toggles when the master attachment toggle is clicked', async () => {
     const { container, updateSetting } = renderStatefulSettings(makeSettings({
-      attachmentImport: { image: true, audio: true, video: true, document: true },
+      attachmentImport: { image: true, audio: true, audioTranscript: true, audioAiTranscript: true, video: true, document: true },
     }));
     await new Promise(r => setTimeout(r, 50));
 
@@ -1724,6 +1768,7 @@ describe('SettingsComponent auth credentials', () => {
       image: false,
       audio: false,
       audioTranscript: false,
+      audioAiTranscript: false,
       video: false,
       document: false,
     });
@@ -1733,7 +1778,7 @@ describe('SettingsComponent auth credentials', () => {
 
   it('updates all attachment toggles without requiring the settings page to rerender', async () => {
     const settings = makeSettings({
-      attachmentImport: { image: true, audio: true, audioTranscript: true, video: true, document: true },
+      attachmentImport: { image: true, audio: true, audioTranscript: true, audioAiTranscript: true, video: true, document: true },
     });
     const updateSetting = vi.fn(<K extends keyof Settings>(key: K, value: Settings[K]) => {
       (settings as unknown as Record<string, unknown>)[key] = value as unknown;
@@ -1761,12 +1806,14 @@ describe('SettingsComponent auth credentials', () => {
       image: false,
       audio: false,
       audioTranscript: false,
+      audioAiTranscript: false,
       video: false,
       document: false,
     }], ['attachmentImport', {
       image: true,
       audio: true,
       audioTranscript: true,
+      audioAiTranscript: true,
       video: true,
       document: true,
     }]]);
@@ -1790,6 +1837,7 @@ describe('SettingsComponent auth credentials', () => {
       image: true,
       audio: true,
       audioTranscript: true,
+      audioAiTranscript: true,
       video: true,
       document: true,
     });

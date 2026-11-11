@@ -235,7 +235,7 @@ export function SettingsComponent({
     }
   }, []);
 
-  const attachmentKinds = ['image', 'audio', 'audioTranscript', 'video', 'document'] as const;
+  const attachmentKinds = ['image', 'audio', 'audioTranscript', 'audioAiTranscript', 'video', 'document'] as const;
   // updateSetting persists by mutating plugin.settings, but does not rerender
   // this component. Keep an immediate UI copy so the master toggle can update
   // every child without waiting for the settings page to be reopened.
@@ -243,20 +243,22 @@ export function SettingsComponent({
     image: settings.attachmentImport?.image !== false,
     audio: settings.attachmentImport?.audio !== false,
     audioTranscript: settings.attachmentImport?.audioTranscript !== false,
+    audioAiTranscript: settings.attachmentImport?.audioAiTranscript === true,
     video: settings.attachmentImport?.video !== false,
     document: settings.attachmentImport?.document !== false,
   }));
   const allAttachmentsOn = attachmentKinds.every(
-    k => attachmentImport[k] !== false,
+    k => attachmentImport[k] === true,
   );
   const anyAttachmentsOn = attachmentKinds.some(
-    k => attachmentImport[k] !== false,
+    k => attachmentImport[k] === true,
   );
   const handleMasterAttachmentChange = (value: boolean) => {
     const nextAttachmentImport: AttachmentImportSettings = {
       image: value,
       audio: value,
       audioTranscript: value,
+      audioAiTranscript: value,
       video: value,
       document: value,
     };
@@ -702,7 +704,7 @@ export function SettingsComponent({
       noteTypes: noteTypesSummary,
     })
     : t('settings.summary.disabled');
-  const enabledAttachmentKinds = attachmentKinds.filter(kind => attachmentImport[kind] !== false);
+  const enabledAttachmentKinds = attachmentKinds.filter(kind => attachmentImport[kind] === true);
   const attachmentSummary = enabledAttachmentKinds.length === attachmentKinds.length
     ? t('settings.attachment.summary.all')
     : enabledAttachmentKinds.length === 0
@@ -1172,11 +1174,16 @@ export function SettingsComponent({
             <div className="getnote-attachment-options">
               {attachmentKinds.map(kind => (
                 <div className="getnote-scheduled-row getnote-attachment-option" key={kind}>
-                  <span className="getnote-scheduled-row-label">{t(`settings.attachment.${kind}`)}</span>
+                  <span className="getnote-scheduled-row-label">
+                    <span>{t(`settings.attachment.${kind}`)}</span>
+                    {kind === 'audioAiTranscript' && (
+                      <small className="getnote-setting-summary">{t('settings.attachment.audioAiTranscriptDesc')}</small>
+                    )}
+                  </span>
                   <span className="getnote-scheduled-row-control">
                     <Toggle
                       ariaLabel={t(`settings.attachment.${kind}`)}
-                      value={anyAttachmentsOn ? attachmentImport[kind] !== false : false}
+                      value={attachmentImport[kind] === true}
                       disabled={!anyAttachmentsOn}
                       onChange={(value) => handleChildAttachmentChange(kind, value)}
                     />

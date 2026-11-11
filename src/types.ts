@@ -16,6 +16,8 @@ export interface GetNoteNote {
   updated_at: string;
   attachments?: Attachment[];  // 详情接口返回的附件列表
   audio?: string;             // 详情接口返回的原始转写文本
+  audioAiTranscriptPath?: string; // Internal: independent AI-optimized transcript asset
+  audioAiTranscriptError?: string; // Internal: optional transcript download warning
   linkOriginal?: LinkOriginal; // 链接笔记详情返回的网页原文
   assetFileName?: string;     // 内部使用：音频文件的文件名（不含扩展名）
   linkOriginalFileName?: string; // 内部使用：链接原文文件名（不含扩展名）
@@ -112,6 +114,7 @@ export interface AttachmentImportSettings {
   image: boolean;
   audio: boolean;
   audioTranscript?: boolean;
+  audioAiTranscript?: boolean;
   video: boolean;
   document: boolean;
 }
@@ -120,6 +123,7 @@ export const DEFAULT_ATTACHMENT_IMPORT: AttachmentImportSettings = {
   image: true,
   audio: true,
   audioTranscript: true,
+  audioAiTranscript: false,
   video: true,
   document: true,
 };

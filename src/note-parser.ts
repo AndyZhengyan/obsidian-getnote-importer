@@ -1,5 +1,6 @@
 import type { GetNoteNote } from './types';
 import { createSourceHash, renderSourceBody } from './source-body';
+import { renderAudioAiTranscriptBlock } from './audio-ai-transcript';
 
 /**
  * 解析 ISO 时间字符串为 Obsidian 格式
@@ -376,11 +377,13 @@ function buildBody(note: GetNoteNote, assetFileName?: string, parentFileName?: s
   }
 
   if (note.assetPaths?.length) {
-    suffix += '\n' + buildAssetBlock(note.assetPaths);
+    suffix += '\n' + buildAssetBlock(note.assetPaths.filter(path => path !== note.audioAiTranscriptPath));
   } else if ((note.attachments ?? []).some(a => a.type !== 'audio')) {
     suffix += '\n> 📎 附件\n> _(附件将在下次完整同步时显示)_\n';
   }
 
+  const aiBlock = renderAudioAiTranscriptBlock(note);
+  if (aiBlock) suffix += `\n\n${aiBlock}\n`;
   suffix += buildRelationLinks(note, parentFileName, childFileNames);
   return prefix + renderSourceBody(note.content || '') + suffix;
 }

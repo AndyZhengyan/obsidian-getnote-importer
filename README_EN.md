@@ -14,12 +14,9 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 * * *
 
-## 🎉 1.6.4 — Latest Update
+## 🎉 1.6.5 — Latest Update
 
-- **🎙️ Recover late recordings**: automatic sync scans the past seven days for notes that appeared after a checkpoint and imports missing notes without replacing existing local content.
-- **📊 See counts in sync history**: history rows show created, updated, skipped, and failed counts; successful runs with no changes say “No changes”.
-
-Recommended for automatic sync users, especially those syncing recordings.
+- **Respect Obsidian’s trash settings**: when cleaning up empty folders after a note path migration, the plugin uses the deletion method configured in Obsidian.
 
 The README keeps only the current release highlights. See [GitHub Releases](https://github.com/AndyZhengyan/obsidian-dedao-brain-sync/releases) for the complete version history.
 

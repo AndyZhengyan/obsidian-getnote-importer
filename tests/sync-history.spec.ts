@@ -222,6 +222,19 @@ describe('sync history entry error display', () => {
 });
 
 describe('sync history partial status rendering', () => {
+  it('shows an optional transcript error beside an otherwise created note', () => {
+    let opened: Modal | undefined;
+    vi.spyOn(Modal.prototype, 'open').mockImplementation(function (this: Modal) {
+      opened = this;
+      (this as Modal & { onOpen(): void }).onOpen();
+    });
+    openSyncHistoryModal(new App(), [makeEntry({ status: 'partial', result: makeResult({ created: 1, total: 1, items: [{
+      noteId: 'audio', title: '面试录音', noteType: 'local_audio', updatedAt: '2026-10-15',
+      status: 'created', error: 'AI 优化稿未下载：需要 Web 登录',
+    }] }) })]);
+    expect(opened?.contentEl.querySelector('.getnote-history-write-body')?.textContent).toContain('AI 优化稿未下载：需要 Web 登录');
+  });
+
   it('shows the result beside the status even when an entry is collapsed', () => {
     initI18n('zh-CN');
     const openedModals: Modal[] = [];

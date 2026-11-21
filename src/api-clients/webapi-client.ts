@@ -468,6 +468,88 @@ export async function fetchNoteOriginal(
   }
   return normalizeLinkOriginal(data);
 }
+
+function invalidAudioAiTranscript(): Error {
+  return new Error('Invalid AI transcript response');
+}
+
+function audioOriginalData(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) throw invalidAudioAiTranscript();
+  if (value.message) {
+    if (value.message === 'LoginRequired') throw createWebApiAuthenticationError(value.message);
+    throw new Error(t('error.apiGenericWithMsg', { msg: String(value.message) }));
+  }
+  const data = value.c ?? value.data;
+  if (!isRecord(data)) throw invalidAudioAiTranscript();
+  return data;
+}
+
+function transcriptTime(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string' && /^\d{2,}:\d{2}:\d{2}(?:\.\d+)?$/.test(value)) return value;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw invalidAudioAiTranscript();
+  const seconds = Math.floor(value / 1000);
+  return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
+    .map(part => String(part).padStart(2, '0')).join(':');
+}
+
+function readableAudioAiTranscript(content: unknown): string | null {
+  if (typeof content === 'string') {
+    const trimmed = content.trim();
+    if (!trimmed) return null;
+    if (/^\[\d{2,}:\d{2}:\d{2}(?:\.\d+)?\]/.test(trimmed)
+      || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return trimmed;
+    try {
+      content = JSON.parse(trimmed) as unknown;
+    } catch {
+      throw invalidAudioAiTranscript();
+    }
+  }
+  if (!isRecord(content)) throw invalidAudioAiTranscript();
+  const sentences = content.sentence_list ?? content.sentences;
+  if (!Array.isArray(sentences)) throw invalidAudioAiTranscript();
+  const paragraphs = sentences.map((sentence: unknown): string => {
+    if (!isRecord(sentence) || typeof sentence.text !== 'string') throw invalidAudioAiTranscript();
+    const text = sentence.text.trim();
+    const start = transcriptTime(sentence.start_time ?? sentence.start_ms);
+    const end = transcriptTime(sentence.end_time ?? sentence.end_ms);
+    const speakerName = sentence.speaker_name;
+    const speakerId = sentence.speaker_id;
+    if (speakerName != null && typeof speakerName !== 'string') throw invalidAudioAiTranscript();
+    if (speakerId != null && typeof speakerId !== 'string' && typeof speakerId !== 'number') throw invalidAudioAiTranscript();
+    if (!text) return '';
+    const speaker = typeof speakerName === 'string' && speakerName.trim()
+      ? speakerName.trim()
+      : speakerId != null ? t('audioAiTranscript.speaker', { id: String(speakerId) }) : '';
+    const time = [start, end].filter((part): part is string => part !== null).join(' - ');
+    const heading = [speaker, time ? `[${time}]` : ''].filter(Boolean).join(' ');
+    return heading ? `${heading}\n${text}` : text;
+  }).filter(Boolean);
+  return paragraphs.join('\n\n') || null;
+}
+
+/** Fetch only an already generated optimized ASR; never generate or fall back to raw ASR. */
+export async function fetchAudioAiTranscript(
+  id: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const url = `https://get-notes.luojilab.com/voicenotes/web/notes/${encodeURIComponent(id)}/original`;
+  const options = { method: 'GET', headers: buildHeaders(token) };
+  const originalResponse = await apiRequest<unknown>(url, options, 2, signal);
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  const original = audioOriginalData(originalResponse);
+  if (original.has_optimized_asr !== undefined && typeof original.has_optimized_asr !== 'boolean') {
+    throw invalidAudioAiTranscript();
+  }
+  if (original.has_optimized_asr !== true) return null;
+  const optimizedResponse = await apiRequest<unknown>(`${url}?show_opt_asr=true`, options, 2, signal);
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  const optimized = audioOriginalData(optimizedResponse);
+  if (optimized.has_optimized_asr === false) return null;
+  return readableAudioAiTranscript(optimized.content);
+}
+
 export async function fetchNoteChildren(
   parentPrimeId: string,
   token: string,

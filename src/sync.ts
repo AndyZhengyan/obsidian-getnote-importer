@@ -1,7 +1,8 @@
 import { isArchivedSyncNote } from './sync-note-state';
 import { App, TFile } from 'obsidian';
-import { fetchAllNotes, fetchNoteChildren, fetchNoteDetail, fetchNoteOriginal, fetchSubscribedKnowledgeNotes } from './api';
+import { fetchAllNotes, fetchNoteChildren, fetchNoteDetail, fetchNoteOriginal, fetchSubscribedKnowledgeNotes, fetchAudioAiTranscript } from './api';
 import { renderNote, renderNoteWithTemplate, generateDisplayTitle } from './note-parser';
+import { readTranscriptScalar, renderAudioAiTranscriptBlock, upsertAudioAiTranscriptBlock } from './audio-ai-transcript';
 import { getCategoryDir } from './types';
 import { getAuthCredentials, type GetNoteNote, type Settings, type SyncResult, type SyncResultItem, type SyncScopeOptions } from './types';
 import { applyTagFilter } from './utils/tag-aggregator';
@@ -424,6 +425,85 @@ export class SyncEngine {
     }
   }
 
+  private async enrichAudioAiTranscript(
+    note: GetNoteNote,
+    signal: AbortSignal,
+    existingFile?: TFile,
+    categoryOverride?: string,
+  ): Promise<GetNoteNote> {
+    if (!this.settings.attachmentImport?.audioAiTranscript || !AUDIO_NOTE_TYPES.has(note.note_type)) return note;
+    if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    let enriched = { ...note };
+    try {
+      const categoryDir = existingFile
+        ? existingFile.path.slice(0, existingFile.path.lastIndexOf('/'))
+        : await this.ensureNoteCategoryDir(note, categoryOverride ?? getCategoryDir(note.note_type));
+      const assetDir = `${categoryDir}/asset`;
+      const targetPath = `${assetDir}/${this.getAudioAssetBaseName(note)}_transcript_ai.md`;
+      const existing = this.app.vault.getAbstractFileByPath(targetPath);
+      if (existing) {
+        if (!(existing instanceof TFile)) throw new VaultArtifactConflictError(`AI transcript path is a folder: ${targetPath}`);
+        const raw = await this.app.vault.read(existing);
+        if (readTranscriptScalar(raw, 'dedao_generated_asset') !== 'transcript'
+          || readTranscriptScalar(raw, 'dedao_transcript_variant') !== 'ai'
+          || readTranscriptScalar(raw, 'dedao_parent_uid') !== note.note_id) {
+          throw new VaultArtifactConflictError(`AI transcript path belongs to another file: ${targetPath}`);
+        }
+        enriched.audioAiTranscriptPath = targetPath;
+      } else {
+        const credentials = getAuthCredentials(this.settings);
+        const token = this.settings.webApiToken?.trim() || (credentials.authMode === 'web' ? credentials.token : '');
+        if (!token) {
+          enriched.audioAiTranscriptError = t('error.audioAiTranscriptWebLogin');
+        } else {
+          const transcript = await fetchAudioAiTranscript(note.prime_id ?? note.note_id, token, signal);
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+          if (!transcript?.trim()) {
+            enriched.audioAiTranscriptError = t('error.audioAiTranscriptUnavailable');
+          } else {
+            if (!this.app.vault.getAbstractFileByPath(assetDir)) await this.app.vault.createFolder(assetDir);
+            if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+            const content = `---\ndedao_generated_asset: transcript\ndedao_transcript_variant: ai\ndedao_parent_uid: ${JSON.stringify(note.note_id)}\n---\n# ${generateDisplayTitle(note) || t('picker.noTitle')} — ${t('audioAiTranscript.label')}\n\n${transcript}`;
+            // vault.create fails on a race; never overwrite an existing artifact.
+            await this.app.vault.create(targetPath, content);
+            enriched.audioAiTranscriptPath = targetPath;
+          }
+        }
+      }
+    } catch (err) {
+      if (signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw new DOMException('Aborted', 'AbortError');
+      enriched = { ...enriched, audioAiTranscriptError: t('error.audioAiTranscriptFailed', { message: err instanceof Error ? err.message : String(err) }) };
+    }
+    if (existingFile) {
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+      try {
+        const block = renderAudioAiTranscriptBlock(enriched, existingFile.path);
+        const snapshot = await this.app.vault.read(existingFile);
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        if (isArchivedSyncNote(snapshot) || readTranscriptScalar(snapshot, 'uid') !== note.note_id) throw new VaultArtifactConflictError('Note ownership changed; AI transcript reference was not added');
+        // Avoid touching the note or its modification time on subsequent syncs.
+        if (upsertAudioAiTranscriptBlock(snapshot, block) === snapshot) return enriched;
+        await this.app.vault.process(existingFile, content => {
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+          // Recheck ownership inside the atomic update, not only in the UID snapshot.
+          if (isArchivedSyncNote(content) || readTranscriptScalar(content, 'uid') !== note.note_id) throw new VaultArtifactConflictError('Note ownership changed; AI transcript reference was not added');
+          return upsertAudioAiTranscriptBlock(content, block);
+        });
+      } catch (err) {
+        if (signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw new DOMException('Aborted', 'AbortError');
+        enriched.audioAiTranscriptError = t('error.audioAiTranscriptFailed', { message: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return enriched;
+  }
+
+  private async recordExistingNote(
+    result: SyncResult, note: GetNoteNote, file: TFile | undefined, signal: AbortSignal, categoryOverride?: string,
+  ): Promise<void> {
+    const enriched = await this.enrichAudioAiTranscript(note, signal, file, categoryOverride);
+    this.recordItem(result, enriched, { status: 'skipped', file });
+  }
+
   private async writeLinkOriginalAsset(note: GetNoteNote, categoryOverride?: string): Promise<string | null> {
     const originalContent = note.linkOriginal?.content.trim();
     if (!originalContent) return null;
@@ -562,7 +642,9 @@ export class SyncEngine {
       }
       const existingByUid = uidIndex.get(note.note_id);
       if (existingByUid) {
-        return { status: 'skipped', file: existingByUid };
+        const signal = this.abortController?.signal ?? new AbortController().signal;
+        const enriched = await this.enrichAudioAiTranscript(note, signal, existingByUid, categoryOverride);
+        return { status: 'skipped', file: existingByUid, error: enriched.audioAiTranscriptError };
       }
 
       const categoryDir = await this.ensureNoteCategoryDir(note, categoryOverride ?? getCategoryDir(note.note_type));
@@ -607,6 +689,7 @@ export class SyncEngine {
         }
       }
     } catch (err) {
+      if (this.abortController?.signal.aborted) throw new DOMException('Aborted', 'AbortError');
       if (err instanceof VaultArtifactConflictError) {
         console.warn(`[DedaoBrain] ${err.message}`);
       } else {
@@ -627,7 +710,7 @@ export class SyncEngine {
       noteType: note.note_type,
       updatedAt: note.updated_at,
       status: writeResult.status,
-      error: writeResult.error,
+      error: writeResult.error ?? note.audioAiTranscriptError,
     });
   }
 
@@ -739,8 +822,9 @@ export class SyncEngine {
       return note;
     }
 
+    const aiEnrichedNote = await this.enrichAudioAiTranscript(note, signal, undefined, categoryOverride);
     try {
-      let enrichedNote = note;
+      let enrichedNote = aiEnrichedNote;
       if (needsAudioDetail || needsRelationDetail || needsImageDetail || (needsLinkOriginalDetail && credentials.authMode !== 'web') || needsRefDetail) {
         const detailId = (note as { prime_id?: string }).prime_id ?? note.note_id;
         const noteDetail = await fetchNoteDetail(
@@ -750,7 +834,7 @@ export class SyncEngine {
           signal,
           credentials.authMode
         );
-        enrichedNote = this.mergeNoteDetail(note, noteDetail);
+        enrichedNote = this.mergeNoteDetail(enrichedNote, noteDetail);
       }
       if (needsLinkOriginalDetail && credentials.authMode === 'web') {
         const detailId = (note as { prime_id?: string }).prime_id ?? note.note_id;
@@ -829,10 +913,10 @@ export class SyncEngine {
     } catch (err) {
       if (err instanceof VaultArtifactConflictError) {
         console.warn(`[DedaoBrain] ${err.message}`);
-        return { ...note, asset_error: err.message };
+        return { ...aiEnrichedNote, asset_error: err.message };
       }
       console.warn(`[DedaoBrain] Failed to enrich note ${note.note_id}:`, err);
-      return note;
+      return aiEnrichedNote;
     }
   }
 
@@ -1082,7 +1166,7 @@ export class SyncEngine {
               if (tag?.name) observedTagNames.add(tag.name);
             }
             result.skipped++;
-            this.recordItem(result, note, { status: 'skipped', file: preCheck.file });
+            await this.recordExistingNote(result, note, preCheck.file, controller.signal);
           }
 
           const relationshipNote = preCheck.exists
@@ -1255,7 +1339,7 @@ export class SyncEngine {
       const preCheck = this.preCheckNote(note, uidIndex, categoryOverride);
       if (preCheck.exists) {
         result.skipped++;
-        this.recordItem(result, note, { status: 'skipped' });
+        await this.recordExistingNote(result, note, preCheck.file, signal, categoryOverride);
       }
 
       const noteToWrite = preCheck.exists
@@ -1431,7 +1515,7 @@ export class SyncEngine {
         if (preCheck.exists) {
           if (parentMatchesTags) {
             result.skipped++;
-            this.recordItem(result, typeFiltered[0], { status: 'skipped' });
+            await this.recordExistingNote(result, typeFiltered[0], preCheck.file, controller.signal);
           }
           const mayHaveAppendNotes = (typeFiltered[0].children_count ?? 0) > 0 || Boolean(typeFiltered[0].children_ids?.length);
           if (!mayHaveAppendNotes) {
@@ -1563,7 +1647,7 @@ export class SyncEngine {
           seenNoteIds.add(note.note_id);
           result.total++;
           result.skipped++;
-          this.recordItem(result, note, { status: 'skipped', file: preCheck.file });
+          await this.recordExistingNote(result, note, preCheck.file, controller.signal, categoryOverride);
           this.onProgress?.({
             processed: result.total,
             total: filteredNotes.length,

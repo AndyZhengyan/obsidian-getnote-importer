@@ -1,13 +1,16 @@
 import { insideSyncFolder } from '../bidirectional-sync';
 import type { TFile } from 'obsidian';
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { t } from '../i18n';
+import type { UploadDestination } from '../reverse-sync';
+import type { SubscribedTopic } from '../types';
 
 interface LocalUploadModalProps {
   files: TFile[];
   initialFolder: string;
   syncFolder?: string;
-  onConfirm: (files: TFile[]) => void;
+  loadTopics: (signal: AbortSignal) => Promise<SubscribedTopic[]>;
+  onConfirm: (files: TFile[], destination?: UploadDestination) => void;
   onCancel: () => void;
 }
 
@@ -51,11 +54,30 @@ function folderOptions(files: TFile[], initialFolder: string): string[] {
   });
 }
 
-export function LocalUploadModal({ files, initialFolder, syncFolder = initialFolder, onConfirm, onCancel }: LocalUploadModalProps) {
+export function LocalUploadModal({ files, initialFolder, syncFolder = initialFolder, loadTopics, onConfirm, onCancel }: LocalUploadModalProps) {
   const folders = useMemo(() => folderOptions(files, initialFolder), [files, initialFolder]);
   const [folder, setFolder] = useState(cleanFolder(initialFolder) || folders[0] || '');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
+  const [topicId, setTopicId] = useState('');
+  const [topics, setTopics] = useState<SubscribedTopic[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(true);
+  const [topicsError, setTopicsError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setTopicsLoading(true);
+    setTopicsError('');
+    void loadTopics(controller.signal).then(result => {
+      if (!controller.signal.aborted) setTopics(result.filter(topic => topic.source === 'created'));
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setTopicsError(error instanceof Error ? error.message : String(error));
+    }).finally(() => {
+      if (!controller.signal.aborted) setTopicsLoading(false);
+    });
+    return () => controller.abort();
+  }, [loadTopics, loadAttempt]);
 
   const visibleFiles = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -66,6 +88,7 @@ export function LocalUploadModal({ files, initialFolder, syncFolder = initialFol
   }, [files, folder, query]);
 
   const selectedFiles = files.filter(file => selected.has(file.path));
+  const selectedTopic = topics.find(topic => topic.topic_id === topicId);
   const handleCheck = (path: string, checked: boolean) => {
     setSelected(prev => {
       const next = new Set(prev);
@@ -88,7 +111,7 @@ export function LocalUploadModal({ files, initialFolder, syncFolder = initialFol
   return (
     <div className="getnote-local-upload">
       <div className="getnote-picker-header">
-        <div className="getnote-local-upload-folder">
+        <label className="getnote-local-upload-folder">
           <span>{t('upload.folder')}</span>
           <select
             value={folder}
@@ -99,11 +122,31 @@ export function LocalUploadModal({ files, initialFolder, syncFolder = initialFol
           >
             {folders.map(item => <option key={item || '__root__'} value={item}>{item || '/'}</option>)}
           </select>
-        </div>
+        </label>
         <div className="getnote-picker-actions">
           <button onClick={selectVisible}>{t('picker.selectAll')}</button>
           <button onClick={selectNone}>{t('picker.selectNone')}</button>
         </div>
+      </div>
+      <div className="getnote-local-upload-destination">
+        <label className="getnote-local-upload-folder">
+          <span>{t('upload.destination')}</span>
+          <select
+            value={topicId}
+            disabled={topicsLoading || topics.length === 0}
+            onChange={event => setTopicId((event.target as HTMLSelectElement).value)}
+          >
+            <option value="">{t('upload.destinationDefault')}</option>
+            {topics.map(topic => <option key={topic.topic_id} value={topic.topic_id}>{topic.name || topic.topic_id}</option>)}
+          </select>
+        </label>
+        {topicsLoading && <div role="status">{t('knowledgeBases.loading')}</div>}
+        {topicsError && (
+          <div role="status">
+            {topicsError} <button type="button" onClick={() => setLoadAttempt(attempt => attempt + 1)}>{t('topicPicker.retry')}</button>
+          </div>
+        )}
+        {!topicsLoading && !topicsError && topics.length === 0 && <div role="status">{t('upload.destinationEmpty')}</div>}
       </div>
       {!insideSyncFolder(`${cleanFolder(folder)}/note.md`, syncFolder) && (
         <p role="note">{t('bidirectional.uploadWarning', { folder: syncFolder })}</p>
@@ -137,7 +180,14 @@ export function LocalUploadModal({ files, initialFolder, syncFolder = initialFol
         <span className="getnote-picker-count">{t('upload.selected', { count: selectedFiles.length })}</span>
         <div className="getnote-picker-btns">
           <button className="mod-cancel" onClick={onCancel}>{t('picker.cancel')}</button>
-          <button className="mod-cta" disabled={selectedFiles.length === 0} onClick={() => onConfirm(selectedFiles)}>{t('upload.confirm')}</button>
+          <button
+            className="mod-cta"
+            disabled={selectedFiles.length === 0}
+            onClick={() => onConfirm(selectedFiles, selectedTopic ? {
+              topicId: selectedTopic.topic_id,
+              topicName: selectedTopic.name || selectedTopic.topic_id,
+            } : undefined)}
+          >{t('upload.confirm')}</button>
         </div>
       </div>
     </div>

@@ -79,4 +79,9 @@ describe('sync path helpers', () => {
     expect(getKnowledgeBaseDir('A/B:C*D?E"F<G>H|I')).toBe('知识库/A_B_C_D_E_F_G_H_I');
     expect(getKnowledgeBaseDir('   ')).toBe('知识库/(无标题)');
   });
+
+  it('treats every remote folder name as a single safe local segment', () => {
+    expect(getKnowledgeBaseDir('工作', ['../归档', 'asset', 'CON', '..', '尾随.']))
+      .toBe('知识库/工作/__归档/_asset/_CON/_/尾随_');
+  });
 });

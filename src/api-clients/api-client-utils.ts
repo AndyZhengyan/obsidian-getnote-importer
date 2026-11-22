@@ -9,7 +9,7 @@ export function normalizeBearerToken(token: string): string {
 
 export function parseJsonPreservingIds(text: string): unknown {
   let safe = text.replace(
-    /"(id|note_id|prime_id|parent_id|follow_id|live_id|topic_id|post_id|post_id_alias)"\s*:\s*(\d+)/g,
+    /"(id|id_alias|note_id|prime_id|parent_id|follow_id|live_id|topic_id|directory_id|post_id|post_id_alias)"\s*:\s*(\d+)/g,
     '"$1":"$2"'
   );
   safe = safe.replace(/"children_ids"\s*:\s*\[([^\]]*)\]/g, (_match, body: string) => {
@@ -23,6 +23,16 @@ export function parseJsonPreservingIds(text: string): unknown {
     return `"children_ids":[${normalized}]`;
   });
   return JSON.parse(safe);
+}
+
+export function normalizeTopicMemberships(value: unknown): Array<{ id: string; name: string }> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter(isRecord).flatMap(topic => {
+    const id = topic.id ?? topic.topic_id;
+    if ((typeof id !== 'string' && typeof id !== 'number') || !String(id).trim()
+      || typeof topic.name !== 'string' || !topic.name.trim()) return [];
+    return [{ id: String(id), name: topic.name }];
+  });
 }
 
 export function parseJsonObjectOrEmpty(text: string): Record<string, unknown> {

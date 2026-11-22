@@ -14,9 +14,10 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 * * *
 
-## 🎉 1.6.5 — Latest Update
+## 🎉 1.6.6 — Latest Update
 
-- **Respect Obsidian’s trash settings**: when cleaning up empty folders after a note path migration, the plugin uses the deletion method configured in Obsidian.
+- Uploads preserve common Markdown formatting and embedded local images. Manual uploads can target a knowledge base, and automatic updates keep the original membership.
+- Knowledge-base notes follow the available folder hierarchy. Existing notes can move out of date folders during sync.
 
 The README keeps only the current release highlights. See [GitHub Releases](https://github.com/AndyZhengyan/obsidian-dedao-brain-sync/releases) for the complete version history.
 

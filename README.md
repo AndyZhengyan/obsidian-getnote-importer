@@ -14,9 +14,10 @@
 
 * * *
 
-## 🎉 1.6.5 最新更新
+## 🎉 1.6.6 最新更新
 
-- **遵循 Obsidian 的回收站设置**：迁移笔记路径后清理旧的空目录时，使用 Obsidian 配置的删除方式。
+- 上传保留常见 Markdown 格式和正文中的本地图片。手动上传可选目标知识库，自动更新沿用原知识库。
+- 知识库笔记按知识库和可读取的子目录层级归档，已有笔记可随同步迁移出日期目录。
 
 README 仅保留当前版本的核心亮点；完整版本历史请查看 [GitHub Releases](https://github.com/AndyZhengyan/obsidian-dedao-brain-sync/releases)。
 

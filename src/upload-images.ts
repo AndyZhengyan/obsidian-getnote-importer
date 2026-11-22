@@ -25,8 +25,20 @@ function imageEmbeds(body: string): ImageEmbed[] {
   const reference = /!\[(?<referenceAlt>[^\]\n]+)\](?:\[(?<referenceId>[^\]\n]*)\])?/;
   const tokens = new RegExp([fencedCode, /\\[^\n]/, inlineCode, comment, wikilink, markdown, reference].map(pattern => pattern.source).join('|'), 'gm');
   const embeds: ImageEmbed[] = [];
-  let links: ReturnType<typeof Lexer.lex>['links'] | undefined;
+  const blocks = Lexer.lex(body);
+  let blockIndex = -1;
+  let blockEnd = 0;
+  let originalOffset = 0;
+  let normalizedOffset = 0;
   for (const match of body.matchAll(tokens)) {
+    // Marked normalizes CRLF to LF, while replacements use the original offsets.
+    normalizedOffset += body.slice(originalOffset, match.index).replace(/\r\n/g, '\n').length;
+    originalOffset = match.index;
+    while (blockEnd <= normalizedOffset && blockIndex + 1 < blocks.length) {
+      blockEnd += blocks[++blockIndex].raw.length;
+    }
+    const block = blocks[blockIndex];
+    if (block?.type === 'code' && block.codeBlockStyle === 'indented') continue;
     const { wiki, alt, angle, plain, title, referenceAlt, referenceId } = match.groups ?? {};
     if (wiki !== undefined) {
       const [target, alias = ''] = wiki.split('|', 2);
@@ -35,9 +47,8 @@ function imageEmbeds(body: string): ImageEmbed[] {
       const target = (angle ?? plain ?? '').trim().replace(/\\([()])/g, '$1');
       embeds.push({ index: match.index, original: match[0], target, alt, title });
     } else if (referenceAlt !== undefined) {
-      links ??= Lexer.lex(body).links;
       const key = (referenceId || referenceAlt).trim().replace(/\s+/g, ' ').toLowerCase();
-      const link = Object.hasOwn(links, key) ? links[key] : undefined;
+      const link = Object.hasOwn(blocks.links, key) ? blocks.links[key] : undefined;
       if (link) embeds.push({ index: match.index, original: match[0], target: link.href,
         alt: referenceAlt, title: link.title ? JSON.stringify(link.title) : undefined });
     }

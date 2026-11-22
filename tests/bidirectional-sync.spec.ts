@@ -382,6 +382,9 @@ describe('bidirectional engine', () => {
       '<!-- ![[hidden.png]] -->',
       '%% ![[hidden-in-obsidian.png]] %%',
       '',
+      '    ![indented example](missing.png)',
+      '\t![[tab-indented-example.png]]',
+      '',
       '[diagram]: <asset/local image (1).png> "reference title"',
     ].join('\n');
     const f = fixture(body);

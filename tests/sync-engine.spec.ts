@@ -1080,7 +1080,7 @@ describe('SyncEngine — filterNotesByDateRange', () => {
 describe('SyncEngine — subscribed knowledge selected notes', () => {
   it.each([
     'relocate', 'already organized', 'asset conflict', 'link conflict',
-    'shared attachment', 'path-qualified backlink', 'rename failure',
+    'shared attachment', 'path-qualified backlink', 'path-qualified self-link', 'rename failure',
   ] as const)(
     'handles an existing knowledge-base image note (%s)', async scenario => {
     const noteId = 'existing_knowledge_image';
@@ -1120,6 +1120,11 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
     const content = `---\nuid: "${noteId}"\n---\n保留本地修改\n![](${assetName})\n`;
     app.vault._addFile(existingPath, content);
     app.vault._addFile(`${source}/${assetName}`, 'original attachment');
+    if (scenario === 'path-qualified self-link') {
+      const resolve = app.metadataCache.getFirstLinkpathDest;
+      vi.spyOn(app.metadataCache, 'getFirstLinkpathDest').mockImplementation((link, origin) =>
+        link === existingPath ? app.vault.getAbstractFileByPath(existingPath) as TFile : resolve(link, origin));
+    }
     if (scenario === 'link conflict') app.vault._addFile(`${source}/链接目标.md`, 'linked note');
     const indexPath = `${source}/索引.md`;
     const backlink = scenario === 'shared attachment' ? assetName : './本地重命名.md';
@@ -1136,7 +1141,9 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
       if (file.path !== existingPath) return {};
       return {
         embeds: [{ link: assetName }],
-        links: scenario === 'link conflict' ? [{ link: '链接目标.md' }] : [],
+        links: scenario === 'link conflict' ? [{ link: '链接目标.md' }]
+          : scenario === 'path-qualified self-link' ? [{ link: existingPath }]
+          : [],
       } as ReturnType<App['metadataCache']['getFileCache']>;
     });
     if (scenario === 'asset conflict') app.vault._addFile(`${destination}/${assetName}`, 'other attachment');

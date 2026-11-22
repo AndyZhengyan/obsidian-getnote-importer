@@ -718,7 +718,15 @@ export async function relocateSyncNote(
       continue;
     }
     if (!resolved.path.startsWith(assetPrefix)) {
-      if (resolved.path !== file.path) {
+      if (resolved.path === file.path) {
+        const selfPath = linkPath(link);
+        const name = basename(file.path);
+        if (selfPath && (selfPath.includes('/') || name !== basename(targetPath)
+          || app.vault.getMarkdownFiles().some(other =>
+            other.path !== file.path && basename(other.path).toLowerCase() === name.toLowerCase()))) {
+          throw new Error(`Self-link would need updating after moving ${file.path}: ${link}`);
+        }
+      } else {
         const atTarget = app.metadataCache.getFirstLinkpathDest(linkPath(link), targetPath);
         if (atTarget?.path !== resolved.path) {
           throw new Error(`Link would resolve differently after moving ${file.path}: ${link}`);

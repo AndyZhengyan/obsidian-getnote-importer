@@ -407,7 +407,6 @@ async function fetchCreatedTopicNotes(topic: SubscribedTopic, token: string, cli
           .filter(isRecord)
           .map(tag => ({ name: typeof tag.name === 'string' ? tag.name : '' }))
           .filter(tag => tag.name);
-        if (topic.name && !tags.some(tag => tag.name === topic.name)) tags.push({ name: topic.name });
         return {
           ...value,
           id: value.note_id,
@@ -559,7 +558,9 @@ export async function fetchTopicContentPreviewPage(
       topic_id: topicId,
       blogger_id: '',
       content: note.content,
-      tags: note.tags,
+      tags: topic.name && !note.tags.some(tag => tag.name === topic.name)
+        ? [...note.tags, { name: topic.name }]
+        : note.tags,
     }));
     return { items };
   }

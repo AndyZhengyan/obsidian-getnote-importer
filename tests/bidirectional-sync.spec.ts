@@ -331,6 +331,21 @@ describe('bidirectional engine', () => {
     expect(readSyncNote(f.contents.get(f.file.path)!)?.body).toBe(body);
     expect(uploadImage).toHaveBeenCalledOnce();
   });
+
+  it('confirms a text edit when the server refreshes an existing image URL', async () => {
+    const url = 'https://get-notes.umiwi.com/get_notes_prod%2Fgetnotes_img_abc123.png';
+    const original = { ...remote, content: `原文\n![图](${url}?Expires=1&Signature=old)` };
+    const f = fixture(renderNote({ ...original, content: original.content.replace('Expires=1', 'Expires=0') })
+      .replace('原文', '本地修改'));
+    vi.mocked(fetchNoteDetail).mockResolvedValueOnce(original).mockResolvedValueOnce(original)
+      .mockResolvedValue({ ...remote, content: `本地修改\n![图](${url}?Expires=2&Signature=new)` });
+
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+
+    expect(result.updated).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(uploadImage).not.toHaveBeenCalled();
+  });
   it('still uploads UID-less drafts during changed-only reconciliation', async () => {
     const f = fixture('本地新笔记');
     vi.mocked(createNote).mockResolvedValue({ noteId: '12345678901234567890' });

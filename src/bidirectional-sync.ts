@@ -2,7 +2,7 @@ import { isArchivedSyncNote } from './sync-note-state';
 import { parseYaml, type App, type TFile } from 'obsidian';
 import { addNotesToKnowledgeBase, createNote, fetchNoteDetail } from './api';
 import { updateNote } from './api-clients/openapi-client';
-import { createSourceHash, parseSourceBody, SOURCE_BODY_START, SOURCE_BODY_END } from './source-body';
+import { createSourceHash, normalizeHostedImages, parseSourceBody, SOURCE_BODY_START, SOURCE_BODY_END } from './source-body';
 import { renderNote } from './note-parser';
 import { getAuthCredentials, getCategoryDir, type GetNoteNote, type Settings, type SyncResult, type SyncResultItem, type SyncProgressDetail } from './types';
 import { t } from './i18n';
@@ -173,17 +173,6 @@ function remoteContent(note: Partial<GetNoteNote>, uid: string): EditableContent
   } as GetNoteNote));
   if (!projected) throw new Error(t('bidirectional.invalid'));
   return projected;
-}
-
-function normalizeHostedImages(body: string): string {
-  return body.replace(/(!?\[[^\]\r\n]*\]\()([^)]+)(\))/g, (_match, open: string, target: string, close: string) => {
-    if (!/(?:get-notes\.umiwi\.com|aliyuncs\.com)/i.test(target)) return open + target + close;
-    let decoded: string;
-    try { decoded = decodeURIComponent(target); } catch { return open + target + close; }
-    const asset = /\b(getnotes_img_[A-Za-z0-9_-]+\.(?:jpe?g|png|webp|gif))(?=[?\s>]|$)/i.exec(decoded);
-    const title = /\s+("[^"]*"|'[^']*')$/.exec(target);
-    return open + (asset ? `dedao-asset:${asset[1]}${title ? ` ${title[1]}` : ''}` : target) + close;
-  });
 }
 
 function hostedImageHash(note: EditableContent, rawHash?: string): string {
@@ -550,12 +539,11 @@ export class BidirectionalSyncEngine {
               ...(tagsChanged ? { tags: local.tags } : {}),
             });
             const verified = await getRemote();
-            const transformed = submitted.body !== local.body;
-            if (contentHash(verified) !== contentHash(submitted)
-              && (!transformed || hostedImageHash(verified) !== hostedImageHash(submitted))) {
+            const verifiedHash = hostedImageHash(verified);
+            if (verifiedHash !== hostedImageHash(submitted)) {
               throw new Error(t('bidirectional.unconfirmed'));
             }
-            remoteHash = transformed ? hostedImageHash(verified) : contentHash(verified);
+            remoteHash = verifiedHash;
           }
           this.checkCancelled();
           const updated = replaceSyncContent(local, next, remoteHash);

@@ -180,7 +180,7 @@ describe('knowledge base and Markdown uploads', () => {
       .mockResolvedValueOnce(new Response(`{"success":true,"data":{"resources":[{"note_id":${largeId}}]}}`));
 
     await expect(fetchSubscribedKnowledgeNotes({ ...auth, createdTopicIds: ['workspace'] })).resolves.toEqual([
-      expect.objectContaining({ note_id: largeId, topic_id: 'workspace', topic_name: 'Workspace', topic_directory_path: ['Docs', 'Design'] }),
+      expect.objectContaining({ note_id: largeId, topic_id: 'workspace', topic_name: 'Workspace', topic_directory_path: ['Docs', 'Design'], tags: [] }),
     ]);
     expect(fetch.mock.calls.map(([url]) => url)).toContain('https://openapi.biji.com/open/api/v1/resource/knowledge/directories?topic_id=workspace&directory_id=2000000000000000001');
   });

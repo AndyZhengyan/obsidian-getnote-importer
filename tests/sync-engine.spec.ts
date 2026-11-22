@@ -53,6 +53,15 @@ function makeMockFolder(path: string): TFolder {
 function makeMockApp(): MockApp {
   const files = new Map<string, StoredFile>();
   const folders = new Map<string, TFolder>();
+  const rename = vi.fn(async (file: { path: string }, newPath: string) => {
+    const existing = files.get(file.path);
+    if (!existing || files.has(newPath) || folders.has(newPath)) throw new Error('Invalid rename');
+    files.delete(file.path);
+    existing.path = newPath;
+    existing.name = newPath.split('/').pop() ?? '';
+    existing.basename = existing.name.replace(/\.md$/, '');
+    files.set(newPath, existing);
+  });
 
   return {
     vault: {
@@ -85,16 +94,7 @@ function makeMockApp(): MockApp {
         }
         return Promise.resolve();
       }),
-      rename: vi.fn().mockImplementation((file: { path: string }, newPath: string) => {
-        const existing = files.get(file.path);
-        if (existing) {
-          if (folders.has(newPath)) folders.delete(newPath);
-          Object.defineProperty(existing, 'path', { value: newPath, writable: true, enumerable: true });
-          files.delete(file.path);
-          files.set(newPath, existing);
-        }
-        return Promise.resolve();
-      }),
+      rename,
       createFolderSync: (path: string) => {
         if (!folders.has(path)) folders.set(path, makeMockFolder(path));
       },
@@ -122,7 +122,10 @@ function makeMockApp(): MockApp {
         const f = files.get(file.path);
         return f ? { frontmatter: f.frontmatter } : null;
       },
+      getFirstLinkpathDest: (link: string, sourcePath: string) =>
+        files.get(`${sourcePath.slice(0, sourcePath.lastIndexOf('/'))}/${link}`) ?? null,
     },
+    fileManager: { renameFile: vi.fn(rename) },
   } as unknown as MockApp;
 }
 
@@ -1075,7 +1078,11 @@ describe('SyncEngine — filterNotesByDateRange', () => {
 });
 
 describe('SyncEngine — subscribed knowledge selected notes', () => {
-  it('skips an existing legacy-path UID before writing dated attachments', async () => {
+  it.each([
+    'relocate', 'already organized', 'asset conflict', 'link conflict',
+    'shared attachment', 'path-qualified backlink', 'path-qualified self-link', 'rename failure',
+  ] as const)(
+    'handles an existing knowledge-base image note (%s)', async scenario => {
     const noteId = 'existing_knowledge_image';
     const note = makeNote({
       note_id: noteId,
@@ -1105,8 +1112,46 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
       throw new Error(`Unexpected request: ${requestUrl}`);
     });
     const app = makeMockApp();
-    const existingPath = '得到大脑/知识库/我的知识库/历史知识库图片.md';
-    app.vault._addFile(existingPath, 'local', { uid: noteId });
+    const destination = '得到大脑/知识库/我的知识库';
+    const source = scenario === 'already organized' ? destination : '得到大脑/2026/04/知识库/我的知识库';
+    const existingPath = `${source}/本地重命名.md`;
+    const assetName = 'asset/历史知识库图片_image.png';
+    const targetPath = `${destination}/本地重命名.md`;
+    const content = `---\nuid: "${noteId}"\n---\n保留本地修改\n![](${assetName})\n`;
+    app.vault._addFile(existingPath, content);
+    app.vault._addFile(`${source}/${assetName}`, 'original attachment');
+    if (scenario === 'path-qualified self-link') {
+      const resolve = app.metadataCache.getFirstLinkpathDest;
+      vi.spyOn(app.metadataCache, 'getFirstLinkpathDest').mockImplementation((link, origin) =>
+        link === existingPath ? app.vault.getAbstractFileByPath(existingPath) as TFile : resolve(link, origin));
+    }
+    if (scenario === 'link conflict') app.vault._addFile(`${source}/链接目标.md`, 'linked note');
+    const indexPath = `${source}/索引.md`;
+    const backlink = scenario === 'shared attachment' ? assetName : './本地重命名.md';
+    if (scenario === 'shared attachment' || scenario === 'path-qualified backlink') {
+      app.vault._addFile(indexPath, `[链接](${backlink})`);
+      app.metadataCache.resolvedLinks = {
+        [indexPath]: { [scenario === 'shared attachment' ? `${source}/${assetName}` : existingPath]: 1 },
+      };
+    }
+    vi.spyOn(app.metadataCache, 'getFileCache').mockImplementation(file => {
+      if (file.path === indexPath) {
+        return { links: [{ link: backlink }] } as ReturnType<App['metadataCache']['getFileCache']>;
+      }
+      if (file.path !== existingPath) return {};
+      return {
+        embeds: [{ link: assetName }],
+        links: scenario === 'link conflict' ? [{ link: '链接目标.md' }]
+          : scenario === 'path-qualified self-link' ? [{ link: existingPath }]
+          : [],
+      } as ReturnType<App['metadataCache']['getFileCache']>;
+    });
+    if (scenario === 'asset conflict') app.vault._addFile(`${destination}/${assetName}`, 'other attachment');
+    if (scenario === 'rename failure') {
+      vi.mocked(app.fileManager.renameFile)
+        .mockImplementationOnce((file, path) => app.vault.rename(file, path))
+        .mockRejectedValueOnce(new Error('rename failure'));
+    }
     const engine = new SyncEngine(app, makeSettings({
       authMode: 'openapi',
       openApiToken: 'openapi-token',
@@ -1121,15 +1166,33 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
       knowledgeBaseNames: { [noteId]: '我的知识库' },
     });
 
-    expect(result).toEqual(expect.objectContaining({ total: 1, created: 0, skipped: 1, failed: 0 }));
+    const failed = scenario !== 'relocate' && scenario !== 'already organized';
+    expect(result).toMatchObject({
+      total: 1,
+      created: 0,
+      skipped: scenario === 'already organized' ? 1 : 0,
+      updated: scenario === 'relocate' ? 1 : 0,
+      failed: failed ? 1 : 0,
+    });
     const requestedUrls = fetchSpy.mock.calls.map(([url]) => String(url));
     expect(requestedUrls.some(url => url.includes('/resource/note/detail'))).toBe(false);
     expect(requestedUrls.some(url => url.startsWith('https://mediacdn.umiwi.com/'))).toBe(false);
-    expect(app.vault.createFolder).not.toHaveBeenCalled();
     expect(app.vault.createBinary).not.toHaveBeenCalled();
     expect(app.vault.create).not.toHaveBeenCalled();
     expect(app.vault.modify).not.toHaveBeenCalled();
-    expect(app.vault.getAbstractFileByPath(existingPath)).toBeTruthy();
+    const finalNote = app.vault.getAbstractFileByPath(failed ? existingPath : targetPath);
+    expect(finalNote).toBeInstanceOf(TFile);
+    expect(await app.vault.read(finalNote as TFile)).toBe(content);
+    const finalAsset = app.vault.getAbstractFileByPath(`${failed ? source : destination}/${assetName}`);
+    expect(finalAsset).toBeInstanceOf(TFile);
+    expect(await app.vault.read(finalAsset as TFile)).toBe('original attachment');
+    if (scenario === 'relocate') expect(app.vault.getAbstractFileByPath(existingPath)).toBeNull();
+    if (scenario === 'asset conflict') {
+      const conflictingAsset = app.vault.getAbstractFileByPath(`${destination}/${assetName}`) as TFile;
+      expect(await app.vault.read(conflictingAsset)).toBe('other attachment');
+      expect(app.fileManager.renameFile).not.toHaveBeenCalled();
+    }
+    if (failed && scenario !== 'rename failure') expect(app.fileManager.renameFile).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1139,8 +1202,8 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
       noteType: 'img_text',
       attachment: { type: 'image', url: 'https://mediacdn.umiwi.com/knowledge.png', title: 'knowledge.png' },
       detailExtra: {},
-      expectedAssets: ['得到大脑/知识库/我的知识库/asset/知识库图片笔记_image.png'],
-      expectedMarkdown: 'asset/知识库图片笔记_image.png',
+      expectedAssets: ['得到大脑/知识库/我的知识库/asset/知识库图片笔记_created_image_note_image.png'],
+      expectedMarkdown: 'asset/知识库图片笔记_created_image_note_image.png',
     },
     {
       noteId: 'created_audio_note',
@@ -1843,6 +1906,98 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
   });
 });
 
+describe('SyncEngine — ordinary note knowledge-base membership', () => {
+  it('stores distinct images for different knowledge-base notes with the same title', async () => {
+    const notes = ['first-id', 'second-id'].map(noteId => makeNote({
+      note_id: noteId,
+      title: '相同标题',
+      note_type: 'img_text',
+      topics: [{ id: 'topic', name: '项目' }],
+      attachments: [{ type: 'image', title: '图', url: `https://mediacdn.umiwi.com/${noteId}.png` }],
+    }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => (
+      String(url).includes('/resource/note/list')
+        ? mockFetchResponse({ success: true, data: { notes, has_more: false } }) as Response
+        : { status: 200, arrayBuffer: async () => new ArrayBuffer(1) } as Response
+    ));
+    const app = makeMockApp();
+
+    try {
+      const result = await new SyncEngine(app, makeSettings({ maxDays: 0 })).sync();
+      expect(result).toMatchObject({ created: 2, failed: 0 });
+      expect(app.vault.createBinary).toHaveBeenCalledTimes(2);
+      expect(app.vault.create).toHaveBeenNthCalledWith(
+        1, '得到大脑/知识库/项目/相同标题.md', expect.stringContaining('asset/相同标题_first-id_image.png'),
+      );
+      expect(app.vault.create).toHaveBeenNthCalledWith(
+        2, '得到大脑/知识库/项目/相同标题-2.md', expect.stringContaining('asset/相同标题_second-id_image.png'),
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it.each(['time', 'selection'] as const)('uses topic membership without a date folder in %s sync', async mode => {
+    const note = makeNote({
+      note_id: 'note-with-topic',
+      title: '知识库笔记',
+      topics: [{ id: '2', name: '知识库乙' }, { id: '1', name: '知识库甲' }],
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => {
+      return mockFetchResponse({
+        success: true,
+        data: String(url).includes('/resource/note/list') ? { notes: [note], has_more: false } : { note },
+      }) as Response;
+    });
+    const app = makeMockApp();
+    const settings = makeSettings({ datePathEnabled: true, maxDays: 0 });
+
+    try {
+      const engine = new SyncEngine(app, settings);
+      const result = mode === 'time' ? await engine.sync() : await engine.syncNoteIds([note.note_id]);
+      expect(result).toMatchObject({ created: 1, failed: 0 });
+      expect(app.vault.create).toHaveBeenCalledWith(
+        `得到大脑/知识库/${['知识库乙', '知识库甲'].sort()[0]}/知识库笔记.md`, expect.any(String),
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it.each(['current', 'legacy dated'] as const)(
+    'preserves a %s nested directory across ordinary sync when memberships have no hierarchy', async layout => {
+    const app = makeMockApp();
+    const note = makeNote({
+      note_id: 'note-already-organized',
+      topics: [{ id: '1', name: '主题甲' }, { id: '2', name: '主题乙' }],
+    });
+    const newPath = '得到大脑/知识库/主题乙/本地目录/本地标题.md';
+    const original = layout === 'current' ? newPath : '得到大脑/2026/04/知识库/主题乙/本地目录/本地标题.md';
+    app.vault._addFile(original, '本地修改', { uid: note.note_id });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse({
+      success: true, data: { notes: [note], has_more: false },
+    }) as Response);
+
+    try {
+      const result = await new SyncEngine(app, makeSettings({ datePathEnabled: true, maxDays: 0 })).sync();
+      expect(result).toMatchObject({
+        skipped: layout === 'current' ? 1 : 0,
+        updated: layout === 'current' ? 0 : 1,
+        failed: 0,
+      });
+      expect(app.vault.getAbstractFileByPath(newPath)).toBeInstanceOf(TFile);
+      if (layout === 'current') {
+        expect(app.fileManager.renameFile).not.toHaveBeenCalled();
+      } else {
+        expect(result.items?.[0]).toMatchObject({ relocated: true });
+        expect(app.vault.getAbstractFileByPath(original)).toBeNull();
+      }
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+});
+
 describe('SyncEngine — sync lastNoteTimestamp tracking', () => {
   it('records the newest updated_at as lastNoteTimestamp', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -2486,7 +2641,7 @@ describe('SyncEngine — writeNote', () => {
     );
   });
 
-  it('日期路径开启后知识库路径仍保留完整分类层级', async () => {
+  it('日期路径开启后知识库笔记仍写入知识库目录', async () => {
     const app = makeMockApp();
     const engine = new SyncEngine(app, makeSettings({
       datePathEnabled: true,
@@ -2506,7 +2661,7 @@ describe('SyncEngine — writeNote', () => {
 
     expect(result.status).toBe('created');
     expect(app.vault.create).toHaveBeenCalledWith(
-      '得到大脑/2026/04/知识库/我的知识库/知识库笔记.md',
+      '得到大脑/知识库/我的知识库/知识库笔记.md',
       expect.any(String),
     );
   });
@@ -4748,6 +4903,56 @@ describe('SyncEngine — 跨库同步 (syncKnowledgeBases)', () => {
     fetchSubscribedSpy.mockReset();
   });
 
+  it.each(['new', 'legacy'] as const)('备份已选知识库目录路径 (%s)', async mode => {
+    const date = mode === 'legacy' ? '2026-05-01T00:00:00Z' : '2026-07-18T00:00:00Z';
+    const note = makeNote({
+      note_id: 'selected_kb_note',
+      title: '共享笔记',
+      created_at: date,
+      updated_at: date,
+    });
+    fetchSubscribedSpy.mockResolvedValue([
+      { ...note, topic_id: 'kb-1', topic_name: '项目', topic_directory_path: ['子目录', '记录'] },
+    ]);
+    vi.doMock('../src/api', async () => {
+      const actual = await vi.importActual<typeof import('../src/api')>('../src/api');
+      return { ...actual, fetchSubscribedKnowledgeNotes: fetchSubscribedSpy };
+    });
+    vi.resetModules();
+    const { SyncEngine: EngineReloaded } = await import('../src/sync');
+    const app = makeMockApp();
+    const legacy = '得到大脑/2026/05/纯文本/共享笔记.md';
+    const canonical = '得到大脑/知识库/项目/子目录/记录/共享笔记.md';
+    if (mode === 'legacy') app.vault._addFile(legacy, '本地内容', { uid: note.note_id });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse({
+      success: true,
+      data: { notes: [note], has_more: false, next_cursor: '0' },
+    }) as Response);
+
+    try {
+      const engine = new EngineReloaded(
+        app,
+        makeSettings({ datePathEnabled: true }),
+        undefined,
+        { maxDays: 0, syncStartDate: '2026-07-17', syncKnowledgeBases: ['kb-1'] },
+      );
+      const result = await engine.sync();
+      expect(result).toMatchObject({
+        total: 1,
+        created: mode === 'new' ? 1 : 0,
+        updated: mode === 'legacy' ? 1 : 0,
+        failed: 0,
+      });
+      expect(app.vault.getAbstractFileByPath(canonical)).toBeInstanceOf(TFile);
+      expect(app.vault.getAbstractFileByPath(legacy)).toBeNull();
+      expect(app.vault.getMarkdownFiles()).toHaveLength(1);
+    } finally {
+      fetchSpy.mockRestore();
+      vi.doUnmock('../src/api');
+      vi.resetModules();
+    }
+  });
+
   it('知识库失败进度使用知识库阶段自己的分子', async () => {
     fetchSubscribedSpy.mockResolvedValue([
       makeNote({
@@ -5365,7 +5570,7 @@ describe('SyncEngine — 跨库同步 (syncKnowledgeBases)', () => {
         maxDays: 0,
         syncStartDate: '2026-04-27',
         syncKnowledgeBases: ['kb-audio'],
-        knowledgeBaseNames: { kb_audio: '跨库专题', kb_audio_missing: '跨库专题' } as Record<string, string>,
+        knowledgeBaseNames: { 'kb-audio': '跨库专题' },
       });
 
       const result = await engine.sync();

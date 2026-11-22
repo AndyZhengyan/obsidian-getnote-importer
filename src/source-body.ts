@@ -99,3 +99,14 @@ export function createSourceHash(title: string, tags: string[], body: string): s
   const canonical = JSON.stringify({ title, tags: canonicalTags(tags), body: normalizeSourceBody(body) });
   return `sha256:${sha256(canonical)}`;
 }
+
+export function normalizeHostedImages(body: string): string {
+  return body.replace(/(!?\[[^\]\r\n]*\]\()([^)]+)(\))/g, (_match, open: string, target: string, close: string) => {
+    if (!/(?:get-notes\.umiwi\.com|aliyuncs\.com)/i.test(target)) return open + target + close;
+    let decoded: string;
+    try { decoded = decodeURIComponent(target); } catch { return open + target + close; }
+    const asset = /\b(getnotes_img_[A-Za-z0-9_-]+\.(?:jpe?g|png|webp|gif))(?=[?\s>]|$)/i.exec(decoded);
+    const title = /\s+("[^"]*"|'[^']*')$/.exec(target);
+    return open + (asset ? `dedao-asset:${asset[1]}${title ? ` ${title[1]}` : ''}` : target) + close;
+  });
+}

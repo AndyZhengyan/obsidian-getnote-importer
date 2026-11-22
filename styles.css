@@ -1199,6 +1199,16 @@ body .getnote-tag-select-option input[type="checkbox"] {
   max-width: 260px;
 }
 
+.getnote-local-upload-destination {
+  padding: 8px 0;
+}
+
+.getnote-local-upload-destination [role="status"] {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
 .getnote-picker-search {
   padding: 0 0 8px;
 }

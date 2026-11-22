@@ -14,9 +14,10 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 * * *
 
-## 🎉 1.6.5 — Latest Update
+## 🎉 1.6.6 — Latest Update
 
-- **Respect Obsidian’s trash settings**: when cleaning up empty folders after a note path migration, the plugin uses the deletion method configured in Obsidian.
+- Uploads preserve common Markdown formatting and embedded local images. Manual uploads can target a knowledge base, and automatic updates keep the original membership.
+- Knowledge-base notes follow the available folder hierarchy. Existing notes can move out of date folders during sync.
 
 The README keeps only the current release highlights. See [GitHub Releases](https://github.com/AndyZhengyan/obsidian-dedao-brain-sync/releases) for the complete version history.
 
@@ -147,6 +148,8 @@ Automatic upload is off by default and requires OpenAPI. Deletions never propaga
 ### ⬆️ Create Dedao Brain notes from Obsidian
 
 Open local upload from the settings page or command palette and select one or more Markdown files.
+Use **Destination knowledge base** to choose a knowledge base you own. The default option follows the existing upload rules.
+Local images are uploaded and embedded in the note body. Common Markdown formatting such as headings, lists, emphasis, quotations, and code blocks is preserved where supported.
 
 Manual upload is **selection-based and create-only**, separate from automatic updates inside the sync folder:
 
@@ -167,11 +170,12 @@ vault/
     │   └── 08/
     │       ├── 纯文本/
     │       │   └── Meeting Notes.md
-    │       ├── 链接笔记/
-    │       │   └── Article.md
-    │       └── 知识库/
-    │           └── My Knowledge Base/
-    │               └── Topic Note.md
+    │       └── 链接笔记/
+    │           └── Article.md
+    ├── 知识库/
+    │   └── My Knowledge Base/
+    │       └── Subfolder/
+    │           └── Topic Note.md
     └── ...
 ```
 
@@ -215,6 +219,8 @@ Enable a rule such as `YYYY/MM` to produce paths like:
 ```
 
 The folder date comes from the note's creation time, not its update time. When you change or disable the date-path setting, the plugin runs a preflight before migrating or rolling back historical files and their related attachments.
+
+Knowledge-base notes go directly into their knowledge-base folder and use any subfolder hierarchy supplied by the API. The next knowledge-base sync moves existing notes out of the old date folders. The plugin tries a different filename when the destination name is taken. A note stays in place if the move cannot safely preserve links or attachments.
 
 Migration is safe to re-run. When there is a target conflict, invalid metadata, shared attachment, or a move that could break path-qualified links, the plugin prefers to skip the affected note rather than overwrite files.
 

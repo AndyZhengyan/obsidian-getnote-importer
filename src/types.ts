@@ -22,6 +22,9 @@ export interface GetNoteNote {
   assetPaths?: string[];      // 内部使用：所有附件文件的完整路径（图片、音频等）
   prime_id?: string;          // Web API detail identifier
   topic_id?: string;          // Knowledge-base topic identifier
+  topic_name?: string;        // Knowledge-base display name
+  topic_directory_path?: string[]; // Directory names from the knowledge-base root
+  topics?: Array<{ id: string; name: string }>; // Memberships returned by note list/detail
   fetch_error?: string;       // Internal: per-note knowledge detail failure
   asset_error?: string;       // Internal: vault artifact conflict during enrichment
 }
@@ -319,6 +322,7 @@ export interface SyncResultItem {
   updatedAt: string;
   status: 'created' | 'updated' | 'skipped' | 'failed';
   error?: string;
+  relocated?: boolean;
 }
 
 export interface NoteCategory {

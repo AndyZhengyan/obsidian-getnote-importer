@@ -1,6 +1,7 @@
 import type { GetNoteNote, Attachment, LinkOriginal, RecallSearchResult, SubscribedTopic, ApiQuotaState } from '../types';
 import { t } from '../i18n';
-import { isRecord, normalizeBearerToken, parseJsonObjectOrEmpty, parseJsonPreservingIds, waitForRetryDelay } from './api-client-utils';
+import { isRecord, normalizeBearerToken, normalizeTopicMemberships, parseJsonObjectOrEmpty, parseJsonPreservingIds, waitForRetryDelay } from './api-client-utils';
+import { getImageType, uploadSignedImage, type UploadImageOptions } from './image-upload';
 
 export const GETNOTE_LIST_LIMIT = 20;
 
@@ -30,7 +31,10 @@ function normalizeListData(value: unknown): { notes: GetNoteNote[]; hasMore: boo
   if (data.msg === 'rejected') {
     throw new FatalOpenApiError(t('error.openApiNotMember'));
   }
-  const notes = Array.isArray(data.notes) ? data.notes as GetNoteNote[] : [];
+  const notes = Array.isArray(data.notes) ? (data.notes as GetNoteNote[]).map(note => {
+    const topics = normalizeTopicMemberships(note?.topics);
+    return topics ? { ...note, topics } : note;
+  }) : [];
   const hasMore = Boolean(data.has_more ?? data.hasMore);
   return { notes, hasMore };
 }
@@ -109,7 +113,8 @@ function normalizeNoteDetailData(value: unknown): Partial<GetNoteNote> | null {
   const childrenIds = Array.isArray(source.children_ids)
     ? source.children_ids.map(id => String(id))
     : undefined;
-  return { ...detail, attachments, audio, linkOriginal, children_ids: childrenIds };
+  const topics = normalizeTopicMemberships(source.topics ?? value.topics);
+  return { ...detail, attachments, audio, linkOriginal, children_ids: childrenIds, ...(topics ? { topics } : {}) };
 }
 
 function parseErrorBody(text: string): Record<string, unknown> {
@@ -193,6 +198,7 @@ export interface CreateNoteOptions {
   content: string;
   noteType: string;
   tags?: string[];
+  topicId?: string;
   signal?: AbortSignal;
 }
 
@@ -352,6 +358,7 @@ function bloggerContentToNote(content: BloggerContent, topic: SubscribedTopic, b
     note_type: 'blogger_post',
     source: 'blogger',
     topic_id: topic.topic_id,
+    topic_name: topic.name,
     tags: [
       ...(topic.name ? [{ name: topic.name }] : []),
       ...(blogger.name ? [{ name: blogger.name }] : []),
@@ -400,7 +407,6 @@ async function fetchCreatedTopicNotes(topic: SubscribedTopic, token: string, cli
           .filter(isRecord)
           .map(tag => ({ name: typeof tag.name === 'string' ? tag.name : '' }))
           .filter(tag => tag.name);
-        if (topic.name && !tags.some(tag => tag.name === topic.name)) tags.push({ name: topic.name });
         return {
           ...value,
           id: value.note_id,
@@ -409,6 +415,8 @@ async function fetchCreatedTopicNotes(topic: SubscribedTopic, token: string, cli
           content: typeof value.content === 'string' ? value.content : '',
           note_type: typeof value.note_type === 'string' ? value.note_type : 'plain_text',
           source: 'knowledge',
+          topic_id: topic.topic_id,
+          topic_name: topic.name,
           tags,
           created_at: typeof value.created_at === 'string' ? value.created_at : '',
           updated_at: typeof value.updated_at === 'string' ? value.updated_at : typeof value.edit_time === 'string' ? value.edit_time : '',
@@ -421,6 +429,46 @@ async function fetchCreatedTopicNotes(topic: SubscribedTopic, token: string, cli
     page++;
   }
   return notes;
+}
+
+/** The note list carries content, while the directory endpoint carries placement. */
+async function enrichCreatedTopicDirectories(
+  notes: GetNoteNote[], topicId: string, token: string, clientId: string, signal?: AbortSignal,
+): Promise<void> {
+  const unresolved = new Map(notes.map(note => [note.note_id, note]));
+  const pending: Array<{ id?: string; path: string[] }> = [{ path: [] }];
+  const visited = new Set<string>();
+  for (const directory of pending) {
+    if (unresolved.size === 0) break;
+    const params = new URLSearchParams({ topic_id: topicId });
+    if (directory.id) params.set('directory_id', directory.id);
+    let data: Record<string, unknown>;
+    try {
+      data = await knowledgeApiRequest<Record<string, unknown>>(
+        `https://openapi.biji.com/open/api/v1/resource/knowledge/directories?${params.toString()}`,
+        { method: 'GET', headers: buildHeaders(token, clientId) }, 1, signal,
+      );
+    } catch (error) {
+      if (signal?.aborted || error instanceof FatalOpenApiError) throw error;
+      // Some accounts can read notes but lack access to the directory tree.
+      continue;
+    }
+    const source = normalizeData(data);
+    for (const resource of readArray(source, ['resources']).filter(isRecord)) {
+      const id = stringValue(resource.note_id);
+      const note = unresolved.get(id);
+      if (!note) continue;
+      note.topic_directory_path = directory.path;
+      unresolved.delete(id);
+    }
+    for (const child of readArray(source, ['directories']).filter(isRecord)) {
+      const id = stringValue(child.id);
+      const name = stringValue(child.name).trim();
+      if (!id || !name || visited.has(id)) continue;
+      visited.add(id);
+      pending.push({ id, path: [...directory.path, name] });
+    }
+  }
 }
 
 export async function fetchTopicBloggers(topicId: string, token: string, clientId: string, signal?: AbortSignal): Promise<Blogger[]> {
@@ -510,7 +558,9 @@ export async function fetchTopicContentPreviewPage(
       topic_id: topicId,
       blogger_id: '',
       content: note.content,
-      tags: note.tags,
+      tags: topic.name && !note.tags.some(tag => tag.name === topic.name)
+        ? [...note.tags, { name: topic.name }]
+        : note.tags,
     }));
     return { items };
   }
@@ -632,7 +682,9 @@ export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions):
   for (const topic of topics) {
     if (topic.source === 'created') {
       if (!createdTopicIdSet?.has(topic.topic_id)) continue;
-      notes.push(...await fetchCreatedTopicNotes(topic, token, clientId, signal, remainingNoteIds));
+      const topicNotes = await fetchCreatedTopicNotes(topic, token, clientId, signal, remainingNoteIds);
+      await enrichCreatedTopicDirectories(topicNotes, topic.topic_id, token, clientId, signal);
+      notes.push(...topicNotes);
       if (remainingNoteIds?.size === 0) return notes;
       continue;
     }
@@ -698,6 +750,7 @@ export async function createNote(options: CreateNoteOptions): Promise<{ noteId: 
         note_type: options.noteType,
         source: 'app',
         tags: options.tags ?? [],
+        ...(options.topicId ? { topic_id: options.topicId } : {}),
       }),
     },
     1,
@@ -715,12 +768,26 @@ export async function addNotesToKnowledgeBase(options: AddNotesToKnowledgeBaseOp
     {
       method: 'POST',
       headers: { ...buildHeaders(options.token, options.clientId), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic_id: options.topicId, note_ids: options.noteIds.map(String) }),
+      body: JSON.stringify({
+        topic_id: options.topicId,
+        note_ids: options.noteIds.map(String),
+      }),
     },
     1,
     options.signal,
   );
   if (data.success === false) throw new Error(t('error.addKnowledgeBaseNoteFailed'));
+}
+
+/** GetNote issues a signed, ordered multipart upload for each image. */
+export async function uploadImage(options: UploadImageOptions): Promise<string> {
+  const imageType = getImageType(options.filename);
+  const params = new URLSearchParams({ mime_type: imageType === 'jpeg' ? 'jpg' : imageType, count: '1' });
+  const data = await apiRequest<Record<string, unknown>>(
+    `https://openapi.biji.com/open/api/v1/resource/image/upload_token?${params.toString()}`,
+    { method: 'GET', headers: buildHeaders(options.token, options.clientId) }, 1, options.signal,
+  );
+  return uploadSignedImage(normalizeData(data), options, imageType, 'openapi');
 }
 
 export interface UpdateNoteOptions {

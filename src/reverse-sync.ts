@@ -3,8 +3,11 @@ import type { App, TFile } from 'obsidian';
 import { createNote, fetchNoteDetail, type CreateNoteResult } from './api';
 import { t } from './i18n';
 import { parseSourceBody } from './source-body';
-import { BidirectionalSyncEngine } from './bidirectional-sync';
+import { BidirectionalSyncEngine, type UploadDestination } from './bidirectional-sync';
+import { prepareUploadImages } from './upload-images';
 import { getAuthCredentials, type AuthCredentials, type Settings, type SyncResultItem } from './types';
+
+export type { UploadDestination } from './bidirectional-sync';
 
 export interface ReverseSyncResult {
   created: number;
@@ -108,16 +111,6 @@ function prepareUploadTags(tags: string[]): string[] {
   return [...new Set(tags.map(tag => tag.trim()).filter(Boolean))].slice(0, MAX_UPLOAD_TAGS);
 }
 
-function markdownImageToPlainLink(_match: string, alt: string, rawTarget: string): string {
-  const target = rawTarget.trim().replace(/^<|>$/g, '');
-  const label = alt.trim() || target;
-  return `[${label}](${target})`;
-}
-
-function prepareUploadContent(content: string): string {
-  return content.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, markdownImageToPlainLink);
-}
-
 function fileBasename(file: TFile): string {
   return file.basename || file.path.split('/').pop()?.replace(/\.md$/i, '') || 'Untitled';
 }
@@ -128,16 +121,16 @@ function nowIso(): string {
 
 function replaceOrInsertFrontmatterFields(content: string, fields: Record<string, string | undefined>): string {
   const linesToUpsert = Object.entries(fields)
-    .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0)
-    .map(([key, value]) => `${key}: "${value}"`);
+    .filter((entry): entry is [string, string] => Boolean(entry[1]))
+    .map(([key, value]) => `${key}: ${JSON.stringify(value)}`);
   const block = parseFrontmatterBlock(content);
   if (!block) {
     return ['---', ...linesToUpsert, '---', content].join('\n');
   }
   const frontmatterLines = block.raw.split(/\r?\n/);
   for (const [key, value] of Object.entries(fields)) {
-    if (!value) continue;
-    const line = `${key}: "${value}"`;
+    if (value === undefined || value === '') continue;
+    const line = `${key}: ${JSON.stringify(value)}`;
     const existingIndex = frontmatterLines.findIndex(item => new RegExp(`^\\s*${key}\\s*:`).test(item));
     if (existingIndex >= 0) {
       frontmatterLines[existingIndex] = line;
@@ -271,21 +264,33 @@ export class ReverseSyncEngine {
     }
   }
 
-  private async createRemoteNote(note: LocalMarkdownNote, credentials: AuthCredentials): Promise<CreateNoteResult> {
+  private async createRemoteNote(
+    note: LocalMarkdownNote,
+    credentials: AuthCredentials,
+    destination?: UploadDestination,
+  ): Promise<CreateNoteResult> {
+    if (destination && !destination.topicName?.trim()) {
+      const topic = this.settings.knowledgeBaseCache?.entries.find(entry => entry.topicId === destination.topicId);
+      if (!topic) throw new Error(t('bidirectional.knowledgeBaseMissing'));
+      if (topic.source === 'subscribed') throw new Error(t('bidirectional.knowledgeBaseReadOnly'));
+    }
+    const content = await prepareUploadImages(this.app, note.file, note.body, credentials, this.abortController.signal, 'create');
     const created = await createNote({
       token: credentials.token,
       clientId: credentials.clientId,
       authMode: credentials.authMode,
       title: note.title,
-      content: prepareUploadContent(note.body),
+      content,
       noteType: note.noteType,
       tags: prepareUploadTags(note.tags),
       signal: this.abortController.signal,
+      ...(destination ? { topicId: destination.topicId } : {}),
     });
     const currentContent = await this.app.vault.read(note.file);
     await this.app.vault.modify(note.file, replaceOrInsertFrontmatterFields(currentContent, {
       uid: created.noteId,
       prime_id: created.detailId,
+      topic_id: destination?.topicId,
     }));
     return created;
   }
@@ -299,7 +304,7 @@ export class ReverseSyncEngine {
     });
   }
 
-  async syncFiles(files: TFile[]): Promise<ReverseSyncResult> {
+  async syncFiles(files: TFile[], destination?: UploadDestination): Promise<ReverseSyncResult> {
     const credentials = this.requireCredentials();
     const result: ReverseSyncResult = { created: 0, skipped: 0, failed: 0, total: 0, items: [] };
     const totalFiles = files.length;
@@ -330,12 +335,11 @@ export class ReverseSyncEngine {
       if (!note) continue;
 
       try {
-        if (credentials.authMode === 'openapi' && note.noteType === 'plain_text'
-          && isInsideFolder(file, this.settings.folderName)
-          && (!note.uid || ['archive', 'attach'].includes(readString(note.frontmatter, 'dedao_upload_state')))) {
+        if (!note.uid || ['archive', 'attach'].includes(readString(note.frontmatter, 'dedao_upload_state'))) {
+          const inside = isInsideFolder(file, this.settings.folderName);
           const item = await this.uploadEngine.uploadNewFile(file, {
-            raw: note.content, title: note.title, body: prepareUploadContent(note.body), tags: prepareUploadTags(note.tags),
-          });
+            raw: note.content, title: note.title, body: note.body, tags: prepareUploadTags(note.tags), noteType: note.noteType,
+          }, { folder: inside ? this.settings.folderName : '', destination });
           if (item.status === 'created') result.created++;
           else {
             item.status = 'skipped';
@@ -379,7 +383,7 @@ export class ReverseSyncEngine {
           this.reportProgress(item, result.total, totalFiles);
           continue;
         }
-        const created = await this.createRemoteNote(note, credentials);
+        const created = await this.createRemoteNote(note, credentials, destination);
         result.created++;
         const item = this.createLocalItem(file, 'created', {
           noteId: created.noteId,

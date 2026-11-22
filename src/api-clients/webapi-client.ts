@@ -1,6 +1,8 @@
 import type { GetNoteNote, Attachment, LinkOriginal, SubscribedTopic } from '../types';
 import { t } from '../i18n';
-import { isRecord, normalizeBearerToken, parseJsonObjectOrEmpty, parseJsonPreservingIds, waitForRetryDelay } from './api-client-utils';
+import { isRecord, normalizeBearerToken, normalizeTopicMemberships, parseJsonObjectOrEmpty, parseJsonPreservingIds, waitForRetryDelay } from './api-client-utils';
+import { getImageType, uploadSignedImage, type UploadImageOptions } from './image-upload';
+import { buildWebJsonContent } from './web-markdown';
 
 export class WebApiAuthenticationError extends Error {
   constructor(
@@ -51,6 +53,7 @@ function parseWebApiListResponse(value: unknown): { notes: GetNoteNote[]; hasMor
     const stringField = (key: string): string => (typeof n[key] === 'string' ? n[key] : '');
     const childCountRaw = n.children_count;
     const subNoteCountRaw = n.sub_note_count;
+    const topics = normalizeTopicMemberships(n.topics);
     return {
       id: stringField('id'),
       note_id: stringField('note_id'),
@@ -72,6 +75,7 @@ function parseWebApiListResponse(value: unknown): { notes: GetNoteNote[]; hasMor
       attachments: Array.isArray(n.attachments) ? (n.attachments as Attachment[]) : [],
       audio: stringField('audio') || undefined,
       prime_id: stringField('prime_id') || undefined,
+      ...(topics ? { topics } : {}),
     };
   });
   return { notes, hasMore };
@@ -96,7 +100,8 @@ function normalizeNoteDetailData(value: unknown): Partial<GetNoteNote> | null {
   const childrenIds = Array.isArray(source.children_ids)
     ? source.children_ids.map(id => String(id))
     : undefined;
-  return { ...detail, attachments, audio, children_count: childrenCount, children_ids: childrenIds };
+  const topics = normalizeTopicMemberships(source.topics ?? value.topics);
+  return { ...detail, attachments, audio, children_count: childrenCount, children_ids: childrenIds, ...(topics ? { topics } : {}) };
 }
 
 function normalizeLinkOriginal(value: unknown): LinkOriginal | null {
@@ -171,6 +176,7 @@ export interface FetchNotesOptions {
   limit?: number;
   signal?: AbortSignal;
   topicIds?: string[];
+  createdTopicIds?: string[];
   selectedNoteIds?: string[];
 }
 
@@ -180,6 +186,7 @@ export interface CreateNoteOptions {
   content: string;
   noteType: string;
   tags?: string[];
+  topicId?: string;
   signal?: AbortSignal;
 }
 
@@ -199,7 +206,12 @@ export async function fetchNotes(options: FetchNotesOptions): Promise<{ notes: G
 
 function normalizeWebData(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) return {};
-  return isRecord(value.c) ? value.c : value;
+  if (isRecord(value.c)) return value.c;
+  return isRecord(value.data) ? value.data : value;
+}
+
+function identifier(value: unknown): string | undefined {
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
 }
 
 function findTopicByAlias(rawTopics: unknown[], topicId: string): Record<string, unknown> | null {
@@ -212,7 +224,7 @@ function findTopicByAlias(rawTopics: unknown[], topicId: string): Record<string,
 }
 
 function noteFromKnowledgeResource(resource: unknown, topicName?: string): GetNoteNote | null {
-  if (!isRecord(resource)) return null;
+  if (!isRecord(resource) || resource.resource_type === 'FILE') return null;
   const meta = isRecord(resource.resource_note_meta_data) ? resource.resource_note_meta_data : resource;
   const id = meta.note_id ?? resource.resource_id_alias ?? resource.id_alias ?? resource.id;
   if (typeof id !== 'string' && typeof id !== 'number') return null;
@@ -263,29 +275,61 @@ function noteFromKnowledgeResource(resource: unknown, topicName?: string): GetNo
     attachments: (meta.attachments as Attachment[]) ?? [],
     audio: typeof meta.audio === 'string' ? meta.audio : undefined,
     prime_id: typeof meta.prime_id === 'string' ? meta.prime_id : undefined,
+    topic_name: topicName,
   };
 }
 
-export async function fetchSubscribedTopics(token: string, signal?: AbortSignal): Promise<SubscribedTopic[]> {
+async function fetchOwnedTopicRecords(token: string, signal?: AbortSignal): Promise<Map<string, Record<string, unknown>>> {
+  const topics = new Map<string, Record<string, unknown>>();
+  const size = 20;
+  for (let page = 1; ; page++) {
+    const data = await apiRequest<Record<string, unknown>>(
+      `https://knowledge-api.trytalks.com/v1/web/topic/mine/list?page=${page}&size=${size}`,
+      { method: 'GET', headers: buildKnowledgeHeaders(token) }, 2, signal,
+    );
+    const source = data.c ?? data.data ?? data;
+    const wrapper = isRecord(source) ? source : {};
+    const items = wrapper.items ?? wrapper.list ?? wrapper.topics ?? source;
+    if (!Array.isArray(items) || items.length === 0) break;
+    const previousSize = topics.size;
+    for (const item of items.filter(isRecord)) {
+      const id = identifier(item.id);
+      if (id && typeof item.name === 'string' && item.name.trim()) topics.set(id, item);
+    }
+    if (topics.size === previousSize || !(wrapper.has_next ?? wrapper.has_more ?? (items.length >= size))) break;
+  }
+  return topics;
+}
+
+export async function fetchWritableTopics(token: string, signal?: AbortSignal): Promise<SubscribedTopic[]> {
+  const topics = await fetchOwnedTopicRecords(token, signal);
+  return [...topics].map(([topic_id, item]) => ({ topic_id, name: String(item.name), source: 'created' }));
+}
+
+async function fetchSubscribedTopicRecords(token: string, signal?: AbortSignal): Promise<Record<string, unknown>[]> {
   const listUrl = 'https://knowledge-api.trytalks.com/v1/web/subscribe/topic/list?page=1&size=200&exclude_mine=true';
   const listData = await apiRequest<Record<string, unknown>>(listUrl, {
     method: 'GET',
     headers: buildKnowledgeHeaders(token),
   }, 2, signal);
   const topicsData = normalizeWebData(listData);
-  const raw = Array.isArray(topicsData.list) ? topicsData.list : [];
-  const topics: SubscribedTopic[] = [];
-  for (const item of raw) {
-    if (!isRecord(item)) continue;
+  return Array.isArray(topicsData.list) ? topicsData.list.filter(isRecord) : [];
+}
+
+export async function fetchSubscribedTopics(token: string, signal?: AbortSignal): Promise<SubscribedTopic[]> {
+  const [records, owned] = await Promise.all([fetchSubscribedTopicRecords(token, signal), fetchWritableTopics(token, signal)]);
+  const topics = new Map(owned.map(topic => [topic.topic_id, topic]));
+  for (const item of records) {
     // id_alias is used when available; falls back to id
-    const id = item.id_alias ?? item.id;
-    if (typeof id !== 'string' && typeof id !== 'number') continue;
-    topics.push({
-      topic_id: String(id),
+    const id = identifier(item.id_alias ?? item.id);
+    if (!id || topics.has(id)) continue;
+    topics.set(id, {
+      topic_id: id,
       name: typeof item.name === 'string' ? item.name : '',
+      source: 'subscribed',
     });
   }
-  return topics;
+  return [...topics.values()];
 }
 
 export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions): Promise<GetNoteNote[]> {
@@ -294,50 +338,80 @@ export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions):
   const topicIdSet = options.topicIds === undefined || (remainingNoteIds && options.topicIds.length === 0)
     ? undefined
     : new Set(options.topicIds);
-  const listUrl = 'https://knowledge-api.trytalks.com/v1/web/subscribe/topic/list?page=1&size=200&exclude_mine=true';
-  const listData = await apiRequest<Record<string, unknown>>(listUrl, {
-    method: 'GET',
-    headers: buildKnowledgeHeaders(options.token),
-  }, 2, options.signal);
-  const topicsData = normalizeWebData(listData);
-  const topics = Array.isArray(topicsData.list) ? topicsData.list : [];
-  for (const topic of topics) {
-    if (!isRecord(topic)) continue;
-    const topicAlias = topic.id_alias ?? topic.id;
-    if (topicIdSet && !topicIdSet.has(String(topicAlias))) continue;
-    const rootDir = isRecord(topic.root_dir) ? topic.root_dir : {};
-    const directoryId = rootDir.id;
-    if ((typeof topicAlias !== 'string' && typeof topicAlias !== 'number') || (typeof directoryId !== 'string' && typeof directoryId !== 'number')) {
-      continue;
+  const topics: Array<{ id: string; record: Record<string, unknown> }> = [];
+  if (options.createdTopicIds?.length) {
+    const wanted = new Set(options.createdTopicIds);
+    for (const [id, record] of await fetchOwnedTopicRecords(options.token, options.signal)) {
+      if (wanted.has(id) || wanted.has(identifier(record.id_alias) ?? '')) topics.push({ id, record });
     }
-    let page = 1;
-    while (true) {
-      const params = new URLSearchParams({
-        topic_id: '-1',
-        topic_id_alias: String(topicAlias),
-        directory_id: String(directoryId),
-        sort: 'create_time_desc',
-        resource_type: '0',
-        page: String(page),
-      });
-      const url = `https://knowledge-api.trytalks.com/v1/web/topic/resource/list/mix?${params.toString()}`;
-      const data = await apiRequest<Record<string, unknown>>(url, {
-        method: 'GET',
-        headers: buildKnowledgeHeaders(options.token),
-      }, 2, options.signal);
-      const source = normalizeWebData(data);
-      const resources = Array.isArray(source.resources) ? source.resources : [];
+  }
+  if (options.createdTopicIds?.length ? Boolean(topicIdSet?.size) : topicIdSet?.size !== 0) {
+    for (const record of await fetchSubscribedTopicRecords(options.token, options.signal)) {
+      const id = identifier(record.id_alias ?? record.id);
+      if (id && (!topicIdSet || topicIdSet.has(id))) topics.push({ id, record });
+    }
+  }
+  for (const topic of topics) {
+    notes.push(...await fetchKnowledgeTopicNotes(topic, options, remainingNoteIds));
+    if (remainingNoteIds?.size === 0) break;
+  }
+  return notes;
+}
+
+function topicCoordinates(record: Record<string, unknown>): { alias: string; rootId: string; name?: string } | undefined {
+  const alias = identifier(record.id_alias ?? record.id);
+  const rootId = isRecord(record.root_dir) ? identifier(record.root_dir.id) : undefined;
+  return alias && rootId ? { alias, rootId, name: typeof record.name === 'string' ? record.name : undefined } : undefined;
+}
+
+async function readKnowledgeDirectoryPage(topicAlias: string, directoryId: string, page: number, token: string, signal?: AbortSignal) {
+  const params = new URLSearchParams({
+    topic_id: '-1', topic_id_alias: topicAlias, directory_id: directoryId,
+    sort: 'create_time_desc', resource_type: '0', page: String(page),
+  });
+  const source = normalizeWebData(await apiRequest<Record<string, unknown>>(
+    `https://knowledge-api.trytalks.com/v1/web/topic/resource/list/mix?${params.toString()}`,
+    { method: 'GET', headers: buildKnowledgeHeaders(token) }, 2, signal,
+  ));
+  const resources = Array.isArray(source.resources) ? source.resources : [];
+  const children: { id: string; name: string }[] = [];
+  for (const child of (Array.isArray(source.directories) ? source.directories : []).filter(isRecord)) {
+    const id = identifier(child.id);
+    const name = typeof child.name === 'string' ? child.name.trim() : '';
+    if (id && name && (!child.type || child.type === 'DEFAULT')) children.push({ id, name });
+  }
+  return { resources, children, hasNext: Boolean(source.has_next) && (resources.length > 0 || children.length > 0) };
+}
+
+async function fetchKnowledgeTopicNotes(
+  topic: { id: string; record: Record<string, unknown> }, options: FetchNotesOptions, remainingNoteIds?: Set<string>,
+): Promise<GetNoteNote[]> {
+  const coordinates = topicCoordinates(topic.record);
+  if (!coordinates) return [];
+  const { alias, rootId, name } = coordinates;
+  const noteIds = new Set<string>();
+  const pending = [{ id: rootId, path: [] as string[] }];
+  const visited = new Set([rootId]);
+  const notes: GetNoteNote[] = [];
+  for (const directory of pending) {
+    for (let page = 1; ; page++) {
+      const { resources, children, hasNext } = await readKnowledgeDirectoryPage(alias, directory.id, page, options.token, options.signal);
       for (const resource of resources) {
-        const note = noteFromKnowledgeResource(resource, typeof topic.name === 'string' ? topic.name : undefined);
-        if (!note) continue;
-        note.topic_id = String(topicAlias);
-        if (remainingNoteIds && !remainingNoteIds.has(note.note_id)) continue;
+        const note = noteFromKnowledgeResource(resource, name);
+        if (!note || noteIds.has(note.note_id) || (remainingNoteIds && !remainingNoteIds.has(note.note_id))) continue;
+        note.topic_id = topic.id;
+        note.topic_directory_path = directory.path;
+        noteIds.add(note.note_id);
         notes.push(note);
         remainingNoteIds?.delete(note.note_id);
       }
       if (remainingNoteIds?.size === 0) return notes;
-      if (!source.has_next || resources.length === 0) break;
-      page++;
+      for (const child of children) {
+        if (visited.has(child.id)) continue;
+        visited.add(child.id);
+        pending.push({ id: child.id, path: [...directory.path, child.name] });
+      }
+      if (!hasNext) break;
     }
   }
   return notes;
@@ -385,48 +459,56 @@ export async function fetchTopicContentPreviews(
   return items;
 }
 
+export interface WebDirectoryPreviewCursor {
+  topicAlias: string;
+  topicName?: string;
+  directoryIds: string[];
+  directoryIndex: number;
+}
+
 export async function fetchTopicContentPreviewPage(
   topicId: string,
   token: string,
   signal?: AbortSignal,
-  cursor: { bloggerIndex: number; page: number } = { bloggerIndex: 0, page: 1 }
+  cursor: { bloggerIndex: number; page: number; webDirectory?: WebDirectoryPreviewCursor } = { bloggerIndex: 0, page: 1 },
+  topicSource?: SubscribedTopic['source'],
 ): Promise<{
   items: { note_id: string; title: string; updated_at: string; topic_id: string }[];
-  nextCursor?: { bloggerIndex: number; page: number };
+  nextCursor?: { bloggerIndex: number; page: number; webDirectory: WebDirectoryPreviewCursor };
 }> {
-  const listUrl = 'https://knowledge-api.trytalks.com/v1/web/subscribe/topic/list?page=1&size=200&exclude_mine=true';
-  const listData = await apiRequest<Record<string, unknown>>(listUrl, { method: 'GET', headers: buildKnowledgeHeaders(token) }, 2, signal);
-  const topicsData = normalizeWebData(listData);
-  const rawTopics = Array.isArray(topicsData.list) ? topicsData.list : [];
-  const rawTopic = findTopicByAlias(rawTopics, topicId);
-  if (!rawTopic) return { items: [] };
-  const topicAlias = rawTopic.id_alias ?? rawTopic.id;
-  const rootDir = isRecord(rawTopic.root_dir) ? rawTopic.root_dir : {};
-  const directoryId = rootDir.id;
-  if ((typeof topicAlias !== 'string' && typeof topicAlias !== 'number') || (typeof directoryId !== 'string' && typeof directoryId !== 'number')) {
-    return { items: [] };
+  let { page, webDirectory } = cursor;
+  if (!webDirectory) {
+    const topic = topicSource === 'created'
+      ? (await fetchOwnedTopicRecords(token, signal)).get(topicId)
+      : findTopicByAlias(await fetchSubscribedTopicRecords(token, signal), topicId);
+    const coordinates = topic && topicCoordinates(topic);
+    if (!coordinates) return { items: [] };
+    webDirectory = { topicAlias: coordinates.alias, topicName: coordinates.name, directoryIds: [coordinates.rootId], directoryIndex: 0 };
   }
-
-  const params = new URLSearchParams({
-    topic_id: '-1',
-    topic_id_alias: String(topicAlias),
-    directory_id: String(directoryId),
-    sort: 'create_time_desc',
-    resource_type: '0',
-    page: String(cursor.page),
-  });
-  const url = `https://knowledge-api.trytalks.com/v1/web/topic/resource/list/mix?${params.toString()}`;
-  const data = await apiRequest<Record<string, unknown>>(url, { method: 'GET', headers: buildKnowledgeHeaders(token) }, 2, signal);
-  const source = normalizeWebData(data);
-  const resources = Array.isArray(source.resources) ? source.resources : [];
-  const items = resources
-    .map(resource => noteFromKnowledgeResource(resource, typeof rawTopic.name === 'string' ? rawTopic.name : undefined))
-    .filter((note): note is GetNoteNote => Boolean(note))
-    .map(note => ({ note_id: note.note_id, title: note.title, updated_at: note.updated_at, topic_id: topicId, content: note.content, tags: note.tags }));
-  const nextCursor = source.has_next && resources.length > 0
-    ? { bloggerIndex: 0, page: cursor.page + 1 }
-    : undefined;
-  return nextCursor ? { items, nextCursor } : { items };
+  const { topicAlias, topicName } = webDirectory;
+  const directoryIds = [...webDirectory.directoryIds];
+  let { directoryIndex } = webDirectory;
+  while (directoryIndex < directoryIds.length) {
+    const { resources, children, hasNext } = await readKnowledgeDirectoryPage(topicAlias, directoryIds[directoryIndex], page, token, signal);
+    for (const child of children) {
+      if (!directoryIds.includes(child.id)) directoryIds.push(child.id);
+    }
+    if (hasNext) page++;
+    else {
+      page = 1;
+      directoryIndex++;
+    }
+    const items = resources
+      .map(resource => noteFromKnowledgeResource(resource, topicName))
+      .filter((note): note is GetNoteNote => Boolean(note))
+      .map(note => ({ note_id: note.note_id, title: note.title, updated_at: note.updated_at, topic_id: topicId, content: note.content, tags: note.tags }));
+    if (items.length === 0) continue;
+    const nextCursor = directoryIndex < directoryIds.length
+      ? { bloggerIndex: 0, page, webDirectory: { topicAlias, topicName, directoryIds, directoryIndex } }
+      : undefined;
+    return nextCursor ? { items, nextCursor } : { items };
+  }
+  return { items: [] };
 }
 
 export async function fetchNoteDetail(
@@ -500,25 +582,6 @@ function normalizeCreateContent(content: string): string {
   return trimmed ? `${trimmed}\n\n` : '';
 }
 
-function buildWebJsonContent(content: string): string {
-  const normalized = normalizeCreateContent(content);
-  const textLines = normalized.replace(/\n+$/g, '').split('\n').filter(line => line.length > 0);
-  const paragraphs: Array<{
-    type: string;
-    attrs: { textAlign: null };
-    content?: Array<{ type: string; text: string }>;
-  }> = textLines.map(line => ({
-    type: 'paragraph',
-    attrs: { textAlign: null },
-    content: [{ type: 'text', text: line }],
-  }));
-  paragraphs.push({
-    type: 'paragraph',
-    attrs: { textAlign: null },
-  });
-  return JSON.stringify({ type: 'doc', content: paragraphs });
-}
-
 function extractCreatedNoteIds(value: unknown): { noteId: string; detailId?: string } {
   if (!isRecord(value)) return { noteId: '' };
   const source = isRecord(value.c)
@@ -536,8 +599,9 @@ function extractCreatedNoteIds(value: unknown): { noteId: string; detailId?: str
 
 export async function createNote(options: CreateNoteOptions): Promise<{ noteId: string; detailId?: string }> {
   const content = normalizeCreateContent(options.content);
+  const resource = options.topicId ? 'topics/notes' : 'notes';
   const data = await apiRequest<{ h?: unknown; c?: unknown; data?: unknown }>(
-    'https://get-notes.luojilab.com/voicenotes/web/notes',
+    `https://get-notes.luojilab.com/voicenotes/web/${resource}`,
     {
       method: 'POST',
       headers: {
@@ -552,12 +616,25 @@ export async function createNote(options: CreateNoteOptions): Promise<{ noteId: 
         note_type: options.noteType,
         source: 'web',
         tags: options.tags ?? [],
+        ...(options.topicId ? { topic_id: options.topicId } : {}),
       }),
     },
-    1,
+    0,
     options.signal
   );
   const { noteId, detailId } = extractCreatedNoteIds(data);
   if (!noteId) throw new Error(t('error.createNoteFailed'));
   return { noteId, detailId };
+}
+
+export async function uploadImage(options: UploadImageOptions): Promise<string> {
+  const imageType = getImageType(options.filename);
+  const data = await apiRequest<Record<string, unknown>>(
+    'https://get-notes.luojilab.com/voicenotes/web/token/image',
+    { method: 'POST', headers: { ...buildHeaders(options.token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'web', type: imageType }) },
+    0, options.signal,
+  );
+  const credentials = data.c ?? data.data;
+  return uploadSignedImage(Array.isArray(credentials) ? credentials[0] : undefined, options, imageType, 'web');
 }

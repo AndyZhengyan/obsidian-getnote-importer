@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { App, TFile } from 'obsidian';
 import { BidirectionalSyncEngine, syncDirection, insideSyncFolder, isGeneratedAssetPath, readSyncNote, replaceSyncContent } from '../src/bidirectional-sync';
-import { addNotesToKnowledgeBase, createNote, fetchNoteDetail } from '../src/api';
+import { addNotesToKnowledgeBase, createNote, fetchNoteDetail, uploadImage } from '../src/api';
 import { updateNote } from '../src/api-clients/openapi-client';
 import { renderNote } from '../src/note-parser';
 import { parseJsonPreservingIds } from '../src/api-clients/api-client-utils';
 import { DEFAULT_SETTINGS, type GetNoteNote } from '../src/types';
 
-vi.mock('../src/api', () => ({ fetchNoteDetail: vi.fn(), createNote: vi.fn(), addNotesToKnowledgeBase: vi.fn() }));
+vi.mock('../src/api', () => ({ fetchNoteDetail: vi.fn(), createNote: vi.fn(), addNotesToKnowledgeBase: vi.fn(), uploadImage: vi.fn() }));
 vi.mock('../src/api-clients/openapi-client', () => ({ updateNote: vi.fn() }));
 vi.mock('obsidian', async importOriginal => ({
   ...await importOriginal<typeof import('obsidian')>(),
@@ -37,6 +37,7 @@ function fixture(body = renderNote(remote)) {
     const next = transform(contents.get(f.path)!); contents.set(f.path, next); return next;
   });
   app.vault.createFolder = vi.fn(async () => undefined);
+  app.metadataCache.getFileCache = () => ({});
   app.fileManager = { renameFile: vi.fn(async (f: TFile, path: string) => {
     const oldPath = f.path; contents.set(path, contents.get(oldPath)!); contents.delete(oldPath); f.path = path;
   }) } as never;
@@ -300,6 +301,51 @@ describe('bidirectional engine', () => {
     expect(result.updated).toBe(1);
     expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ id: remote.note_id, content: '本地修改' }));
   });
+  it('preserves local image embeds and existing memberships when updating the original note', async () => {
+    const image = new TFile('Sync/纯文本/图.png');
+    const data = new Uint8Array([1, 2, 3]).buffer;
+    const url = 'https://get-notes.umiwi.com/get_notes_prod/getnotes_img_abc123.png';
+    const body = '# 本地修改\n\n![[图.png|320]]';
+    const f = fixture(renderNote({ ...remote, topic_id: 'topic-1' }).replace('\n原文\n', `\n${body}\n`));
+    Object.assign(f.app.metadataCache, { getFirstLinkpathDest: vi.fn(() => image) });
+    Object.assign(f.app.vault, { readBinary: vi.fn().mockResolvedValue(data) });
+    vi.mocked(uploadImage).mockResolvedValue(url);
+    vi.mocked(fetchNoteDetail).mockResolvedValueOnce(remote).mockResolvedValueOnce(remote)
+      .mockResolvedValue({ ...remote, content: `# 本地修改\n\n![图](${url})` });
+
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { changedOnly: true });
+
+    expect(result.updated).toBe(1);
+    expect(uploadImage).toHaveBeenCalledWith(expect.objectContaining({ filename: image.name, data }));
+    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ id: remote.note_id, content: `# 本地修改\n\n![图](${url})` }));
+    expect(addNotesToKnowledgeBase).not.toHaveBeenCalled();
+    expect(readSyncNote(f.contents.get(f.file.path)!)?.body).toBe(body);
+    expect(f.contents.get(f.file.path)).toContain('topic_id: "topic-1"');
+
+    vi.mocked(fetchNoteDetail).mockResolvedValue({ ...remote,
+      content: '# 本地修改\n\n![图](https://example.aliyuncs.com/get_notes_prod%2Fgetnotes_img_abc123.png?Expires=2&Signature=new)',
+    });
+    const download = await new BidirectionalSyncEngine(f.app, f.settings).sync(undefined, { direction: 'download' });
+    expect(download.updated).toBe(0);
+    expect(download.failed).toBe(0);
+    expect(readSyncNote(f.contents.get(f.file.path)!)?.body).toBe(body);
+    expect(uploadImage).toHaveBeenCalledOnce();
+  });
+
+  it('confirms a text edit when the server refreshes an existing image URL', async () => {
+    const url = 'https://get-notes.umiwi.com/get_notes_prod%2Fgetnotes_img_abc123.png';
+    const original = { ...remote, content: `原文\n![图](${url}?Expires=1&Signature=old)` };
+    const f = fixture(renderNote({ ...original, content: original.content.replace('Expires=1', 'Expires=0') })
+      .replace('原文', '本地修改'));
+    vi.mocked(fetchNoteDetail).mockResolvedValueOnce(original).mockResolvedValueOnce(original)
+      .mockResolvedValue({ ...remote, content: `本地修改\n![图](${url}?Expires=2&Signature=new)` });
+
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+
+    expect(result.updated).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(uploadImage).not.toHaveBeenCalled();
+  });
   it('still uploads UID-less drafts during changed-only reconciliation', async () => {
     const f = fixture('本地新笔记');
     vi.mocked(createNote).mockResolvedValue({ noteId: '12345678901234567890' });
@@ -313,11 +359,89 @@ describe('bidirectional engine', () => {
     f.file.basename = '本地知识库笔记';
     f.contents.clear(); f.contents.set(f.file.path, '本地知识库笔记');
     f.settings.knowledgeBaseCache = { entries: [{ topicId: 'kb-1', name: '我的知识库', source: 'created' }], updatedAt: Date.now() };
+    f.settings.datePathEnabled = true;
     vi.mocked(createNote).mockResolvedValue({ noteId: 'kb-note-1' });
     const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
     expect(result.created).toBe(1);
     expect(addNotesToKnowledgeBase).toHaveBeenCalledWith(expect.objectContaining({ topicId: 'kb-1', noteIds: ['kb-note-1'] }));
     expect(f.file.path).toBe('Sync/知识库/我的知识库/本地知识库笔记.md');
+  });
+  it('uploads shared image embeds once and preserves the surrounding Markdown', async () => {
+    const image = new TFile('Sync/纯文本/asset/local image (1).png');
+    const url = 'https://get-notes.umiwi.com/uploaded.png';
+    const markdownImage = '![alt](<asset/local image (1).png> "caption")';
+    const referenceImage = '![reference alt][diagram]';
+    const body = [
+      '# Heading',
+      '**Bold** and [link](https://example.com)',
+      markdownImage,
+      '![[asset/local image (1).png|320]]',
+      referenceImage,
+      `\`\` ${markdownImage} \` \`\``,
+      '\`\`\`md', markdownImage, '\`\`\`',
+      '<!-- ![[hidden.png]] -->',
+      '%% ![[hidden-in-obsidian.png]] %%',
+      '',
+      '    ![indented example](missing.png)',
+      '\t![[tab-indented-example.png]]',
+      '',
+      '[diagram]: <asset/local image (1).png> "reference title"',
+    ].join('\n');
+    const f = fixture(body);
+    const resolveImage = vi.fn(() => image);
+    Object.assign(f.app.metadataCache, { getFirstLinkpathDest: resolveImage });
+    Object.assign(f.app.vault, { readBinary: vi.fn().mockResolvedValue(new ArrayBuffer(3)) });
+    vi.mocked(uploadImage).mockResolvedValue(url);
+    vi.mocked(createNote).mockResolvedValue({ noteId: remote.note_id });
+
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+
+    expect(result.created).toBe(1);
+    expect(uploadImage).toHaveBeenCalledOnce();
+    expect(resolveImage).toHaveBeenCalledTimes(3);
+    expect(resolveImage).toHaveBeenCalledWith('asset/local image (1).png', 'Sync/纯文本/笔记.md');
+    expect(createNote).toHaveBeenCalledWith(expect.objectContaining({
+      content: body.replace(markdownImage, `![alt](${url} "caption")`)
+        .replace('![[asset/local image (1).png|320]]', `![local image (1)](${url})`)
+        .replace(referenceImage, `![reference alt](${url} "reference title")`),
+    }));
+    expect(readSyncNote(f.contents.get(f.file.path)!)?.body).toBe(body);
+  });
+  it('keeps a draft retryable when resolving an attachment fails before creation', async () => {
+    const body = '![Diagram](missing.png)';
+    const f = fixture(body);
+    Object.assign(f.app.metadataCache, { getFirstLinkpathDest: vi.fn(() => null) });
+
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).sync();
+
+    expect(result.failed).toBe(1);
+    expect(result.items?.[0].error).toContain('missing.png');
+    expect(createNote).not.toHaveBeenCalled();
+    expect(f.contents.get(f.file.path)).toBe(body);
+  });
+  it('archives a manually routed draft with its adjacent image and local embed intact', async () => {
+    const body = '![](asset/diagram.png)';
+    const f = fixture(body);
+    const image = new TFile('Sync/纯文本/asset/diagram.png');
+    f.contents.set(image.path, 'binary fixture');
+    f.app.vault.getAbstractFileByPath = path => path === image.path ? image : path === f.file.path ? f.file : null;
+    Object.assign(f.app.vault, { readBinary: vi.fn().mockResolvedValue(new ArrayBuffer(0)) });
+    const point = { line: 0, col: 0, offset: 0 };
+    f.app.metadataCache.getFileCache = () => ({
+      embeds: [{ link: 'asset/diagram.png', original: body, position: { start: point, end: point } }],
+    });
+    f.app.metadataCache.getFirstLinkpathDest = () => image;
+    vi.mocked(uploadImage).mockResolvedValue('https://get-notes.umiwi.com/uploaded.png');
+    vi.mocked(createNote).mockResolvedValue({ noteId: remote.note_id });
+
+    const result = await new BidirectionalSyncEngine(f.app, f.settings).uploadNewFile(
+      f.file, undefined, { destination: { topicId: 'manual-topic', topicName: '手动选择' } },
+    );
+
+    expect(result.status).toBe('created');
+    expect(f.file.path).toBe('Sync/知识库/手动选择/笔记.md');
+    expect(image.path).toBe('Sync/知识库/手动选择/asset/diagram.png');
+    expect(readSyncNote(f.contents.get(f.file.path)!)?.body).toBe(body);
   });
   it('uploads to the original string ID and verifies the result', async () => {
     const f = fixture(renderNote(remote).replace('\n原文\n', '\n本地修改\n'));

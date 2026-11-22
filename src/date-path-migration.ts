@@ -1,6 +1,6 @@
 import { isArchivedSyncNote } from './sync-note-state';
 import type { App, CachedMetadata, TFile } from 'obsidian';
-import { buildCanonicalCategoryDir, formatCreatedDatePath } from './date-paths';
+import { buildCanonicalCategoryDir, formatCreatedDatePath, isKnowledgeBaseCategory, KNOWLEDGE_BASE_CATEGORY } from './date-paths';
 import { getCategoryDir } from './types';
 
 export interface DatePathMigrationTarget {
@@ -140,9 +140,11 @@ function existingCategoryDir(
 ): string | null {
   const relativeDir = dirname(filePath).slice(rootFolder.length + 1);
   if (!relativeDir) return null;
+  if (isKnowledgeBaseCategory(relativeDir)) return relativeDir;
 
   const origin = context.categoryOrigins[uid];
   if (origin?.path === filePath) return origin.category;
+  if (context.rebuildCategories && !relativeDir.includes(`/${KNOWLEDGE_BASE_CATEGORY}/`)) return null;
 
   if (context.source.enabled) {
     const sourceDatePath = formatCreatedDatePath(created, context.source.format);
@@ -179,7 +181,7 @@ function desiredConflictPath(file: TFile, rootFolder: string, uid: string): stri
 }
 
 function referencedLinks(cache: CachedMetadata): string[] {
-  return [...(cache.embeds ?? []), ...(cache.links ?? [])]
+  return [...(cache.embeds ?? []), ...(cache.links ?? []), ...(cache.frontmatterLinks ?? [])]
     .map(link => link.link.trim())
     .filter(Boolean);
 }
@@ -237,6 +239,10 @@ interface LinkResolution {
   resolved: TFile | null;
 }
 
+function linkPath(link: string): string {
+  return link.split('#', 1)[0];
+}
+
 function fileAtPath(app: MigrationApp, path: string): TFile | null {
   const candidate = app.vault.getAbstractFileByPath(path);
   return candidate
@@ -249,11 +255,11 @@ function fileAtPath(app: MigrationApp, path: string): TFile | null {
 
 function sourceAssetForLink(app: MigrationApp, file: TFile, link: string): TFile | null {
   if (!GENERATED_ASSET_PATTERN.test(link)) return null;
-  const linkPath = link.split('#', 1)[0].replace(/^\.\//, '');
-  if (!linkPath || !linkPath.split('/').every(isSafeSegment)) return null;
+  const relativePath = linkPath(link).replace(/^\.\//, '');
+  if (!relativePath || !relativePath.split('/').every(isSafeSegment)) return null;
   for (const candidatePath of [
-    `${dirname(file.path)}/${linkPath}`,
-    `${dirname(file.path)}/${linkPath}.md`,
+    `${dirname(file.path)}/${relativePath}`,
+    `${dirname(file.path)}/${relativePath}.md`,
   ]) {
     const candidate = fileAtPath(app, candidatePath);
     if (candidate) return candidate;
@@ -268,7 +274,7 @@ function resolveLinks(
 ): LinkResolution[] {
   return referencedLinks(cache).map(link => ({
     link,
-    resolved: app.metadataCache.getFirstLinkpathDest(link, file.path)
+    resolved: app.metadataCache.getFirstLinkpathDest(linkPath(link), file.path)
       ?? sourceAssetForLink(app, file, link),
   }));
 }
@@ -636,7 +642,7 @@ async function resolveDuplicateUids(
 
 async function executePlan(
   app: MigrationApp,
-  plan: NoteCandidate & { uid: string; targetPath: string },
+  plan: Pick<NoteCandidate, 'file' | 'assets'> & { uid: string; targetPath: string },
   result: DatePathMigrationResult,
 ): Promise<void> {
   const moves = [
@@ -653,10 +659,12 @@ async function executePlan(
   const completed: PlannedMove[] = [];
   try {
     await ensureFolder(app, dirname(plan.targetPath));
-    if (plan.assets.some(asset => asset.sourcePath !== asset.targetPath)) {
-      await ensureFolder(app, `${dirname(plan.targetPath)}/asset`);
-    }
     for (const move of moves) {
+      await ensureFolder(app, dirname(move.targetPath));
+      if (app.vault.getAbstractFileByPath(move.targetPath)) {
+        throw new Error(`Target already exists: ${move.targetPath}`);
+      }
+      if (move.file.path !== move.sourcePath) throw new Error(`Source moved: ${move.sourcePath}`);
       await app.fileManager.renameFile(move.file, move.targetPath);
       completed.push(move);
     }
@@ -684,6 +692,94 @@ async function executePlan(
       }
     }
   }
+}
+
+/**
+ * Move a single associated note without replacing its Markdown or claiming
+ * globally matching attachments. Only files it references in its own asset
+ * directory travel with it. Obsidian handles link updates during each rename.
+ */
+export async function relocateSyncNote(
+  app: MigrationApp,
+  file: TFile,
+  uid: string,
+  targetPath: string,
+): Promise<void> {
+  const cache = app.metadataCache.getFileCache(file);
+  if (!cache) throw new Error(`Waiting for Obsidian to index ${file.path}`);
+  const links = resolveLinks(app, file, cache);
+  const assetPrefix = `${dirname(file.path)}/asset/`;
+  const assets = new Map<string, PlannedMove>();
+  for (const { link, resolved } of links) {
+    if (!resolved) {
+      if (/^(?:\.\/)?asset\//.test(link)) {
+        throw new Error(`Cannot resolve local attachment in ${file.path}: ${link}`);
+      }
+      continue;
+    }
+    if (!resolved.path.startsWith(assetPrefix)) {
+      if (resolved.path === file.path) {
+        const selfPath = linkPath(link);
+        const name = basename(file.path);
+        if (selfPath && (selfPath.includes('/') || name !== basename(targetPath)
+          || app.vault.getMarkdownFiles().some(other =>
+            other.path !== file.path && basename(other.path).toLowerCase() === name.toLowerCase()))) {
+          throw new Error(`Self-link would need updating after moving ${file.path}: ${link}`);
+        }
+      } else {
+        const atTarget = app.metadataCache.getFirstLinkpathDest(linkPath(link), targetPath);
+        if (atTarget?.path !== resolved.path) {
+          throw new Error(`Link would resolve differently after moving ${file.path}: ${link}`);
+        }
+      }
+      continue;
+    }
+    const target = `${dirname(targetPath)}/asset/${resolved.path.slice(assetPrefix.length)}`;
+    if (target === resolved.path) continue;
+    const attachmentLink = linkPath(link);
+    if (attachmentLink.includes('/') && !/^(?:\.\/)?asset\//.test(attachmentLink)) {
+      throw new Error(`Attachment uses a path that would change after moving ${file.path}: ${link}`);
+    }
+    if (app.vault.getAbstractFileByPath(target)) throw new Error(`Target attachment already exists: ${target}`);
+    assets.set(resolved.path, { file: resolved, sourcePath: resolved.path, targetPath: target });
+  }
+
+  // renameFile respects the vault's link-update preference. Avoid relying on
+  // it for links that would need a rewrite or for assets shared by other notes.
+  const oldPath = file.path;
+  const references = app.metadataCache.resolvedLinks ?? {};
+  const assetsBySource = new Set(assets.keys());
+  const oldName = basename(oldPath);
+  const renamed = oldName !== basename(targetPath);
+  for (const [sourcePath, destinations] of Object.entries(references)) {
+    if (sourcePath === oldPath) continue;
+    for (const destination of Object.keys(destinations)) {
+      if (assetsBySource.has(destination)) {
+        throw new Error(`Attachment is also referenced by ${sourcePath}: ${destination}`);
+      }
+    }
+    if (!destinations[oldPath]) continue;
+    const source = fileAtPath(app, sourcePath);
+    const sourceCache = source ? app.metadataCache.getFileCache(source) : null;
+    const backlinkReferences = source && sourceCache
+      ? resolveLinks(app, source, sourceCache).filter(reference => reference.resolved?.path === oldPath)
+      : [];
+    const hasAmbiguousName = app.vault.getMarkdownFiles().some(other => (
+      other.path !== oldPath && basename(other.path).toLowerCase() === oldName.toLowerCase()
+    ));
+    if (renamed || hasAmbiguousName || !backlinkReferences.length
+      || backlinkReferences.some(reference => linkPath(reference.link).includes('/'))) {
+      throw new Error(`Incoming link from ${sourcePath} would need updating after moving ${oldPath}`);
+    }
+  }
+
+  const result: DatePathMigrationResult = {
+    scanned: 1, moved: 0, unchanged: 0, skipped: 0, failed: 0, issues: [],
+  };
+  await executePlan(app, {
+    file, uid, targetPath, assets: [...assets.values()],
+  }, result);
+  if (result.failed) throw new Error(result.issues.map(problem => `${problem.code}: ${problem.message}`).join('\n'));
 }
 
 /**
@@ -767,10 +863,10 @@ export async function migrateDatePaths(
     }
 
     try {
-      const category = context.rebuildCategories
-        ? getCategoryDir(noteType)
-        : existingCategoryDir(file.path, root, created, uid, context)
-          ?? getCategoryDir(noteType);
+      const existingCategory = existingCategoryDir(file.path, root, created, uid, context);
+      const category = existingCategory && (!context.rebuildCategories || isKnowledgeBaseCategory(existingCategory))
+        ? existingCategory
+        : getCategoryDir(noteType);
       candidate.category = category;
       candidate.targetPath = desiredNotePath(file, root, created, category, target);
     } catch (error) {

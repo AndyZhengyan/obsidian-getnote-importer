@@ -356,7 +356,7 @@ describe('ReverseSyncEngine', () => {
     );
   });
 
-  it('uploads Markdown image embeds as plain links so create-note does not reject third-party images', async () => {
+  it('keeps an external image reachable through a link when creating an OpenAPI note', async () => {
     const app = makeMockApp();
     app.vault._addFile('得到大脑/with-image.md', [
       '---',
@@ -364,7 +364,6 @@ describe('ReverseSyncEngine', () => {
       'note_type: plain_text',
       '---',
       'Before',
-      '![](asset/local image.png)',
       '![diagram](https://cdn.example.com/diagram.png)',
       'After',
     ].join('\n'));
@@ -381,7 +380,6 @@ describe('ReverseSyncEngine', () => {
           title: 'With image',
           content: [
             'Before',
-            '[asset/local image.png](asset/local image.png)',
             '[diagram](https://cdn.example.com/diagram.png)',
             'After',
           ].join('\n'),
@@ -393,7 +391,7 @@ describe('ReverseSyncEngine', () => {
     );
   });
 
-  it('applies upload-safe tags and image links in Web API mode too', async () => {
+  it('applies upload-safe tags and preserves image Markdown in Web API mode', async () => {
     const app = makeMockApp();
     app.vault._addFile('得到大脑/web-safe.md', [
       '---',
@@ -427,8 +425,28 @@ describe('ReverseSyncEngine', () => {
       note_type: 'plain_text',
       tags: ['one', 'two', 'three', 'four'],
     }));
-    expect(payload.content).toContain('[chart](https://cdn.example.com/chart.png)');
-    expect(payload.content).not.toContain('![chart]');
+    expect(payload.content).toContain('![chart](https://cdn.example.com/chart.png)');
+  });
+
+  it.each(['openapi', 'web'] as const)('uses the manually selected knowledge base in %s mode', async authMode => {
+    const app = makeMockApp();
+    const path = '得到大脑/待上传.md';
+    app.vault._addFile(path, '---\ntopic_id: "previous"\n---\n# 正文');
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(authMode === 'openapi'
+      ? mockFetchResponse({ success: true, data: { note: { note_id: 'new-note' } } })
+      : mockFetchResponse({ h: {}, c: { note_id: 'new-note', prime_id: 'new-detail' } }));
+    const engine = new ReverseSyncEngine(toObsidianApp(app), makeSettings({
+      authMode, webApiToken: 'test-web', datePathEnabled: true,
+    }));
+
+    const result = await engine.syncFiles(app.vault.getMarkdownFiles().map(toTFile), { topicId: 'selected', topicName: '选中的知识库' });
+
+    expect(result.created).toBe(1);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual(expect.objectContaining({ topic_id: 'selected' }));
+    const uploaded = app.vault._getFile(authMode === 'openapi' ? '得到大脑/知识库/选中的知识库/待上传.md' : path);
+    expect(uploaded?.content).toContain('topic_id: "selected"');
+    expect(uploaded?.content).toContain('uid: "new-note"');
   });
 
   it('skips notes whose uid still exists remotely', async () => {

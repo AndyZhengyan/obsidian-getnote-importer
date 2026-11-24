@@ -96,7 +96,7 @@ Search Dedao Brain from Obsidian, then open a local hit or sync a remote hit wit
 
 ## 🔑 Authentication
 
-> ⚠️ Dedao Brain OpenAPI currently requires a **Dedao Brain PRO** membership. Free-tier users cannot retrieve full data through OpenAPI and can try Web mode on desktop instead.
+> [Dedao Brain MCP v1.12.3](https://github.com/iswalle/getnote-mcp/releases/tag/v1.12.3) documents OpenAPI access for authorized free accounts and higher default limits for members. Access to individual features depends on your account permissions. Use **View Quota** in the plugin to check your limits.
 
 Credentials are stored only in your local Obsidian plugin data.
 
@@ -253,7 +253,7 @@ Migration is safe to re-run. When there is a target conflict, invalid metadata, 
 
 ## ⚠️ Known limitations
 
-- OpenAPI depends on Dedao Brain's Open Platform and requires PRO access.
+- OpenAPI depends on Dedao Brain's Open Platform availability and your account permissions.
 - Web mode depends on Dedao Brain's web APIs and browser session; API changes or expired tokens can break it.
 - Automatic Web login / token refresh is primarily a desktop feature.
 - Manual upload is create-only. Automatic upload can send title, body, and tag edits from linked plain-text notes in the sync folder.

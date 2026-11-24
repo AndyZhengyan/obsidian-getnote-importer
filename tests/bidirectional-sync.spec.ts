@@ -217,7 +217,7 @@ describe('bidirectional engine', () => {
     f.app.vault.getMarkdownFiles = () => [f.file, second];
     f.app.vault.getAbstractFileByPath = path => path === f.file.path ? f.file : path === second.path ? second : null;
     f.settings.reverseSync = { ...f.settings.reverseSync, lastReverseFullSyncAt: 123 };
-    vi.mocked(createNote).mockRejectedValue(new Error('API 配额已用完，请明天再试'));
+    vi.mocked(createNote).mockRejectedValue(new Error('API 配额已用完，请在额度重置后再试'));
     expect((await new BidirectionalSyncEngine(f.app, f.settings).sync()).failed).toBe(1);
     expect(createNote).toHaveBeenCalledTimes(1);
     expect(f.settings.reverseSync.lastReverseFullSyncAt).toBe(123);

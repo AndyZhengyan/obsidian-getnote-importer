@@ -3,7 +3,7 @@ import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { App } from 'obsidian';
 import { abstractInputSuggestInstances, TFile, TFolder } from './mocks/obsidian';
-import { fetchNotes } from '../src/api';
+import { fetchNotes, fetchOpenApiQuota } from '../src/api';
 import { initI18n } from '../src/i18n';
 import * as SettingsModule from '../src/settings';
 import { SettingsComponent } from '../src/settings';
@@ -11,6 +11,7 @@ import { DEFAULT_SETTINGS, type Settings } from '../src/types';
 
 vi.mock('../src/api', () => ({
   fetchNotes: vi.fn().mockResolvedValue({ notes: [], hasMore: false }),
+  fetchOpenApiQuota: vi.fn(),
   fetchOAuthDeviceCode: vi.fn(),
   pollOAuthToken: vi.fn(),
 }));
@@ -409,6 +410,23 @@ describe('SettingsComponent information architecture (#257)', () => {
     expect(container.querySelector('[data-settings-status]')?.textContent).toContain('连接成功');
   });
 
+  it('shows the current OpenAPI quota next to the connection controls', async () => {
+    vi.mocked(fetchOpenApiQuota).mockResolvedValue([
+      { bucket: 'read', period: 'daily', limit: 100, remaining: 80, resetAt: 1795536000 },
+    ]);
+    const { container } = renderSettings(makeSettings({
+      openApiToken: 'token',
+      openApiClientId: 'client-id',
+    }));
+    const status = container.querySelector('[data-settings-status]')!;
+    const button = [...status.querySelectorAll('button')].find(item => item.textContent === '查看配额');
+    expect(button).toBeDefined();
+    await act(async () => button!.click());
+    expect(fetchOpenApiQuota).toHaveBeenCalledWith('token', 'client-id', expect.any(AbortSignal));
+    expect(status.textContent).toContain('每日读取');
+    expect(status.textContent).toContain('80 / 100');
+  });
+
   it('tests the entered Web Token without substituting or renewing the saved session', async () => {
     vi.mocked(fetchNotes).mockResolvedValue({ notes: [], hasMore: false });
     const { container } = renderSettings(makeSettings({
@@ -460,9 +478,9 @@ describe('SettingsComponent information architecture (#257)', () => {
     const toggle = details.querySelector<HTMLInputElement>('input[aria-label="启动双向同步"]')!;
     const control = toggle.closest<HTMLElement>('.checkbox-container')!;
     expect(toggle.disabled).toBe(true);
-    expect(control.title).toContain('启动双向同步需要 OpenAPI 鉴权（PRO 会员）');
+    expect(control.title).toContain('启动双向同步需要 OpenAPI 鉴权');
     expect(control.title).toContain('临时鉴权仅支持下载同步');
-    expect(details.textContent).not.toContain('启动双向同步需要 OpenAPI 鉴权（PRO 会员）');
+    expect(details.textContent).not.toContain('启动双向同步需要 OpenAPI 鉴权');
   });
 
   it('replaces configured copy with an unverified connection indicator', () => {
@@ -1061,7 +1079,7 @@ describe('SettingsComponent auth credentials', () => {
       .find((item): item is HTMLButtonElement => item.textContent === '按知识库同步');
     expect(button).toBeTruthy();
     expect(button!.disabled).toBe(true);
-    expect(container.textContent).toContain('需 OpenAPI 鉴权（会员）');
+    expect(container.textContent).toContain('需 OpenAPI 鉴权');
   });
 
   it('does not render a separate upload permission switch', () => {
@@ -1410,7 +1428,7 @@ describe('SettingsComponent auth credentials', () => {
 
     expect(container.textContent).toContain('Temporary Auth');
     expect(container.textContent).toContain('about 30 minutes');
-    expect(container.textContent).toContain('PRO');
+    expect(container.textContent).toContain('official OpenAPI');
     expect(container.textContent).toContain('OpenAPI');
     expect(container.textContent).not.toContain('DevTools');
     expect(container.textContent).not.toContain('Network');

@@ -40,6 +40,17 @@
   justify-content: flex-end;
 }
 
+.getnote-settings-quota {
+  width: 100%;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.getnote-settings-quota ul {
+  margin: 0;
+  padding-inline-start: 1.4em;
+}
+
 .getnote-settings-status-bar.is-credentials-open {
   margin-bottom: 0;
   border-radius: var(--radius-m) var(--radius-m) 0 0;

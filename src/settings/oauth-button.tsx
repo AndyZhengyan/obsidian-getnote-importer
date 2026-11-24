@@ -5,7 +5,7 @@ import { openExternalUrl } from './external-link';
 
 interface OAuthButtonProps {
   onAuthorize: (apiToken: string, clientId: string) => void;
-  onTestConnection: (apiToken: string, clientId: string) => Promise<{ isMemberError: boolean; message: string }>;
+  onTestConnection: (apiToken: string, clientId: string) => Promise<void>;
 }
 
 type OAuthStep = 'idle' | 'opening' | 'code' | 'polling' | 'success' | 'error';
@@ -78,15 +78,9 @@ export function OAuthButton({ onAuthorize, onTestConnection }: OAuthButtonProps)
 
       // Step 4: test connection
       setStep('polling');
-      const testResult = await onTestConnection(token.api_key, token.client_id);
-
-      if (testResult.isMemberError) {
-        setStep('error');
-        setErrorMsg(testResult.message);
-      } else {
-        setStep('success');
-        successTimeoutRef.current = window.setTimeout(() => setStep('idle'), 3000);
-      }
+      await onTestConnection(token.api_key, token.client_id);
+      setStep('success');
+      successTimeoutRef.current = window.setTimeout(() => setStep('idle'), 3000);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         setStep('idle');

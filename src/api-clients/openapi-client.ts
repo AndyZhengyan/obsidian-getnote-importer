@@ -117,66 +117,72 @@ function normalizeNoteDetailData(value: unknown): Partial<GetNoteNote> | null {
   return { ...detail, attachments, audio, linkOriginal, children_ids: childrenIds, ...(topics ? { topics } : {}) };
 }
 
-function parseErrorBody(text: string): Record<string, unknown> {
-  return parseJsonObjectOrEmpty(text);
-}
-
-async function handleRateLimit<T>(
-  url: string,
-  options: RequestInit,
-  res: Response,
-  retries: number,
-  signal?: AbortSignal
-): Promise<T> {
-  const text = await res.text().catch(() => '');
-  const json = parseErrorBody(text);
-  const errObj = (json.error ?? json) as Record<string, unknown>;
-  const reason = errObj.reason as string | undefined;
-  if (reason === 'quota_day' || reason === 'quota_daily_exceeded' || reason === 'quota_month' || reason === 'quota_monthly_exceeded') {
-    const quotaReason = reason === 'quota_month' || reason === 'quota_monthly_exceeded' ? 'quota_month' : 'quota_day';
-    lastQuota = { exhausted: true, reason: quotaReason, checkedAt: Date.now() };
-    throw new FatalOpenApiError(t('error.quotaExceeded'));
-  }
-  if (retries > 0) {
-    await waitForRetryDelay(signal);
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    return apiRequest(url, options, retries - 1, signal);
-  }
-  throw new Error(t('error.rateLimited'));
-}
-
 async function apiRequest<T>(url: string, options: RequestInit, retries = 1, signal?: AbortSignal): Promise<T> {
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   const res = await fetch(url, { ...options, signal });
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   if (res.status === 401) throw new FatalOpenApiError(t('error.invalidCredentials'));
-  if (res.status === 429) return handleRateLimit<T>(url, options, res, retries, signal);
-  if (res.status < 200 || res.status >= 300) {
-    const text = await res.text();
-    const json = parseJsonPreservingIds(text) as Record<string, unknown>;
-    if (res.status === 403 && json.success === false) {
-      const errObj = (json.error ?? json) as Record<string, unknown>;
-      const code = errObj?.code as number | undefined;
-      if (code === 10201) throw new FatalOpenApiError(t('error.openApiNotMember'));
-    }
-    throw new Error(t('error.apiServerError', { status: res.status }));
-  }
   const text = await res.text();
-  const json = parseJsonPreservingIds(text) as Record<string, unknown>;
-  // Handle HTTP 200 with business-level errors
-  if (json.success === false) {
-    const errObj = (json.error ?? json) as Record<string, unknown>;
-    const code = errObj?.code as number | undefined;
-    if (code === 10201) throw new FatalOpenApiError(t('error.openApiNotMember'));
-    if (code === 10202 && retries > 0) {
+  const json = res.ok
+    ? parseJsonPreservingIds(text) as Record<string, unknown>
+    : parseJsonObjectOrEmpty(text);
+  if (res.ok && json.success !== false) return json as T;
+  const error = isRecord(json.error) ? json.error : json;
+  if (error.code === 10201 || error.reason === 'not_member') {
+    throw new FatalOpenApiError(t('error.openApiNotMember'));
+  }
+  if (error.code === 10001) throw new FatalOpenApiError(t('error.invalidCredentials'));
+  const dailyQuota = error.reason === 'quota_day' || error.reason === 'quota_daily_exceeded';
+  const monthlyQuota = error.reason === 'quota_month' || error.reason === 'quota_monthly_exceeded';
+  if (dailyQuota || monthlyQuota || error.code === 42900) {
+    const reason = dailyQuota ? 'quota_day' : monthlyQuota ? 'quota_month' : undefined;
+    lastQuota = { exhausted: true, reason, checkedAt: Date.now() };
+    throw new FatalOpenApiError(t('error.quotaExceeded'));
+  }
+  if (res.status === 429 || error.code === 10202) {
+    if (retries > 0) {
       await waitForRetryDelay(signal);
-      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       return apiRequest(url, options, retries - 1, signal);
     }
-    const rawMsg = (errObj?.message as string) ?? '';
-    throw new Error(rawMsg ? t('error.apiGenericWithMsg', { msg: rawMsg }) : t('error.apiGeneric'));
+    throw new Error(t('error.rateLimited'));
   }
-  return json as T;
+  if (res.status === 403) throw new Error(t('error.openApiForbidden'));
+  if (!res.ok) throw new Error(t('error.apiServerError', { status: res.status }));
+  const message = typeof error.message === 'string' ? error.message : '';
+  throw new Error(message ? t('error.apiGenericWithMsg', { msg: message }) : t('error.apiGeneric'));
+}
+
+export interface OpenApiQuotaEntry {
+  bucket: 'read' | 'write' | 'write_note' | 'ai_chat';
+  period: 'daily' | 'monthly';
+  limit: number;
+  remaining: number;
+  resetAt?: number;
+}
+
+export async function fetchOpenApiQuota(token: string, clientId: string, signal?: AbortSignal): Promise<OpenApiQuotaEntry[]> {
+  const response = await apiRequest<{ data?: unknown }>(
+    'https://openapi.biji.com/open/api/v1/resource/rate-limit/quota',
+    { method: 'GET', headers: buildHeaders(token, clientId) },
+    1,
+    signal,
+  );
+  const data = response.data ?? response;
+  const entries: OpenApiQuotaEntry[] = [];
+  if (!isRecord(data)) return entries;
+  for (const bucket of ['read', 'write', 'write_note', 'ai_chat'] as const) {
+    const quotas = data[bucket];
+    if (!isRecord(quotas)) continue;
+    for (const period of ['daily', 'monthly'] as const) {
+      const quota = quotas[period];
+      if (!isRecord(quota) || typeof quota.limit !== 'number' || typeof quota.remaining !== 'number') continue;
+      entries.push({
+        bucket, period, limit: quota.limit, remaining: quota.remaining,
+        ...(typeof quota.reset_at === 'number' && quota.reset_at > 0 ? { resetAt: quota.reset_at } : {}),
+      });
+    }
+  }
+  return entries;
 }
 
 export interface FetchNotesOptions {

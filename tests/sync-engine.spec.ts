@@ -1368,11 +1368,25 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
           },
         }) as Response;
       }
+      if (requestUrl.includes('/resource/knowledge/notes?')) {
+        return mockFetchResponse({ data: { notes: [{
+          note_id: 'ordinary-1', title: '库内普通笔记', content: '普通笔记正文',
+          note_type: 'plain_text', created_at: '2025-01-01T10:00:00+08:00',
+          updated_at: '2025-01-01T10:00:00+08:00',
+        }, {
+          note_id: 'existing-ordinary', title: '已有普通笔记', content: '远端内容',
+          note_type: 'plain_text', created_at: '2025-01-01T10:00:00+08:00',
+          updated_at: '2025-01-01T10:00:00+08:00',
+        }] } }) as Response;
+      }
       throw new Error(`Unexpected request: ${requestUrl}`);
     });
 
     try {
       const app = makeMockApp();
+      const existingPath = '得到大脑/手工整理/已有普通笔记.md';
+      const existingContent = '---\nuid: existing-ordinary\n---\n用户编辑的内容';
+      app.vault._addFile(existingPath, existingContent);
       const engine = new SyncEngine(app, makeSettings({ maxDays: 1 }));
       const result = await engine.syncSubscribedKnowledge(undefined, {
         syncAll: true,
@@ -1380,7 +1394,15 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
         knowledgeBaseName: '长期专题',
       });
 
-      expect(result.created).toBe(1);
+      expect(result.created).toBe(2);
+      expect(result.skipped).toBe(1);
+      const existing = app.vault.getAbstractFileByPath(existingPath);
+      expect(existing).toBeInstanceOf(TFile);
+      expect(await app.vault.read(existing as TFile)).toBe(existingContent);
+      expect(app.vault.create).toHaveBeenCalledWith(
+        expect.stringMatching(/^得到大脑\/知识库\/长期专题\//),
+        expect.stringContaining('普通笔记正文'),
+      );
       expect(app.vault.create).toHaveBeenCalledWith(
         expect.stringMatching(/^得到大脑\/知识库\/长期专题\//),
         expect.any(String)
@@ -1552,6 +1574,9 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
             updated_at: '2026-01-02T10:00:00+08:00',
           },
         }) as Response;
+      }
+      if (requestUrl.includes('/resource/knowledge/notes?')) {
+        return mockFetchResponse({ data: { notes: [] } }) as Response;
       }
       throw new Error(`Unexpected request: ${requestUrl}`);
     });
@@ -1777,6 +1802,9 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
       }
       if (requestUrl.includes('/resource/knowledge/blogger/content/detail')) {
         return mockFetchResponse({ data: {} }) as Response;
+      }
+      if (requestUrl.includes('/resource/knowledge/notes?')) {
+        return mockFetchResponse({ data: { notes: [] } }) as Response;
       }
       throw new Error(`Unexpected request: ${requestUrl}`);
     });

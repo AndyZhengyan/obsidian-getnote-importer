@@ -809,6 +809,79 @@ describe('web auth mode', () => {
 });
 
 describe('OpenAPI knowledge previews', () => {
+  it('previews ordinary notes in a subscribed knowledge base with no bloggers', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockFetchResponse({ data: { bloggers: [] } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: {
+        notes: [{ note_id: 'note-1', title: '订阅库笔记', content: '笔记正文' }],
+        has_more: true,
+      } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: {
+        notes: [{ note_id: 'note-2', title: '下一页笔记' }],
+        has_more: false,
+      } }));
+
+    try {
+      const first = await fetchTopicContentPreviewPage(
+        'topic-1', '订阅库', 'token', 'client', 'openapi', undefined, undefined, 'subscribed',
+      );
+      expect(first.items).toMatchObject([{ note_id: 'note-1', content: '笔记正文' }]);
+      expect(first.nextCursor).toBeDefined();
+      const second = await fetchTopicContentPreviewPage(
+        'topic-1', '订阅库', 'token', 'client', 'openapi', undefined, first.nextCursor, 'subscribed',
+      );
+      expect(second.items).toMatchObject([{ note_id: 'note-2' }]);
+      expect(second.nextCursor).toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it('downloads explicitly selected ordinary notes via the official subscribed topic path', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockFetchResponse({ data: { topics: [{ topic_id: 'topic-1' }] } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: {
+        notes: [{ note_id: 'note-1', content: '目标正文' }, { note_id: 'note-2' }],
+        has_more: true,
+      } }));
+    try {
+      await expect(fetchSubscribedKnowledgeNotes({
+        token: 'token', clientId: 'client', authMode: 'openapi',
+        topicIds: ['topic-1'], selectedNoteIds: ['note-1'],
+      })).resolves.toMatchObject([{ note_id: 'note-1', content: '目标正文', topic_id: 'topic-1' }]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('/knowledge/notes?'), expect.anything());
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it('imports the original post text exposed by the current OpenAPI detail contract', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockFetchResponse({ data: { topics: [{ topic_id: 'topic-1' }] } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: { bloggers: [{ follow_id: 'blogger-1' }] } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: { contents: [{
+        post_id_alias: 'post-1', post_title: '官方标题', post_summary: '预览摘要',
+        post_create_time: '2026-11-01T10:00:00+08:00',
+      }] } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: {
+        post_id_alias: 'post-1', post_media_text: '博主发布的原文',
+      } }));
+
+    try {
+      await expect(fetchSubscribedKnowledgeNotes({
+        token: 'token', clientId: 'client', authMode: 'openapi', topicIds: ['topic-1'],
+        selectedNoteIds: ['blogger_post-1'],
+      })).resolves.toMatchObject([{
+        note_id: 'blogger_post-1', title: '官方标题', content: '博主发布的原文',
+        created_at: '2026-11-01T10:00:00+08:00',
+      }]);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it('follows has_next while discovering every subscribed blogger before syncing their content', async () => {
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(mockFetchResponse({
@@ -831,7 +904,8 @@ describe('OpenAPI knowledge previews', () => {
       }) as Response)
       .mockResolvedValueOnce(mockFetchResponse({
         data: { post_id_alias: 'post-34', title: '第二页', content: '正文三十四' },
-      }) as Response);
+      }) as Response)
+      .mockResolvedValueOnce(mockFetchResponse({ data: { notes: [] } }));
 
     try {
       const notes = await fetchSubscribedKnowledgeNotes({

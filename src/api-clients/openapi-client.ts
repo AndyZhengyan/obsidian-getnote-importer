@@ -318,7 +318,7 @@ function normalizeTopic(value: unknown): SubscribedTopic | null {
 
 function normalizeBlogger(value: unknown): Blogger | null {
   if (!isRecord(value)) return null;
-  const id = value.follow_id ?? value.id ?? value.watch_id;
+  const id = value.follow_id_str || value.follow_id || value.id || value.watch_id;
   if (typeof id !== 'string' && typeof id !== 'number') return null;
   return {
     follow_id: String(id),
@@ -338,8 +338,8 @@ function normalizeContent(value: unknown): BloggerContent | null {
   if (typeof id !== 'string' && typeof id !== 'number') return null;
   return {
     post_id_alias: String(id),
-    title: typeof value.title === 'string' ? value.title : typeof value.post_name === 'string' ? value.post_name : undefined,
-    content: typeof value.content === 'string' ? value.content : typeof value.post_cleaned_summary === 'string' ? value.post_cleaned_summary : undefined,
+    title: stringValue(value.title) || stringValue(value.post_title) || stringValue(value.post_name) || undefined,
+    content: stringValue(value.post_media_text) || stringValue(value.content) || stringValue(value.post_cleaned_summary) || undefined,
     summary: typeof value.summary === 'string' ? value.summary : typeof value.post_summary === 'string' ? value.post_summary : undefined,
     created_at: typeof value.created_at === 'string' ? value.created_at : typeof value.post_create_time === 'string' ? value.post_create_time : undefined,
     updated_at: typeof value.updated_at === 'string' ? value.updated_at : typeof value.edit_time === 'string' ? value.edit_time : undefined,
@@ -392,40 +392,54 @@ export async function fetchSubscribedTopics(
   return topics;
 }
 
-async function fetchCreatedTopicNotes(topic: SubscribedTopic, token: string, clientId: string, signal?: AbortSignal, selectedNoteIds?: Set<string>): Promise<GetNoteNote[]> {
+async function fetchTopicNotesPage(
+  topic: SubscribedTopic, page: number, token: string, clientId: string, signal?: AbortSignal,
+): Promise<{ notes: GetNoteNote[]; hasMore: boolean }> {
+  const params = new URLSearchParams({ topic_id: topic.topic_id, page: String(page) });
+  const url = 'https://openapi.biji.com/open/api/v1/resource/knowledge/notes?' + params.toString();
+  const data = await knowledgeApiRequest<Record<string, unknown>>(
+    url, { method: 'GET', headers: buildHeaders(token, clientId) }, 2, signal,
+  );
+  const source = normalizeData(data);
+  const notes = readArray(source, ['notes', 'list', 'items'])
+    .filter(isRecord)
+    .map(value => {
+      const tags = readArray(value, ['tags'])
+        .filter(isRecord)
+        .map(tag => ({ name: stringValue(tag.name) }))
+        .filter(tag => tag.name);
+      return {
+        ...value,
+        id: value.note_id,
+        note_id: stringValue(value.note_id),
+        title: stringValue(value.title),
+        content: stringValue(value.content),
+        note_type: stringValue(value.note_type) || 'plain_text',
+        source: 'knowledge',
+        topic_id: topic.topic_id,
+        topic_name: topic.name,
+        topic_source: topic.source,
+        tags,
+        created_at: stringValue(value.created_at),
+        updated_at: stringValue(value.updated_at) || stringValue(value.edit_time),
+      } as GetNoteNote;
+    })
+    .filter(note => note.note_id);
+  return { notes, hasMore: readHasMore(source) };
+}
+
+async function fetchTopicNotes(
+  topic: SubscribedTopic, token: string, clientId: string, signal?: AbortSignal, selectedNoteIds?: Set<string>,
+): Promise<GetNoteNote[]> {
   const notes: GetNoteNote[] = [];
   let page = 1;
   while (true) {
-    const params = new URLSearchParams({ topic_id: topic.topic_id, page: String(page) });
-    const url = `https://openapi.biji.com/open/api/v1/resource/knowledge/notes?${params.toString()}`;
-    const data = await knowledgeApiRequest<Record<string, unknown>>(url, { method: 'GET', headers: buildHeaders(token, clientId) }, 2, signal);
-    const source = normalizeData(data);
-    const pageNotes = readArray(source, ['notes', 'list', 'items'])
-      .filter(isRecord)
-      .map(value => {
-        const tags = readArray(value, ['tags'])
-          .filter(isRecord)
-          .map(tag => ({ name: typeof tag.name === 'string' ? tag.name : '' }))
-          .filter(tag => tag.name);
-        return {
-          ...value,
-          id: value.note_id,
-          note_id: String(value.note_id ?? ''),
-          title: typeof value.title === 'string' ? value.title : '',
-          content: typeof value.content === 'string' ? value.content : '',
-          note_type: typeof value.note_type === 'string' ? value.note_type : 'plain_text',
-          source: 'knowledge',
-          topic_id: topic.topic_id,
-          topic_name: topic.name,
-          tags,
-          created_at: typeof value.created_at === 'string' ? value.created_at : '',
-          updated_at: typeof value.updated_at === 'string' ? value.updated_at : typeof value.edit_time === 'string' ? value.edit_time : '',
-        } as GetNoteNote;
-      })
-      .filter(note => !selectedNoteIds || selectedNoteIds.has(note.note_id));
-    notes.push(...pageNotes);
-    for (const note of pageNotes) selectedNoteIds?.delete(note.note_id);
-    if (selectedNoteIds?.size === 0 || !readHasMore(source)) break;
+    const result = await fetchTopicNotesPage(topic, page, token, clientId, signal);
+    for (const note of result.notes) {
+      if (selectedNoteIds && !selectedNoteIds.delete(note.note_id)) continue;
+      notes.push(note);
+    }
+    if (selectedNoteIds?.size === 0 || !result.hasMore) break;
     page++;
   }
   return notes;
@@ -525,13 +539,15 @@ export async function fetchTopicContentPreviews(
   return items;
 }
 
+type OpenApiPreviewCursor = { bloggerIndex: number; page: number; source?: 'notes' };
+
 export async function fetchTopicContentPreviewPage(
   topicId: string,
   _topicName: string | undefined,
   token: string,
   clientId: string,
   signal?: AbortSignal,
-  cursor: { bloggerIndex: number; page: number } = { bloggerIndex: 0, page: 1 },
+  cursor: OpenApiPreviewCursor = { bloggerIndex: 0, page: 1 },
   topicSource?: SubscribedTopic['source']
 ): Promise<{
   items: {
@@ -545,11 +561,11 @@ export async function fetchTopicContentPreviewPage(
     content?: string;
     tags?: { name: string }[];
   }[];
-  nextCursor?: { bloggerIndex: number; page: number };
+  nextCursor?: OpenApiPreviewCursor;
 }> {
-  if (topicSource === 'created') {
-    const topic: SubscribedTopic = { topic_id: topicId, name: _topicName ?? topicId, source: 'created' };
-    const notes = await fetchCreatedTopicNotes(topic, token, clientId, signal);
+  const topic: SubscribedTopic = { topic_id: topicId, name: _topicName ?? topicId, source: topicSource };
+  const previewTopicNotes = async (page: number) => {
+    const { notes, hasMore } = await fetchTopicNotesPage(topic, page, token, clientId, signal);
     const items = notes.map(note => ({
       note_id: note.note_id,
       title: note.title,
@@ -562,11 +578,14 @@ export async function fetchTopicContentPreviewPage(
         ? [...note.tags, { name: topic.name }]
         : note.tags,
     }));
-    return { items };
-  }
+    const nextCursor: OpenApiPreviewCursor = { bloggerIndex: 0, page: page + 1, source: 'notes' };
+    return hasMore ? { items, nextCursor } : { items };
+  };
+  if (topicSource === 'created' || cursor.source === 'notes') return previewTopicNotes(cursor.page);
+
   const bloggers = await fetchTopicBloggers(topicId, token, clientId, signal);
   const blogger = bloggers[cursor.bloggerIndex];
-  if (!blogger) return { items: [] };
+  if (!blogger) return topicSource === 'subscribed' ? previewTopicNotes(1) : { items: [] };
 
   const params = new URLSearchParams({
     topic_id: topicId,
@@ -597,11 +616,14 @@ export async function fetchTopicContentPreviewPage(
       ],
     };
   });
-  const nextCursor = readHasMore(source) && contents.length > 0
-    ? { bloggerIndex: cursor.bloggerIndex, page: cursor.page + 1 }
-    : cursor.bloggerIndex + 1 < bloggers.length
-      ? { bloggerIndex: cursor.bloggerIndex + 1, page: 1 }
-      : undefined;
+  let nextCursor: OpenApiPreviewCursor | undefined;
+  if (readHasMore(source)) {
+    nextCursor = { bloggerIndex: cursor.bloggerIndex, page: cursor.page + 1 };
+  } else if (cursor.bloggerIndex + 1 < bloggers.length) {
+    nextCursor = { bloggerIndex: cursor.bloggerIndex + 1, page: 1 };
+  } else if (topicSource === 'subscribed') {
+    nextCursor = { bloggerIndex: 0, page: 1, source: 'notes' };
+  }
 
   return nextCursor ? { items, nextCursor } : { items };
 }
@@ -652,7 +674,14 @@ async function fetchBloggerContentDetail(
       };
     }
     return {
-      content: { ...content, ...detail, post_id_alias: content.post_id_alias },
+      content: {
+        post_id_alias: content.post_id_alias,
+        title: detail.title ?? content.title,
+        content: detail.content ?? content.content,
+        summary: detail.summary ?? content.summary,
+        created_at: detail.created_at ?? content.created_at,
+        updated_at: detail.updated_at ?? content.updated_at,
+      },
     };
   } catch (error) {
     if (signal?.aborted) throw error;
@@ -682,23 +711,32 @@ export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions):
   for (const topic of topics) {
     if (topic.source === 'created') {
       if (!createdTopicIdSet?.has(topic.topic_id)) continue;
-      const topicNotes = await fetchCreatedTopicNotes(topic, token, clientId, signal, remainingNoteIds);
+      const topicNotes = await fetchTopicNotes(topic, token, clientId, signal, remainingNoteIds);
       await enrichCreatedTopicDirectories(topicNotes, topic.topic_id, token, clientId, signal);
       notes.push(...topicNotes);
       if (remainingNoteIds?.size === 0) return notes;
       continue;
     }
     if (topicIdSet && !topicIdSet.has(topic.topic_id)) continue;
-    const bloggers = await fetchTopicBloggers(topic.topic_id, token, clientId, signal);
-    for (const blogger of bloggers) {
-      if (bloggerIdSet && !bloggerIdSet.has(blogger.follow_id)) continue;
-      const contents = await fetchBloggerContents(topic.topic_id, blogger, token, clientId, signal, remainingNoteIds);
-      for (const content of contents) {
-        const detailResult = await fetchBloggerContentDetail(topic.topic_id, content, token, clientId, signal);
-        const note = bloggerContentToNote(detailResult.content, topic, blogger);
-        if (detailResult.error) note.fetch_error = detailResult.error;
-        notes.push(note);
+    const remainingIds = remainingNoteIds ? [...remainingNoteIds] : [];
+    if (!remainingNoteIds || remainingIds.some(id => id.startsWith('blogger_'))) {
+      const bloggers = await fetchTopicBloggers(topic.topic_id, token, clientId, signal);
+      for (const blogger of bloggers) {
+        if (bloggerIdSet && !bloggerIdSet.has(blogger.follow_id)) continue;
+        const contents = await fetchBloggerContents(topic.topic_id, blogger, token, clientId, signal, remainingNoteIds);
+        for (const content of contents) {
+          const detailResult = await fetchBloggerContentDetail(topic.topic_id, content, token, clientId, signal);
+          const note = bloggerContentToNote(detailResult.content, topic, blogger);
+          if (detailResult.error) note.fetch_error = detailResult.error;
+          notes.push(note);
+        }
+        if (remainingNoteIds?.size === 0) return notes;
       }
+    }
+    if (remainingNoteIds
+      ? remainingIds.some(id => !id.startsWith('blogger_'))
+      : !bloggerIdSet) {
+      notes.push(...await fetchTopicNotes(topic, token, clientId, signal, remainingNoteIds));
       if (remainingNoteIds?.size === 0) return notes;
     }
   }

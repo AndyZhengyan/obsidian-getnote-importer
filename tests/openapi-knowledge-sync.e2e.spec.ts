@@ -21,6 +21,7 @@ function makeApp() {
         getAllFolders: () => [...folders].map((path) => ({ path })),
         getAbstractFileByPath: (path: string) => files.get(path) ?? null,
         getMarkdownFiles: () => [...files.values()].map(({ path }) => ({ path })),
+        read: async ({ path }: { path: string }) => files.get(path)?.content ?? '',
         createFolder: vi.fn(async (path: string) => {
           folders.add(path);
         }),
@@ -117,6 +118,36 @@ describe.skipIf(!runE2E)('OpenAPI knowledge-base sync E2E', () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.noteId).toBe(selection?.selectedNoteIds[0]);
     expect(files.size).toBeGreaterThan(0);
+    expect([...files.keys()].some(path => path.startsWith('E2E Knowledge Sync/知识库/'))).toBe(true);
+    const paths = [...files.keys()];
+    await expect(engine.syncSubscribedKnowledge(undefined, selection)).resolves.toMatchObject({
+      created: 0, skipped: 1, failed: 0,
+    });
+    expect([...files.keys()]).toEqual(paths);
+  }, 60_000);
+
+  it('downloads an ordinary note from a subscribed knowledge base through OpenAPI', async () => {
+    const topics = await fetchSubscribedTopics({ token, clientId, authMode: 'openapi' });
+    let picked: { noteId: string; topicId: string } | undefined;
+    for (const topic of topics.filter(item => item.source === 'subscribed')) {
+      const page = await fetchTopicContentPreviewPage(
+        topic.topic_id, topic.name, token, clientId, 'openapi', undefined,
+        { bloggerIndex: 0, page: 1, source: 'notes' }, 'subscribed',
+      );
+      const note = page.items.find(item => item.content);
+      if (!note) continue;
+      picked = { noteId: note.note_id, topicId: topic.topic_id };
+      break;
+    }
+    expect(picked).toBeDefined();
+    if (!picked) return;
+
+    const { app, files } = makeApp();
+    const result = await new SyncEngine(app as never, makeSettings()).syncSubscribedKnowledge(undefined, {
+      topicIds: [picked.topicId], selectedNoteIds: [picked.noteId],
+    });
+    expect(result).toMatchObject({ total: 1, created: 1, failed: 0 });
+    expect(result.items[0]?.noteId).toBe(picked.noteId);
     expect([...files.keys()].some(path => path.startsWith('E2E Knowledge Sync/知识库/'))).toBe(true);
   }, 60_000);
 

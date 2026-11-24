@@ -611,7 +611,7 @@ export class SyncEngine {
       }
       const existingByUid = uidIndex.get(note.note_id);
       if (existingByUid) {
-        if (categoryOverride && isKnowledgeBaseCategory(categoryOverride)) {
+        if (note.topic_source !== 'subscribed' && categoryOverride && isKnowledgeBaseCategory(categoryOverride)) {
           const categoryDir = this.noteCategoryPath(note, categoryOverride);
           const file = this.app.vault.getAbstractFileByPath(existingByUid.path);
           const basename = existingByUid.path.slice(existingByUid.path.lastIndexOf('/') + 1);
@@ -988,6 +988,7 @@ export class SyncEngine {
           created_at: childDetail.created_at ?? parent.created_at,
           updated_at: childDetail.updated_at ?? parent.updated_at,
           parent_id: childDetail.parent_id ?? parent.note_id,
+          topic_source: parent.topic_source,
           children_count: childDetail.children_count,
           children_ids: childDetail.children_ids,
           is_child_note: childDetail.is_child_note ?? true,

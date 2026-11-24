@@ -192,7 +192,7 @@ export interface TopicContentPreviewCursor {
   bloggerIndex: number;
   page: number;
   webDirectory?: WebDirectoryPreviewCursor;
-  source?: 'notes';
+  source?: 'notes' | 'bloggers';
 }
 
 export interface TopicContentPreviewPage {

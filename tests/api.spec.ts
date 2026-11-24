@@ -809,6 +809,44 @@ describe('web auth mode', () => {
 });
 
 describe('OpenAPI knowledge previews', () => {
+  it('opens the first available blogger in a self-created knowledge base', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected request'))
+      .mockResolvedValueOnce(mockFetchResponse({ data: { notes: [] } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: { bloggers: [
+        { follow_id: 'failed', hook_state: 'FAIL', notes_count: 0 },
+        { follow_id: 'ready', account_name: '可读取的博主', hook_state: 'READY', notes_count: 1 },
+      ] } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: { contents: [{ post_id_alias: 'post-1' }] } }));
+    try {
+      const result = await fetchTopicContentPreviewPage(
+        'mine', '自建库', 'token', 'client', 'openapi', undefined, undefined, 'created',
+      );
+      expect(result.items).toMatchObject([{ note_id: 'blogger_post-1', blogger_id: 'ready' }]);
+      expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('follow_id=ready'), expect.anything());
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it('syncs a blogger article selected from a self-created knowledge base', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected request'))
+      .mockResolvedValueOnce(mockFetchResponse({ data: { topics: [{
+        topic_id: 'mine', name: '自建库', stats: { blogger_count: 0 },
+      }] } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: { bloggers: [{ follow_id: 'blogger-1' }] } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: { contents: [{ post_id_alias: 'post-1' }] } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: { post_id_alias: 'post-1', post_media_text: '原文' } }));
+    try {
+      await expect(fetchSubscribedKnowledgeNotes({
+        token: 'token', clientId: 'client', authMode: 'openapi',
+        createdTopicIds: ['mine'], selectedNoteIds: ['blogger_post-1'],
+      })).resolves.toMatchObject([{ note_id: 'blogger_post-1', content: '原文' }]);
+      expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/knowledge/notes?'), expect.anything());
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it('previews ordinary notes in a subscribed knowledge base with no bloggers', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(mockFetchResponse({ data: { bloggers: [] } }))
@@ -990,7 +1028,7 @@ describe('OpenAPI knowledge previews', () => {
         }],
         has_more: false,
       },
-    }) as Response);
+    }) as Response).mockResolvedValueOnce(mockFetchResponse({ data: { bloggers: [] } }));
 
     try {
       const page = await fetchTopicContentPreviewPage(

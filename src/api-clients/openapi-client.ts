@@ -318,6 +318,7 @@ function normalizeTopic(value: unknown): SubscribedTopic | null {
 
 function normalizeBlogger(value: unknown): Blogger | null {
   if (!isRecord(value)) return null;
+  if (value.hook_state === 'FAIL' && value.notes_count === 0) return null;
   const id = value.follow_id_str || value.follow_id || value.id || value.watch_id;
   if (typeof id !== 'string' && typeof id !== 'number') return null;
   return {
@@ -545,7 +546,7 @@ export async function fetchTopicContentPreviews(
   return items;
 }
 
-type OpenApiPreviewCursor = { bloggerIndex: number; page: number; source?: 'notes' };
+type OpenApiPreviewCursor = { bloggerIndex: number; page: number; source?: 'notes' | 'bloggers' };
 
 export async function fetchTopicContentPreviewPage(
   topicId: string,
@@ -554,7 +555,7 @@ export async function fetchTopicContentPreviewPage(
   clientId: string,
   signal?: AbortSignal,
   cursor: OpenApiPreviewCursor = { bloggerIndex: 0, page: 1 },
-  topicSource?: SubscribedTopic['source']
+  topicSource?: SubscribedTopic['source'],
 ): Promise<{
   items: {
     note_id: string;
@@ -585,9 +586,18 @@ export async function fetchTopicContentPreviewPage(
     const nextCursor: OpenApiPreviewCursor = { bloggerIndex: 0, page: page + 1, source: 'notes' };
     return hasMore ? { items, nextCursor } : { items };
   };
-  if (topicSource === 'created' || cursor.source === 'notes') return previewTopicNotes(cursor.page);
+  let bloggers: Blogger[];
+  if (cursor.source === 'notes' || (topicSource === 'created' && cursor.source !== 'bloggers')) {
+    const preview = await previewTopicNotes(cursor.page);
+    if (preview.nextCursor || topicSource !== 'created') return preview;
+    bloggers = await fetchTopicBloggers(topicId, token, clientId, signal);
+    if (bloggers.length === 0) return preview;
+    cursor = { bloggerIndex: 0, page: 1, source: 'bloggers' };
+    if (preview.items.length > 0) return { ...preview, nextCursor: cursor };
+  } else {
+    bloggers = await fetchTopicBloggers(topicId, token, clientId, signal);
+  }
 
-  const bloggers = await fetchTopicBloggers(topicId, token, clientId, signal);
   const blogger = bloggers[cursor.bloggerIndex];
   if (!blogger) return topicSource === 'subscribed' ? previewTopicNotes(1) : { items: [] };
 
@@ -622,9 +632,9 @@ export async function fetchTopicContentPreviewPage(
   });
   let nextCursor: OpenApiPreviewCursor | undefined;
   if (readHasMore(source)) {
-    nextCursor = { bloggerIndex: cursor.bloggerIndex, page: cursor.page + 1 };
+    nextCursor = { ...cursor, page: cursor.page + 1 };
   } else if (cursor.bloggerIndex + 1 < bloggers.length) {
-    nextCursor = { bloggerIndex: cursor.bloggerIndex + 1, page: 1 };
+    nextCursor = { ...cursor, bloggerIndex: cursor.bloggerIndex + 1, page: 1 };
   } else if (topicSource === 'subscribed') {
     nextCursor = { bloggerIndex: 0, page: 1, source: 'notes' };
   }
@@ -713,17 +723,11 @@ export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions):
   if (topicIdSet || sources.length === 0) sources.push('subscribed');
   const topics = await fetchSubscribedTopics(token, clientId, signal, sources);
   for (const topic of topics) {
-    if (topic.source === 'created') {
-      if (!createdTopicIdSet?.has(topic.topic_id)) continue;
-      const topicNotes = await fetchTopicNotes(topic, token, clientId, signal, remainingNoteIds);
-      await enrichCreatedTopicDirectories(topicNotes, topic.topic_id, token, clientId, signal);
-      notes.push(...topicNotes);
-      if (remainingNoteIds?.size === 0) return notes;
-      continue;
-    }
-    if (topicIdSet && !topicIdSet.has(topic.topic_id)) continue;
+    const created = topic.source === 'created';
+    if (created ? !createdTopicIdSet?.has(topic.topic_id) : topicIdSet && !topicIdSet.has(topic.topic_id)) continue;
     const remainingIds = remainingNoteIds ? [...remainingNoteIds] : [];
-    if (!remainingNoteIds || remainingIds.some(id => id.startsWith('blogger_'))) {
+    const includeBloggers = !remainingNoteIds || remainingIds.some(id => id.startsWith('blogger_'));
+    if (includeBloggers) {
       const bloggers = await fetchTopicBloggers(topic.topic_id, token, clientId, signal);
       for (const blogger of bloggers) {
         if (bloggerIdSet && !bloggerIdSet.has(blogger.follow_id)) continue;
@@ -740,7 +744,9 @@ export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions):
     if (remainingNoteIds
       ? remainingIds.some(id => !id.startsWith('blogger_'))
       : !bloggerIdSet) {
-      notes.push(...await fetchTopicNotes(topic, token, clientId, signal, remainingNoteIds));
+      const topicNotes = await fetchTopicNotes(topic, token, clientId, signal, remainingNoteIds);
+      if (created) await enrichCreatedTopicDirectories(topicNotes, topic.topic_id, token, clientId, signal);
+      notes.push(...topicNotes);
       if (remainingNoteIds?.size === 0) return notes;
     }
   }

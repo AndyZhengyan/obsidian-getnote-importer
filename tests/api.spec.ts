@@ -840,16 +840,19 @@ describe('OpenAPI knowledge previews', () => {
 
   it('downloads explicitly selected ordinary notes via the official subscribed topic path', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(mockFetchResponse({ data: { topics: [{ topic_id: 'topic-1' }] } }))
+      .mockResolvedValueOnce(mockFetchResponse({ data: { topics: [{ topic_id: 'topic-1', name: '订阅库' }] } }))
       .mockResolvedValueOnce(mockFetchResponse({ data: {
-        notes: [{ note_id: 'note-1', content: '目标正文' }, { note_id: 'note-2' }],
+        notes: [{ note_id: 'note-1', content: '目标正文', tags: [{ name: '原有标签' }] }, { note_id: 'note-2' }],
         has_more: true,
       } }));
     try {
       await expect(fetchSubscribedKnowledgeNotes({
         token: 'token', clientId: 'client', authMode: 'openapi',
         topicIds: ['topic-1'], selectedNoteIds: ['note-1'],
-      })).resolves.toMatchObject([{ note_id: 'note-1', content: '目标正文', topic_id: 'topic-1' }]);
+      })).resolves.toMatchObject([{
+        note_id: 'note-1', content: '目标正文', topic_id: 'topic-1',
+        tags: [{ name: '原有标签' }, { name: '订阅库' }],
+      }]);
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('/knowledge/notes?'), expect.anything());
     } finally {

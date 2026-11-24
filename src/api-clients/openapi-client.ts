@@ -392,6 +392,12 @@ export async function fetchSubscribedTopics(
   return topics;
 }
 
+function withTopicTag(tags: GetNoteNote['tags'], topicName: string): GetNoteNote['tags'] {
+  return topicName && !tags.some(tag => tag.name === topicName)
+    ? [...tags, { name: topicName }]
+    : tags;
+}
+
 async function fetchTopicNotesPage(
   topic: SubscribedTopic, page: number, token: string, clientId: string, signal?: AbortSignal,
 ): Promise<{ notes: GetNoteNote[]; hasMore: boolean }> {
@@ -419,7 +425,7 @@ async function fetchTopicNotesPage(
         topic_id: topic.topic_id,
         topic_name: topic.name,
         topic_source: topic.source,
-        tags,
+        tags: topic.source === 'subscribed' ? withTopicTag(tags, topic.name) : tags,
         created_at: stringValue(value.created_at),
         updated_at: stringValue(value.updated_at) || stringValue(value.edit_time),
       } as GetNoteNote;
@@ -574,9 +580,7 @@ export async function fetchTopicContentPreviewPage(
       topic_id: topicId,
       blogger_id: '',
       content: note.content,
-      tags: topic.name && !note.tags.some(tag => tag.name === topic.name)
-        ? [...note.tags, { name: topic.name }]
-        : note.tags,
+      tags: withTopicTag(note.tags, topic.name),
     }));
     const nextCursor: OpenApiPreviewCursor = { bloggerIndex: 0, page: page + 1, source: 'notes' };
     return hasMore ? { items, nextCursor } : { items };

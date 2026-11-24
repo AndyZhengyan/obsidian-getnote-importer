@@ -126,17 +126,17 @@ describe.skipIf(!runE2E)('OpenAPI knowledge-base sync E2E', () => {
     expect([...files.keys()]).toEqual(paths);
   }, 60_000);
 
-  it('downloads an ordinary note from a subscribed knowledge base through OpenAPI', async () => {
+  it('downloads an ordinary subscribed note filtered by its knowledge-base tag', async () => {
     const topics = await fetchSubscribedTopics({ token, clientId, authMode: 'openapi' });
-    let picked: { noteId: string; topicId: string } | undefined;
-    for (const topic of topics.filter(item => item.source === 'subscribed')) {
+    let picked: { noteId: string; topicId: string; topicName: string } | undefined;
+    for (const topic of topics.filter(item => item.source === 'subscribed' && item.name)) {
       const page = await fetchTopicContentPreviewPage(
         topic.topic_id, topic.name, token, clientId, 'openapi', undefined,
         { bloggerIndex: 0, page: 1, source: 'notes' }, 'subscribed',
       );
       const note = page.items.find(item => item.content);
       if (!note) continue;
-      picked = { noteId: note.note_id, topicId: topic.topic_id };
+      picked = { noteId: note.note_id, topicId: topic.topic_id, topicName: topic.name };
       break;
     }
     expect(picked).toBeDefined();
@@ -144,7 +144,7 @@ describe.skipIf(!runE2E)('OpenAPI knowledge-base sync E2E', () => {
 
     const { app, files } = makeApp();
     const result = await new SyncEngine(app as never, makeSettings()).syncSubscribedKnowledge(undefined, {
-      topicIds: [picked.topicId], selectedNoteIds: [picked.noteId],
+      topicIds: [picked.topicId], selectedNoteIds: [picked.noteId], syncTags: [picked.topicName],
     });
     expect(result).toMatchObject({ total: 1, created: 1, failed: 0 });
     expect(result.items[0]?.noteId).toBe(picked.noteId);

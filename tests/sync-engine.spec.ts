@@ -4613,6 +4613,28 @@ describe('SyncEngine — fixture-based sync integration', () => {
     expect(childContent).toContain('is_child_note: true');
   });
 
+  it('keeps the Web-imported parent and child files when resyncing through OpenAPI', async () => {
+    resetFixtures();
+    loadScenario('sync-parent-and-children-webapi');
+    const app = makeMockApp();
+    const web = new SyncEngine(app, makeSettings({
+      authMode: 'web', webApiToken: 'test-web-token', maxDays: 0,
+    }));
+    await expect(web.syncNoteIds(['1909193892067130512'])).resolves.toMatchObject({ created: 3, failed: 0 });
+    const parent = app.vault.getAbstractFileByPath('得到大脑/纯文本/主笔记.md') as TFile;
+    const editedBody = (await app.vault.read(parent)) + '\n用户修改';
+    await app.vault.modify(parent, editedBody);
+
+    resetFixtures();
+    loadScenario('sync-parent-and-children-openapi');
+    const openapi = new SyncEngine(app, makeSettings({
+      authMode: 'openapi', openApiToken: 'test-openapi-token', openApiClientId: 'test-client', maxDays: 0,
+    }));
+    await expect(openapi.sync()).resolves.toMatchObject({ created: 0, skipped: 3, failed: 0 });
+    expect(app.vault.getMarkdownFiles()).toHaveLength(3);
+    expect(await app.vault.read(parent)).toBe(editedBody);
+  });
+
   it('OpenAPI: detail child relation overrides stale list child IDs', async () => {
     resetFixtures();
     loadScenario('sync-stale-children-openapi');

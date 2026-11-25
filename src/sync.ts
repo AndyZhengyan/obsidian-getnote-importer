@@ -964,6 +964,14 @@ export class SyncEngine {
       return [];
     }
 
+    // The OpenAPI knowledge-note list can omit both relationship fields.
+    // Read the parent detail even if the parent Markdown already exists.
+    if (credentials.authMode === 'openapi' && parent.topic_source && !parent.is_child_note
+      && parent.children_count === undefined && parent.children_ids === undefined) {
+      const detail = await fetchNoteDetail(parent.note_id, credentials.token, credentials.clientId, signal, credentials.authMode);
+      parent = this.mergeNoteDetail(parent, detail);
+    }
+
     const childIds = parent.children_ids ?? [];
     if (!childIds.length) return [];
 

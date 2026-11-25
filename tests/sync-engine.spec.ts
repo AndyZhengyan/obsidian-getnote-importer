@@ -1078,6 +1078,40 @@ describe('SyncEngine — filterNotesByDateRange', () => {
 });
 
 describe('SyncEngine — subscribed knowledge selected notes', () => {
+  it('imports an appended child when a knowledge list omits the existing parent relations', async () => {
+    const parent = makeNote({ note_id: 'parent-in-kb', title: 'Parent', content: 'Remote parent' });
+    const child = makeNote({ note_id: 'new-child', title: 'Appended', content: 'New child body', parent_id: parent.note_id });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => {
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith('/knowledge/list')) return mockFetchResponse({ data: { topics: [{ topic_id: 'kb', name: 'QA' }] } });
+      if (path.endsWith('/knowledge/notes')) return mockFetchResponse({ data: { notes: [parent] } });
+      if (path.endsWith('/knowledge/directories')) return mockFetchResponse({ data: {} });
+      if (path.endsWith('/note/detail')) {
+        const id = new URL(String(url)).searchParams.get('id');
+        if (id === parent.note_id) return mockFetchResponse({ data: { note: { ...parent, children_count: 1, children_ids: [child.note_id] } } });
+        if (id === child.note_id) return mockFetchResponse({ data: { note: child } });
+      }
+      throw new Error('Unexpected request: ' + path);
+    });
+    try {
+      const app = makeMockApp();
+      const parentPath = '得到大脑/知识库/QA/Parent.md';
+      const edited = '---\nuid: parent-in-kb\n---\nLocal user edit';
+      app.vault._addFile(parentPath, edited);
+      const engine = new SyncEngine(app, makeSettings({ authMode: 'openapi', openApiToken: 'token', openApiClientId: 'client' }));
+      const result = await engine.syncSubscribedKnowledge(undefined, {
+        createdTopicIds: ['kb'], selectedNoteIds: [parent.note_id],
+      });
+      expect(result).toMatchObject({ created: 1, skipped: 1, failed: 0 });
+      expect(await app.vault.read(app.vault.getAbstractFileByPath(parentPath) as TFile)).toBe(edited);
+      expect(app.vault.create).toHaveBeenCalledWith(
+        '得到大脑/知识库/QA/Parent__Appended.md', expect.stringContaining('New child body'),
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it.each([
     'relocate', 'already organized', 'asset conflict', 'link conflict',
     'shared attachment', 'path-qualified backlink', 'path-qualified self-link', 'rename failure',
@@ -1088,6 +1122,7 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
       note_id: noteId,
       title: '历史知识库图片',
       note_type: 'img_text',
+      children_count: 0,
       attachments: [{ type: 'image', url: 'https://mediacdn.umiwi.com/existing.png', title: 'existing.png' }],
     });
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
@@ -1371,11 +1406,11 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
       if (requestUrl.includes('/resource/knowledge/notes?')) {
         return mockFetchResponse({ data: { notes: [{
           note_id: 'ordinary-1', title: '库内普通笔记', content: '普通笔记正文',
-          note_type: 'plain_text', created_at: '2025-01-01T10:00:00+08:00',
+          note_type: 'plain_text', children_count: 0, created_at: '2025-01-01T10:00:00+08:00',
           updated_at: '2025-01-01T10:00:00+08:00',
         }, {
           note_id: 'existing-ordinary', title: '已有普通笔记', content: '远端内容',
-          note_type: 'plain_text', created_at: '2025-01-01T10:00:00+08:00',
+          note_type: 'plain_text', children_count: 0, created_at: '2025-01-01T10:00:00+08:00',
           updated_at: '2025-01-01T10:00:00+08:00',
         }] } }) as Response;
       }

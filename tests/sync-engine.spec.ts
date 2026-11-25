@@ -1078,6 +1078,32 @@ describe('SyncEngine — filterNotesByDateRange', () => {
 });
 
 describe('SyncEngine — subscribed knowledge selected notes', () => {
+  it('records a failed parent-detail lookup and continues with other knowledge notes', async () => {
+    const first = makeNote({ note_id: 'detail-unavailable' });
+    const second = makeNote({ note_id: 'available', title: 'Available', children_count: 0 });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => {
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith('/knowledge/list')) return mockFetchResponse({ data: { topics: [{ topic_id: 'kb', name: 'QA' }] } });
+      if (path.endsWith('/knowledge/bloggers')) return mockFetchResponse({ data: { bloggers: [] } });
+      if (path.endsWith('/knowledge/notes')) return mockFetchResponse({ data: { notes: [first, second] } });
+      if (path.endsWith('/knowledge/directories')) return mockFetchResponse({ data: {} });
+      if (path.endsWith('/note/detail')) return mockFetchResponse({ success: false }, 404);
+      throw new Error('Unexpected request: ' + path);
+    });
+    try {
+      const app = makeMockApp();
+      const engine = new SyncEngine(app, makeSettings({ authMode: 'openapi', openApiToken: 'token', openApiClientId: 'client' }));
+      const result = await engine.syncSubscribedKnowledge(undefined, { createdTopicIds: ['kb'], syncAll: true });
+      expect(result).toMatchObject({ total: 2, failed: 1, created: 1, checkpointBlocked: true });
+      expect(result.items).toEqual([
+        expect.objectContaining({ noteId: first.note_id, status: 'failed' }),
+        expect.objectContaining({ noteId: second.note_id, status: 'created' }),
+      ]);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it('imports an appended child when a knowledge list omits the existing parent relations', async () => {
     const parent = makeNote({ note_id: 'parent-in-kb', title: 'Parent', content: 'Remote parent' });
     const child = makeNote({ note_id: 'new-child', title: 'Appended', content: 'New child body', parent_id: parent.note_id });

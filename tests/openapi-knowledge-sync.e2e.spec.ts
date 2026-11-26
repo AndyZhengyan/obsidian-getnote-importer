@@ -1,13 +1,14 @@
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchSubscribedTopics, fetchTopicContentPreviewPage } from '../src/api';
+import { fetchSubscribedTopics, fetchTopicContentPreviewPage, type TopicContentPreviewCursor } from '../src/api';
 import { SyncEngine } from '../src/sync';
 import type { Settings } from '../src/types';
 import { TopicPickerModal, type TopicPickerSelection } from '../src/ui/topic-picker-modal';
 
 const token = process.env.DEDAO_OPENAPI_TOKEN ?? '';
 const clientId = process.env.DEDAO_OPENAPI_CLIENT_ID ?? '';
+const testTopicId = process.env.DEDAO_OPENAPI_TEST_TOPIC_ID;
 const runE2E = token.length > 0 && clientId.length > 0;
 
 function makeApp() {
@@ -21,6 +22,7 @@ function makeApp() {
         getAllFolders: () => [...folders].map((path) => ({ path })),
         getAbstractFileByPath: (path: string) => files.get(path) ?? null,
         getMarkdownFiles: () => [...files.values()].map(({ path }) => ({ path })),
+        read: async ({ path }: { path: string }) => files.get(path)?.content ?? '',
         createFolder: vi.fn(async (path: string) => {
           folders.add(path);
         }),
@@ -76,32 +78,40 @@ describe.skipIf(!runE2E)('OpenAPI knowledge-base sync E2E', () => {
   });
 
   it('selects one live article and syncs exactly that article into the vault', async () => {
-    const topics = await fetchSubscribedTopics({ token, clientId, authMode: 'openapi' });
+    const topics = (await fetchSubscribedTopics({ token, clientId, authMode: 'openapi' }))
+      .filter(topic => !testTopicId || topic.topic_id === testTopicId);
     expect(topics.length).toBeGreaterThan(0);
 
     let selection:
-      | { selectedNoteIds: string[]; topicIds: string[]; bloggerIds: string[]; knowledgeBaseNames: Record<string, string> }
+      | { selectedNoteIds: string[]; topicIds?: string[]; createdTopicIds?: string[]; bloggerIds: string[]; knowledgeBaseNames: Record<string, string> }
       | undefined;
     for (const topic of topics) {
-      const page = await fetchTopicContentPreviewPage(
-        topic.topic_id,
-        topic.name,
-        token,
-        clientId,
-        'openapi'
-      );
-      const article = page.items[0];
-      if (article?.blogger_id) {
+      let cursor: TopicContentPreviewCursor | undefined;
+      do {
+        const page = await fetchTopicContentPreviewPage(
+          topic.topic_id,
+          topic.name,
+          token,
+          clientId,
+          'openapi',
+          undefined,
+          cursor,
+          topic.source,
+        );
+        cursor = page.nextCursor;
+        const article = page.items.find(item => item.blogger_id);
+        if (!article?.blogger_id) continue;
         selection = {
           selectedNoteIds: [article.note_id],
-          topicIds: [topic.topic_id],
+          ...(topic.source === 'created' ? { createdTopicIds: [topic.topic_id] } : { topicIds: [topic.topic_id] }),
           bloggerIds: [article.blogger_id],
           knowledgeBaseNames: {
             [article.note_id]: topic.name,
           },
         };
         break;
-      }
+      } while (cursor && (topic.source === 'created' || cursor.source !== 'notes'));
+      if (selection) break;
     }
     expect(selection).toBeDefined();
 
@@ -117,6 +127,49 @@ describe.skipIf(!runE2E)('OpenAPI knowledge-base sync E2E', () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.noteId).toBe(selection?.selectedNoteIds[0]);
     expect(files.size).toBeGreaterThan(0);
+    expect([...files.keys()].some(path => path.startsWith('E2E Knowledge Sync/知识库/'))).toBe(true);
+    if (testTopicId && selection) {
+      const params = new URLSearchParams({
+        topic_id: testTopicId,
+        post_id: selection.selectedNoteIds[0].slice('blogger_'.length),
+      });
+      const response = await fetch('https://openapi.biji.com/open/api/v1/resource/knowledge/blogger/content/detail?' + params, {
+        headers: { Authorization: token.startsWith('Bearer ') ? token : 'Bearer ' + token, 'X-Client-ID': clientId },
+      });
+      const detail = (await response.json() as { data?: { post_media_text?: string } }).data;
+      const original = detail?.post_media_text?.trim();
+      expect(Boolean(original)).toBe(true);
+      expect([...files.values()].some(file => file.content.includes(original ?? ''))).toBe(true);
+    }
+    const paths = [...files.keys()];
+    await expect(engine.syncSubscribedKnowledge(undefined, selection)).resolves.toMatchObject({
+      created: 0, skipped: 1, failed: 0,
+    });
+    expect([...files.keys()]).toEqual(paths);
+  }, 60_000);
+
+  it('downloads an ordinary subscribed note filtered by its knowledge-base tag', async () => {
+    const topics = await fetchSubscribedTopics({ token, clientId, authMode: 'openapi' });
+    let picked: { noteId: string; topicId: string; topicName: string } | undefined;
+    for (const topic of topics.filter(item => item.source === 'subscribed' && item.name)) {
+      const page = await fetchTopicContentPreviewPage(
+        topic.topic_id, topic.name, token, clientId, 'openapi', undefined,
+        { bloggerIndex: 0, page: 1, source: 'notes' }, 'subscribed',
+      );
+      const note = page.items.find(item => item.content);
+      if (!note) continue;
+      picked = { noteId: note.note_id, topicId: topic.topic_id, topicName: topic.name };
+      break;
+    }
+    expect(picked).toBeDefined();
+    if (!picked) return;
+
+    const { app, files } = makeApp();
+    const result = await new SyncEngine(app as never, makeSettings()).syncSubscribedKnowledge(undefined, {
+      topicIds: [picked.topicId], selectedNoteIds: [picked.noteId], syncTags: [picked.topicName],
+    });
+    expect(result).toMatchObject({ total: 1, created: 1, failed: 0 });
+    expect(result.items[0]?.noteId).toBe(picked.noteId);
     expect([...files.keys()].some(path => path.startsWith('E2E Knowledge Sync/知识库/'))).toBe(true);
   }, 60_000);
 

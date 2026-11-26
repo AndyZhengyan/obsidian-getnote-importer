@@ -1078,6 +1078,66 @@ describe('SyncEngine — filterNotesByDateRange', () => {
 });
 
 describe('SyncEngine — subscribed knowledge selected notes', () => {
+  it('records a failed parent-detail lookup and continues with other knowledge notes', async () => {
+    const first = makeNote({ note_id: 'detail-unavailable' });
+    const second = makeNote({ note_id: 'available', title: 'Available', children_count: 0 });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => {
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith('/knowledge/list')) return mockFetchResponse({ data: { topics: [{ topic_id: 'kb', name: 'QA' }] } });
+      if (path.endsWith('/knowledge/bloggers')) return mockFetchResponse({ data: { bloggers: [] } });
+      if (path.endsWith('/knowledge/notes')) return mockFetchResponse({ data: { notes: [first, second] } });
+      if (path.endsWith('/knowledge/directories')) return mockFetchResponse({ data: {} });
+      if (path.endsWith('/note/detail')) return mockFetchResponse({ success: false }, 404);
+      throw new Error('Unexpected request: ' + path);
+    });
+    try {
+      const app = makeMockApp();
+      const engine = new SyncEngine(app, makeSettings({ authMode: 'openapi', openApiToken: 'token', openApiClientId: 'client' }));
+      const result = await engine.syncSubscribedKnowledge(undefined, { createdTopicIds: ['kb'], syncAll: true });
+      expect(result).toMatchObject({ total: 2, failed: 1, created: 1, checkpointBlocked: true });
+      expect(result.items).toEqual([
+        expect.objectContaining({ noteId: first.note_id, status: 'failed' }),
+        expect.objectContaining({ noteId: second.note_id, status: 'created' }),
+      ]);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it('imports an appended child when a knowledge list omits the existing parent relations', async () => {
+    const parent = makeNote({ note_id: 'parent-in-kb', title: 'Parent', content: 'Remote parent' });
+    const child = makeNote({ note_id: 'new-child', title: 'Appended', content: 'New child body', parent_id: parent.note_id });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => {
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith('/knowledge/list')) return mockFetchResponse({ data: { topics: [{ topic_id: 'kb', name: 'QA' }] } });
+      if (path.endsWith('/knowledge/notes')) return mockFetchResponse({ data: { notes: [parent] } });
+      if (path.endsWith('/knowledge/directories')) return mockFetchResponse({ data: {} });
+      if (path.endsWith('/note/detail')) {
+        const id = new URL(String(url)).searchParams.get('id');
+        if (id === parent.note_id) return mockFetchResponse({ data: { note: { ...parent, children_count: 1, children_ids: [child.note_id] } } });
+        if (id === child.note_id) return mockFetchResponse({ data: { note: child } });
+      }
+      throw new Error('Unexpected request: ' + path);
+    });
+    try {
+      const app = makeMockApp();
+      const parentPath = '得到大脑/知识库/QA/Parent.md';
+      const edited = '---\nuid: parent-in-kb\n---\nLocal user edit';
+      app.vault._addFile(parentPath, edited);
+      const engine = new SyncEngine(app, makeSettings({ authMode: 'openapi', openApiToken: 'token', openApiClientId: 'client' }));
+      const result = await engine.syncSubscribedKnowledge(undefined, {
+        createdTopicIds: ['kb'], selectedNoteIds: [parent.note_id],
+      });
+      expect(result).toMatchObject({ created: 1, skipped: 1, failed: 0 });
+      expect(await app.vault.read(app.vault.getAbstractFileByPath(parentPath) as TFile)).toBe(edited);
+      expect(app.vault.create).toHaveBeenCalledWith(
+        '得到大脑/知识库/QA/Parent__Appended.md', expect.stringContaining('New child body'),
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it.each([
     'relocate', 'already organized', 'asset conflict', 'link conflict',
     'shared attachment', 'path-qualified backlink', 'path-qualified self-link', 'rename failure',
@@ -1088,6 +1148,7 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
       note_id: noteId,
       title: '历史知识库图片',
       note_type: 'img_text',
+      children_count: 0,
       attachments: [{ type: 'image', url: 'https://mediacdn.umiwi.com/existing.png', title: 'existing.png' }],
     });
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
@@ -1368,11 +1429,25 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
           },
         }) as Response;
       }
+      if (requestUrl.includes('/resource/knowledge/notes?')) {
+        return mockFetchResponse({ data: { notes: [{
+          note_id: 'ordinary-1', title: '库内普通笔记', content: '普通笔记正文',
+          note_type: 'plain_text', children_count: 0, created_at: '2025-01-01T10:00:00+08:00',
+          updated_at: '2025-01-01T10:00:00+08:00',
+        }, {
+          note_id: 'existing-ordinary', title: '已有普通笔记', content: '远端内容',
+          note_type: 'plain_text', children_count: 0, created_at: '2025-01-01T10:00:00+08:00',
+          updated_at: '2025-01-01T10:00:00+08:00',
+        }] } }) as Response;
+      }
       throw new Error(`Unexpected request: ${requestUrl}`);
     });
 
     try {
       const app = makeMockApp();
+      const existingPath = '得到大脑/手工整理/已有普通笔记.md';
+      const existingContent = '---\nuid: existing-ordinary\n---\n用户编辑的内容';
+      app.vault._addFile(existingPath, existingContent);
       const engine = new SyncEngine(app, makeSettings({ maxDays: 1 }));
       const result = await engine.syncSubscribedKnowledge(undefined, {
         syncAll: true,
@@ -1380,7 +1455,15 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
         knowledgeBaseName: '长期专题',
       });
 
-      expect(result.created).toBe(1);
+      expect(result.created).toBe(2);
+      expect(result.skipped).toBe(1);
+      const existing = app.vault.getAbstractFileByPath(existingPath);
+      expect(existing).toBeInstanceOf(TFile);
+      expect(await app.vault.read(existing as TFile)).toBe(existingContent);
+      expect(app.vault.create).toHaveBeenCalledWith(
+        expect.stringMatching(/^得到大脑\/知识库\/长期专题\//),
+        expect.stringContaining('普通笔记正文'),
+      );
       expect(app.vault.create).toHaveBeenCalledWith(
         expect.stringMatching(/^得到大脑\/知识库\/长期专题\//),
         expect.any(String)
@@ -1552,6 +1635,9 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
             updated_at: '2026-01-02T10:00:00+08:00',
           },
         }) as Response;
+      }
+      if (requestUrl.includes('/resource/knowledge/notes?')) {
+        return mockFetchResponse({ data: { notes: [] } }) as Response;
       }
       throw new Error(`Unexpected request: ${requestUrl}`);
     });
@@ -1777,6 +1863,9 @@ describe('SyncEngine — subscribed knowledge selected notes', () => {
       }
       if (requestUrl.includes('/resource/knowledge/blogger/content/detail')) {
         return mockFetchResponse({ data: {} }) as Response;
+      }
+      if (requestUrl.includes('/resource/knowledge/notes?')) {
+        return mockFetchResponse({ data: { notes: [] } }) as Response;
       }
       throw new Error(`Unexpected request: ${requestUrl}`);
     });
@@ -4583,6 +4672,28 @@ describe('SyncEngine — fixture-based sync integration', () => {
     )?.[1] as string;
     expect(childContent).toContain('parent_id: "1909193892067130512"');
     expect(childContent).toContain('is_child_note: true');
+  });
+
+  it('keeps the Web-imported parent and child files when resyncing through OpenAPI', async () => {
+    resetFixtures();
+    loadScenario('sync-parent-and-children-webapi');
+    const app = makeMockApp();
+    const web = new SyncEngine(app, makeSettings({
+      authMode: 'web', webApiToken: 'test-web-token', maxDays: 0,
+    }));
+    await expect(web.syncNoteIds(['1909193892067130512'])).resolves.toMatchObject({ created: 3, failed: 0 });
+    const parent = app.vault.getAbstractFileByPath('得到大脑/纯文本/主笔记.md') as TFile;
+    const editedBody = (await app.vault.read(parent)) + '\n用户修改';
+    await app.vault.modify(parent, editedBody);
+
+    resetFixtures();
+    loadScenario('sync-parent-and-children-openapi');
+    const openapi = new SyncEngine(app, makeSettings({
+      authMode: 'openapi', openApiToken: 'test-openapi-token', openApiClientId: 'test-client', maxDays: 0,
+    }));
+    await expect(openapi.sync()).resolves.toMatchObject({ created: 0, skipped: 3, failed: 0 });
+    expect(app.vault.getMarkdownFiles()).toHaveLength(3);
+    expect(await app.vault.read(parent)).toBe(editedBody);
   });
 
   it('OpenAPI: detail child relation overrides stale list child IDs', async () => {

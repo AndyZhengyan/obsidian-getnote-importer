@@ -174,6 +174,7 @@ describe('knowledge base and Markdown uploads', () => {
   it('joins the downloaded note to its nested knowledge-base directory', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(Response.json({ success: true, data: { topics: [{ topic_id: 'workspace', name: 'Workspace' }] } }))
+      .mockResolvedValueOnce(Response.json({ success: true, data: { bloggers: [] } }))
       .mockResolvedValueOnce(Response.json({ success: true, data: { notes: [{ note_id: largeId, title: 'Example' }] } }))
       .mockResolvedValueOnce(new Response('{"success":true,"data":{"directories":[{"id":2000000000000000001,"name":"Docs"}]}}'))
       .mockResolvedValueOnce(Response.json({ success: true, data: { directories: [{ id: 'child', name: 'Design' }] } }))

@@ -23,6 +23,7 @@ export interface GetNoteNote {
   prime_id?: string;          // Web API detail identifier
   topic_id?: string;          // Knowledge-base topic identifier
   topic_name?: string;        // Knowledge-base display name
+  topic_source?: SubscribedTopic['source'];
   topic_directory_path?: string[]; // Directory names from the knowledge-base root
   topics?: Array<{ id: string; name: string }>; // Memberships returned by note list/detail
   fetch_error?: string;       // Internal: per-note knowledge detail failure

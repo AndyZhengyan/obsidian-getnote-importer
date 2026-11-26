@@ -194,6 +194,7 @@ export interface TopicContentPreviewCursor {
   bloggerIndex: number;
   page: number;
   webDirectory?: WebDirectoryPreviewCursor;
+  source?: 'notes' | 'bloggers';
 }
 
 export interface TopicContentPreviewPage {

@@ -1,6 +1,6 @@
 import { updateNote } from '../src/api-clients/openapi-client';
 import { describe, it, expect, vi } from 'vitest';
-import { createNote, fetchNoteChildren, fetchNotes, fetchNoteDetail, fetchNoteOriginal, fetchRecallSearch, fetchSubscribedKnowledgeNotes, fetchSubscribedTopics, fetchTopicContentPreviewPage, setWebTokenRefreshHandler } from '../src/api';
+import { createNote, fetchNoteChildren, fetchNotes, fetchNoteDetail, fetchNoteOriginal, fetchOpenApiQuota, fetchRecallSearch, fetchSubscribedKnowledgeNotes, fetchSubscribedTopics, fetchTopicContentPreviewPage, setWebTokenRefreshHandler } from '../src/api';
 
 // Extract the internal safeJsonParse for direct testing
 function safeJsonParse(text: string): unknown {
@@ -470,6 +470,42 @@ describe('fetchNotes limit', () => {
     } finally {
       timeoutSpy.mockRestore();
       vi.mocked(globalThis.fetch).mockRestore();
+    }
+  });
+});
+
+describe('OpenAPI account restrictions', () => {
+  it('reads the official quota endpoint and keeps exhausted buckets', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse({
+      success: true,
+      data: {
+        read: { daily: { limit: 100, remaining: 0, reset_at: 1795536000 } },
+        write_note: { monthly: { limit: 20, remaining: 17 } },
+      },
+    }));
+    try {
+      await expect(fetchOpenApiQuota('token', 'client')).resolves.toEqual([
+        { bucket: 'read', period: 'daily', limit: 100, remaining: 0, resetAt: 1795536000 },
+        { bucket: 'write_note', period: 'monthly', limit: 20, remaining: 17 },
+      ]);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://openapi.biji.com/open/api/v1/resource/rate-limit/quota',
+        expect.objectContaining({ method: 'GET', headers: expect.objectContaining({ 'X-Client-ID': 'client' }) })
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it.each([200, 403, 429])('reports not_member on HTTP %i without retrying', async status => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockFetchResponse({ success: false, error: { reason: 'not_member' } }, status)
+    );
+    try {
+      await expect(fetchNotes({ token: 'token', clientId: 'client' })).rejects.toThrow('账号无法使用此 OpenAPI 功能');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchMock.mockRestore();
     }
   });
 });

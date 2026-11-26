@@ -3,6 +3,7 @@ import { SettingItem } from './setting-item';
 import { SyncButton } from './sync-button';
 import { OAuthButton } from './oauth-button';
 import { openSyncHistoryModal } from '../ui/sync-history-modal';
+import { QuotaModal } from '../ui/quota-modal';
 import { NoteTypeSelect } from '../ui/note-type-select';
 import { TagSelect } from '../ui/tag-select';
 import { KnowledgeBaseSelect } from '../ui/knowledge-base-select';
@@ -774,6 +775,17 @@ export function SettingsComponent({
           >
             {testingConnection ? t('settings.testingConnection') : t('settings.testConnection')}
           </button>
+          {authMode === 'openapi' && (
+            <button
+              type="button"
+              className="mod-secondary"
+              aria-haspopup="dialog"
+              disabled={!hasCredentials}
+              onClick={() => new QuotaModal(app, apiTokenOpenapi.trim(), clientIdOpenapi.trim()).open()}
+            >
+              {t('settings.viewQuota')}
+            </button>
+          )}
           <button
             type="button"
             className="mod-secondary"
@@ -857,7 +869,7 @@ export function SettingsComponent({
         description={
           authMode === 'web'
             ? <span>{t('settings.credentials.webTip')} <ExternalLink href={t('settings.webTipHelpUrl')}>{t('settings.webTipHelp')}</ExternalLink></span>
-            : t('settings.credentials.tip')
+            : <ExternalLink href="https://www.biji.com/openapi?tab=keys">{t('settings.credentials.createApiKey')}</ExternalLink>
         }
       >
         <div className="getnote-credentials-control">
@@ -954,13 +966,10 @@ export function SettingsComponent({
                     await fetchNotes({ token, clientId: cid, authMode: 'openapi', sinceId: '0', limit: 1 });
                     setConnectionHealthOverride('healthy');
                     setCredentialsDetailsOpen(false);
-                    return { isMemberError: false, message: '' };
                   } catch (err) {
                     setConnectionHealthOverride('error');
                     setCredentialsDetailsOpen(true);
-                    const msg = err instanceof Error ? err.message : String(err);
-                    const isMemberError = msg.includes('10201') || msg.includes('仅对会员开放') || msg.includes('not_member');
-                    return { isMemberError, message: isMemberError ? t('settings.connectionErrorMemberHint') : msg };
+                    throw err;
                   }
                 }}
               />

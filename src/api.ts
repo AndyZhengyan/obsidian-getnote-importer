@@ -7,6 +7,8 @@ import type { GetNoteNote, AuthMode, LinkOriginal, RecallSearchResult, Subscribe
 import type { Blogger } from './api-clients/openapi-client';
 import { t } from './i18n';
 
+export { fetchOpenApiQuota, type OpenApiQuotaEntry } from './api-clients/openapi-client';
+
 export const GETNOTE_LIST_LIMIT = 20;
 
 export interface WebTokenRefreshHandler {

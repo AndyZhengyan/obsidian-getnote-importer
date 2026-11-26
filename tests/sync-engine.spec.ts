@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { TFile, TFolder, type App } from 'obsidian';
+import { Platform, TFile, TFolder, type App } from 'obsidian';
 import { SyncEngine } from '../src/sync';
 import type { Settings, GetNoteNote } from '../src/types';
 import { DEFAULT_SETTINGS } from '../src/types';
@@ -4030,7 +4030,9 @@ describe('SyncEngine — selective sync cancellation', () => {
         arrayBuffer: () => Promise.resolve(new Uint8Array([1, 2, 3]).buffer),
       } as Response);
 
+      const previousIsDesktopApp = Platform.isDesktopApp;
       try {
+        Platform.isDesktopApp = true;
         // @ts-expect-error private helper is tested directly
         await engine['enrichAudioNote'](note, new AbortController().signal);
 
@@ -4038,6 +4040,7 @@ describe('SyncEngine — selective sync cancellation', () => {
         await expect(readFile(join(basePath, '得到大脑/纯文本/asset/测试笔记_handout.pdf')))
           .resolves.toEqual(Buffer.from([1, 2, 3]));
       } finally {
+        Platform.isDesktopApp = previousIsDesktopApp;
         vi.mocked(globalThis.fetch).mockRestore();
         await rm(basePath, { recursive: true, force: true });
       }

@@ -14,10 +14,10 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 * * *
 
-## 🎉 1.6.6 — Latest Update
+## 🎉 1.6.7 — Latest Update
 
-- Uploads preserve common Markdown formatting and embedded local images. Manual uploads can target a knowledge base, and automatic updates keep the original membership.
-- Knowledge-base notes follow the available folder hierarchy. Existing notes can move out of date folders during sync.
+- Dedao Brain authorization uses the official OpenAPI to sync subscribed knowledge bases and blogger content, including original content and appended notes when available.
+- Free accounts can authorize access. Check quotas in the plugin settings or select **Create API Key** to open the official key page.
 
 The README keeps only the current release highlights. See [GitHub Releases](https://github.com/AndyZhengyan/obsidian-dedao-brain-sync/releases) for the complete version history.
 

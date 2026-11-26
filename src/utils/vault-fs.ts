@@ -1,7 +1,5 @@
 /// <reference types="node" />
-import type { App } from 'obsidian';
-import { writeFile, mkdir } from 'fs/promises';
-import * as path from 'path';
+import { Platform, type App } from 'obsidian';
 
 /**
  * Returns true when the vault is backed by a local filesystem adapter that
@@ -30,10 +28,15 @@ export async function tryWriteBinary(
   data: ArrayBuffer
 ): Promise<void> {
   const adapter = app.vault.adapter as { getBasePath?: () => string } | undefined;
-  const base = adapter?.getBasePath?.();
+  const base = Platform.isDesktopApp ? adapter?.getBasePath?.() : undefined;
 
   if (typeof base === 'string' && base.length > 0) {
     try {
+      // Use Electron's CommonJS loader only when the desktop fast path is needed.
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { writeFile, mkdir } = require('fs/promises') as typeof import('fs/promises');
+      const path = require('path') as typeof import('path');
+      /* eslint-enable @typescript-eslint/no-require-imports */
       const absPath = path.join(base, vaultPath);
       const absDir = path.dirname(absPath);
       await mkdir(absDir, { recursive: true });

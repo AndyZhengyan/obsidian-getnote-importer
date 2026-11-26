@@ -869,15 +869,7 @@ export function SettingsComponent({
         description={
           authMode === 'web'
             ? <span>{t('settings.credentials.webTip')} <ExternalLink href={t('settings.webTipHelpUrl')}>{t('settings.webTipHelp')}</ExternalLink></span>
-            : (
-              <div className="getnote-openapi-guidance">
-                <div>{t('settings.credentials.tip')}</div>
-                <div>
-                  <ExternalLink href="https://www.biji.com/openapi?tab=keys">{t('settings.credentials.openPlatform')}</ExternalLink>
-                  {' '}{t('settings.credentials.manualTip')}
-                </div>
-              </div>
-            )
+            : <ExternalLink href="https://www.biji.com/openapi?tab=keys">{t('settings.credentials.createApiKey')}</ExternalLink>
         }
       >
         <div className="getnote-credentials-control">

@@ -54,10 +54,6 @@
   font-size: var(--font-ui-small);
 }
 
-.getnote-openapi-guidance > div + div {
-  margin-top: 0.4em;
-}
-
 .getnote-settings-status-bar.is-credentials-open {
   margin-bottom: 0;
   border-radius: var(--radius-m) var(--radius-m) 0 0;

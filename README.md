@@ -104,7 +104,7 @@ README 仅保留当前版本的核心亮点；完整版本历史请查看 [GitHu
 
 在 Obsidian 的「设置 → Dedao Brain Sync → 更改凭证」中选择「得到大脑授权」。点击「登录得到大脑授权」，在浏览器中登录要同步的账号并确认授权。
 
-手动配置时，登录[得到大脑开放平台](https://www.biji.com/openapi?tab=keys)，按提示开通开发者身份，在「应用管理」创建应用，复制同一应用的 Client ID 和完整 API Key（以 `gk_live_` 开头）到插件设置，然后点击「测试连接」。Key ID 用于标识密钥。
+手动配置时，打开[得到大脑开放平台的 API Key 页面](https://www.biji.com/openapi?tab=keys)，点击「创建 API Key」。将 Client ID 和完整的 API Key（以 `gk_live_` 开头）填入插件设置，再点击「测试连接」。完整密钥只在创建时显示一次，请妥善保存。
 
 ### 🟡 Web 模式（桌面端快速使用）
 

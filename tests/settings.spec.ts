@@ -434,13 +434,12 @@ describe('SettingsComponent information architecture (#257)', () => {
     expect(status.textContent).not.toContain('80 / 100');
   });
 
-  it('links to the official platform and explains which manual credentials to copy', () => {
+  it('shows only the Create API Key link as the OpenAPI credential description', () => {
     const { container } = renderSettings(makeSettings());
     const credentials = container.querySelector('[data-credential-details]');
     const link = credentials?.querySelector('a[href="https://www.biji.com/openapi?tab=keys"]');
-    expect(link?.textContent).toContain('得到大脑开放平台');
-    expect(credentials?.textContent).toContain('应用管理');
-    expect(credentials?.textContent).toContain('Key ID');
+    expect(link?.textContent).toBe('创建 API Key');
+    expect(link?.closest('.setting-item-description')?.textContent).toBe('创建 API Key');
   });
 
   it('aborts the quota request when the modal closes', async () => {

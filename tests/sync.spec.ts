@@ -834,7 +834,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     });
   });
 
-  it('records partial upload history when a completed local upload has failed items', async () => {
+  it('shows the failed note and reason in the upload notice and records partial history', async () => {
     vi.spyOn(ReverseSyncEngine.prototype, 'syncFiles').mockResolvedValue({
       created: 0,
       skipped: 0,
@@ -871,7 +871,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
       }));
     });
     expect(issuedNotices.at(-1)).toEqual({
-      message: '❌ [得到大脑] 同步部分完成：新增 0 · 更新 0 · 跳过 0 · 失败 1',
+      message: '❌ [得到大脑] 同步部分完成：新增 0 · 更新 0 · 跳过 0 · 失败 1\nfail：API 服务器错误 500',
       timeout: 15000,
     });
     expect(plugin.isSyncing).toBe(false);

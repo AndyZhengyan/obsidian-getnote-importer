@@ -40,15 +40,22 @@
   justify-content: flex-end;
 }
 
-.getnote-settings-quota {
-  width: 100%;
+.getnote-quota-modal ul {
+  margin: 0;
+  padding-inline-start: 1.4em;
+}
+
+.getnote-quota-modal li + li {
+  margin-top: 0.55em;
+}
+
+.getnote-quota-reset {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
 }
 
-.getnote-settings-quota ul {
-  margin: 0;
-  padding-inline-start: 1.4em;
+.getnote-openapi-guidance > div + div {
+  margin-top: 0.4em;
 }
 
 .getnote-settings-status-bar.is-credentials-open {

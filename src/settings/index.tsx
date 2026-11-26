@@ -3,13 +3,14 @@ import { SettingItem } from './setting-item';
 import { SyncButton } from './sync-button';
 import { OAuthButton } from './oauth-button';
 import { openSyncHistoryModal } from '../ui/sync-history-modal';
+import { QuotaModal } from '../ui/quota-modal';
 import { NoteTypeSelect } from '../ui/note-type-select';
 import { TagSelect } from '../ui/tag-select';
 import { KnowledgeBaseSelect } from '../ui/knowledge-base-select';
 import { Toggle } from './toggle';
 import { getAuthCredentials, type AttachmentImportSettings, type AuthMode, type Settings, type SyncHistoryEntry, type SyncProgressDetail } from '../types';
 import { App, AbstractInputSuggest } from 'obsidian';
-import { fetchNotes, fetchOpenApiQuota, type OpenApiQuotaEntry } from '../api';
+import { fetchNotes } from '../api';
 import { t } from '../i18n';
 import { ExternalLink } from './external-link';
 import { getLocalDateInputValue } from '../ui/date-input';
@@ -185,11 +186,6 @@ export function SettingsComponent({
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(true);
   const [advancedDetailsOpen, setAdvancedDetailsOpen] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
-  const [quota, setQuota] = useState<OpenApiQuotaEntry[] | null>(null);
-  const [quotaError, setQuotaError] = useState('');
-  const [loadingQuota, setLoadingQuota] = useState(false);
-  const quotaRequest = useRef<AbortController | null>(null);
-  useEffect(() => () => quotaRequest.current?.abort(), []);
   const [desktopWebAuthBusy, setDesktopWebAuthBusy] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [connectionHealthOverride, setConnectionHealthOverride] = useState<ConnectionHealth | null>(null);
@@ -230,11 +226,6 @@ export function SettingsComponent({
   const templateFileInputRef = useRef<HTMLInputElement>(null);
 
   const resetConnectionVerification = useCallback(() => {
-    quotaRequest.current?.abort();
-    quotaRequest.current = null;
-    setQuota(null);
-    setQuotaError('');
-    setLoadingQuota(false);
     setConnectionHealthOverride('unverified');
     setConnectionStatus('idle');
     setConnectionErrorMsg('');
@@ -640,26 +631,6 @@ export function SettingsComponent({
     }
   };
 
-  const handleViewQuota = async () => {
-    if (quotaRequest.current) return;
-    const request = new AbortController();
-    quotaRequest.current = request;
-    setLoadingQuota(true);
-    setQuota(null);
-    setQuotaError('');
-    try {
-      const entries = await fetchOpenApiQuota(apiTokenOpenapi.trim(), clientIdOpenapi.trim(), request.signal);
-      if (!request.signal.aborted) setQuota(entries);
-    } catch (error) {
-      if (!request.signal.aborted) setQuotaError(error instanceof Error ? error.message : String(error));
-    } finally {
-      if (quotaRequest.current === request) {
-        quotaRequest.current = null;
-        setLoadingQuota(false);
-      }
-    }
-  };
-
   const handleDesktopWebAuth = async () => {
     if (!startDesktopWebAuth) return;
     setDesktopWebAuthBusy(true);
@@ -805,10 +776,14 @@ export function SettingsComponent({
             {testingConnection ? t('settings.testingConnection') : t('settings.testConnection')}
           </button>
           {authMode === 'openapi' && (
-            <button type="button" className="mod-secondary" disabled={!hasCredentials || loadingQuota}
-              onClick={() => void handleViewQuota()}
+            <button
+              type="button"
+              className="mod-secondary"
+              aria-haspopup="dialog"
+              disabled={!hasCredentials}
+              onClick={() => new QuotaModal(app, apiTokenOpenapi.trim(), clientIdOpenapi.trim()).open()}
             >
-              {loadingQuota ? t('settings.loadingQuota') : t('settings.viewQuota')}
+              {t('settings.viewQuota')}
             </button>
           )}
           <button
@@ -833,28 +808,6 @@ export function SettingsComponent({
           <span className="getnote-connection-error" role="alert">
             {t('settings.connectionError')}{connectionErrorMsg ? `: ${connectionErrorMsg}` : ''}
           </span>
-        )}
-        {quotaError && <span className="getnote-connection-error" role="alert">{quotaError}</span>}
-        {quota && (
-          <div className="getnote-settings-quota" role="status">
-            {quota.length === 0 ? t('settings.quotaUnavailable') : (
-              <ul aria-label={t('settings.viewQuota')}>
-                {quota.map(entry => (
-                  <li key={entry.bucket + '-' + entry.period}>
-                    {t('settings.quotaEntry', {
-                      period: t(entry.period === 'daily' ? 'settings.quotaDaily' : 'settings.quotaMonthly'),
-                      bucket: t('settings.quotaBucket.' + entry.bucket),
-                      remaining: entry.remaining,
-                      limit: entry.limit,
-                    })}
-                    {entry.resetAt && ' · ' + t('settings.quotaResetAt', {
-                      time: new Date(entry.resetAt * 1000).toLocaleString(),
-                    })}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
         )}
       </div>
 
@@ -916,7 +869,15 @@ export function SettingsComponent({
         description={
           authMode === 'web'
             ? <span>{t('settings.credentials.webTip')} <ExternalLink href={t('settings.webTipHelpUrl')}>{t('settings.webTipHelp')}</ExternalLink></span>
-            : t('settings.credentials.tip')
+            : (
+              <div className="getnote-openapi-guidance">
+                <div>{t('settings.credentials.tip')}</div>
+                <div>
+                  <ExternalLink href="https://www.biji.com/openapi?tab=auth">{t('settings.credentials.openPlatform')}</ExternalLink>
+                  {' '}{t('settings.credentials.manualTip')}
+                </div>
+              </div>
+            )
         }
       >
         <div className="getnote-credentials-control">

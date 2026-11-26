@@ -102,11 +102,9 @@ Credentials are stored only in your local Obsidian plugin data.
 
 ### 🟢 OpenAPI mode — recommended for long-term use
 
-1. Open Dedao Brain.
-2. Go to `Settings → Open Platform`.
-3. Create an application and obtain the `Token` and `Client ID`.
-4. In `Settings → Dedao Brain Sync`, choose OpenAPI authentication and enter both values.
-5. Test the connection.
+In **Settings → Dedao Brain Sync → Change Credentials**, select **Dedao Brain authorization**. Click **Sign in to Dedao Brain**, then authorize the account you want to sync in your browser.
+
+For manual setup, log in to the [Dedao Brain Open Platform](https://www.biji.com/openapi?tab=auth). Follow the prompts to enable developer access, create an app in App Management, paste that app’s Client ID and full API Key (starting with `gk_live_`) into the plugin settings, and select **Test Connection**. The Key ID identifies the key.
 
 ### 🟡 Web mode — quick desktop setup
 

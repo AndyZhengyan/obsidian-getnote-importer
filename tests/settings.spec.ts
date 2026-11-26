@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
-import { App } from 'obsidian';
+import { App, Modal } from 'obsidian';
 import { abstractInputSuggestInstances, TFile, TFolder } from './mocks/obsidian';
 import { fetchNotes, fetchOpenApiQuota } from '../src/api';
 import { initI18n } from '../src/i18n';
@@ -274,7 +274,7 @@ describe('SettingsComponent information architecture (#257)', () => {
 
     const status = container.querySelector<HTMLElement>('[data-settings-status]');
     expect(status).toBeTruthy();
-    expect(status!.textContent).toContain('OpenAPI');
+    expect(status!.textContent).toContain('得到大脑授权');
     expect(status!.textContent).toContain('当前状态');
     expect(status!.textContent).not.toContain('按时间同步');
 
@@ -410,7 +410,11 @@ describe('SettingsComponent information architecture (#257)', () => {
     expect(container.querySelector('[data-settings-status]')?.textContent).toContain('连接成功');
   });
 
-  it('shows the current OpenAPI quota next to the connection controls', async () => {
+  it('opens quota results in a modal from the connection controls', async () => {
+    vi.spyOn(Modal.prototype, 'open').mockImplementation(function (this: Modal) {
+      document.body.appendChild(this.modalEl);
+      this.onOpen();
+    });
     vi.mocked(fetchOpenApiQuota).mockResolvedValue([
       { bucket: 'read', period: 'daily', limit: 100, remaining: 80, resetAt: 1795536000 },
     ]);
@@ -423,8 +427,37 @@ describe('SettingsComponent information architecture (#257)', () => {
     expect(button).toBeDefined();
     await act(async () => button!.click());
     expect(fetchOpenApiQuota).toHaveBeenCalledWith('token', 'client-id', expect.any(AbortSignal));
-    expect(status.textContent).toContain('每日读取');
-    expect(status.textContent).toContain('80 / 100');
+    const dialog = document.querySelector('.getnote-quota-modal');
+    expect(dialog?.textContent).toContain('查看配额');
+    expect(dialog?.textContent).toContain('每日读取');
+    expect(dialog?.textContent).toContain('80 / 100');
+    expect(status.textContent).not.toContain('80 / 100');
+  });
+
+  it('links to the official platform and explains which manual credentials to copy', () => {
+    const { container } = renderSettings(makeSettings());
+    const credentials = container.querySelector('[data-credential-details]');
+    const link = credentials?.querySelector('a[href="https://www.biji.com/openapi?tab=auth"]');
+    expect(link?.textContent).toContain('得到大脑开放平台');
+    expect(credentials?.textContent).toContain('应用管理');
+    expect(credentials?.textContent).toContain('Key ID');
+  });
+
+  it('aborts the quota request when the modal closes', async () => {
+    vi.mocked(fetchOpenApiQuota).mockImplementationOnce(() => new Promise(() => {}));
+    let modal: Modal | undefined;
+    vi.spyOn(Modal.prototype, 'open').mockImplementation(function (this: Modal) {
+      modal = this;
+      this.onOpen();
+    });
+    const { container } = renderSettings(makeSettings({ openApiToken: 'token', openApiClientId: 'client' }));
+    const button = [...container.querySelectorAll('button')].find(item => item.textContent === '查看配额')!;
+    await act(async () => button.click());
+    const signal = vi.mocked(fetchOpenApiQuota).mock.calls.at(-1)?.[2];
+    expect(modal?.contentEl.textContent).toBe('查询配额中…');
+    expect(signal?.aborted).toBe(false);
+    modal?.onClose();
+    expect(signal?.aborted).toBe(true);
   });
 
   it('tests the entered Web Token without substituting or renewing the saved session', async () => {

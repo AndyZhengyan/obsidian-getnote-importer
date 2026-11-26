@@ -11,10 +11,10 @@ import { TopicPickerModal, type TopicPickerSelection } from './ui/topic-picker-m
 import { ManualSyncModal } from './ui/manual-sync-modal';
 import { LocalUploadModal } from './ui/local-upload-modal';
 import { initI18n, t } from './i18n';
-import { ReverseSyncEngine, type ReverseSyncResult } from './reverse-sync';
+import { ReverseSyncEngine, type ReverseSyncResult, type UploadDestination } from './reverse-sync';
 import { migrateSyncedNoteTags } from './tag-migration';
 import { getLastQuotaState, resetQuotaState } from './api-clients/openapi-client';
-import { fetchNotes, fetchRecallSearch, setWebTokenRefreshHandler } from './api';
+import { fetchNotes, fetchRecallSearch, fetchWritableTopics, setWebTokenRefreshHandler } from './api';
 import { mergeTagCache } from './utils/tag-aggregator';
 import { SearchPanel, findSyncedNoteFile } from './ui/search-view';
 import { filterKeywordSearchPage, type KeywordSearchPage } from './keyword-search';
@@ -607,7 +607,7 @@ export default class GetNoteSyncPlugin extends Plugin {
 
   /** Reconcile only existing text notes returned by this download's filters. */
   private async reconcileDownloadedNotes(result: SyncResult, automatic: boolean): Promise<void> {
-    const ids = [...new Set((result.items ?? []).filter(item => item.status === 'skipped' && item.noteType === 'plain_text')
+    const ids = [...new Set((result.items ?? []).filter(item => (item.status === 'skipped' || item.relocated) && item.noteType === 'plain_text')
       .map(item => item.noteId))];
     if (!ids.length) return;
     const reconciler = new BidirectionalSyncEngine(this.app, this.settings,
@@ -620,14 +620,29 @@ export default class GetNoteSyncPlugin extends Plugin {
       if (error instanceof DOMException && error.name === 'AbortError') throw new SyncCancelledError();
       throw error;
     }
-    const reconciled = new Set((changes.items ?? []).map(item => item.noteId));
+    this.mergeReconciliation(result, changes);
+  }
+
+  private mergeReconciliation(result: SyncResult, changes: SyncResult): void {
+    const reconciled = new Map((changes.items ?? []).map(item => [item.noteId, item]));
+    const retainedRelocations = new Set<string>();
     result.items = (result.items ?? []).filter(item => {
-      if (!reconciled.has(item.noteId)) return true;
-      result[item.status]--; result.total--;
+      const change = reconciled.get(item.noteId);
+      if (!change || (item.status !== 'skipped' && !item.relocated)) return true;
+      if (item.relocated && change.status === 'skipped') {
+        if (change.error) item.error = change.error;
+        retainedRelocations.add(item.noteId);
+        return true;
+      }
+      if (item.relocated) change.relocated = true;
+      result[item.status]--;
+      result.total--;
       return false;
     });
     for (const key of ['created', 'updated', 'skipped', 'failed', 'total'] as const) result[key] += changes[key];
-    result.items.push(...(changes.items ?? []));
+    result.skipped -= retainedRelocations.size;
+    result.total -= retainedRelocations.size;
+    result.items.push(...(changes.items ?? []).filter(item => !retainedRelocations.has(item.noteId)));
   }
 
   private async runSync(
@@ -675,19 +690,7 @@ export default class GetNoteSyncPlugin extends Plugin {
           type === 'auto' ? undefined : conflict => resolveSyncConflict(this.app, conflict, 'both'), progress => this.setReconciliationProgress(progress));
         this.currentSyncEngine = reconciler;
         const changes = await reconciler.sync(undefined, { direction: 'both', changedOnly: true });
-        const reconciledIds = new Set((changes.items ?? []).map(item => item.noteId));
-        result.items = (result.items ?? []).filter(item => {
-          if (item.status !== 'skipped' || !reconciledIds.has(item.noteId)) return true;
-          result.skipped--;
-          result.total--;
-          return false;
-        });
-        result.created += changes.created;
-        result.updated += changes.updated;
-        result.skipped += changes.skipped;
-        result.failed += changes.failed;
-        result.total += changes.total;
-        (result.items ??= []).push(...(changes.items ?? []));
+        this.mergeReconciliation(result, changes);
       }
       else await this.reconcileDownloadedNotes(result, type === 'auto');
 
@@ -1114,11 +1117,11 @@ export default class GetNoteSyncPlugin extends Plugin {
     wrapper.open();
   }
 
-  uploadSelectedLocalNotes(files: TFile[]): void {
-    void this.reverseSyncToGetNote(files);
+  uploadSelectedLocalNotes(files: TFile[], destination?: UploadDestination): void {
+    void this.reverseSyncToGetNote(files, destination);
   }
 
-  private async reverseSyncToGetNote(files?: TFile[]): Promise<void> {
+  private async reverseSyncToGetNote(files?: TFile[], destination?: UploadDestination): Promise<void> {
     if (this.isSyncing || this.isDatePathMigrationRunning) return;
     const startedAt = Date.now();
     this.isSyncing = true;
@@ -1138,7 +1141,7 @@ export default class GetNoteSyncPlugin extends Plugin {
         this.updateSettingsRuntimeState();
       });
       this.currentSyncEngine = engine;
-      const result = files ? await engine.syncFiles(files) : await engine.syncBack();
+      const result = files ? await engine.syncFiles(files, destination) : await engine.syncBack();
       await this.recordUploadHistory(result, startedAt, files?.map(file => file.path));
       if (result.failed > 0) {
         showError(t('notice.syncPartial', {
@@ -1397,9 +1400,10 @@ class LocalUploadModalWrapper extends Modal {
         files={this.app.vault.getMarkdownFiles()}
         initialFolder={this.plugin.settings.reverseSync.uploadFolder || this.plugin.settings.folderName}
         syncFolder={this.plugin.settings.folderName}
-        onConfirm={(files) => {
+        loadTopics={(signal) => fetchWritableTopics({ ...getAuthCredentials(this.plugin.settings), signal })}
+        onConfirm={(files, destination) => {
           this.close();
-          this.plugin.uploadSelectedLocalNotes(files);
+          this.plugin.uploadSelectedLocalNotes(files, destination);
         }}
         onCancel={() => this.close()}
       />,

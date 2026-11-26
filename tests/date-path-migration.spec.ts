@@ -254,7 +254,7 @@ describe('migrateDatePaths', () => {
     expect(app.vault.paths()).toEqual(['得到大脑/纯文本/不可触碰.md']);
   });
 
-  it('enables, changes format, and disables knowledge-base paths using the created date', async () => {
+  it('keeps knowledge-base paths when changing date-path settings', async () => {
     app.vault.addFile(
       '得到大脑/知识库/写作/历史.md',
       'kb',
@@ -265,10 +265,29 @@ describe('migrateDatePaths', () => {
     const reformatted = await migrate({ enabled: true, format: 'YYYY-MM-DD' });
     const disabled = await migrate({ enabled: false, format: 'YYYY-MM-DD' });
 
-    expect(enabled.moved).toBe(1);
-    expect(reformatted.moved).toBe(1);
-    expect(disabled.moved).toBe(1);
+    expect(enabled.moved).toBe(0);
+    expect(reformatted.moved).toBe(0);
+    expect(disabled.moved).toBe(0);
     expect(app.vault.paths()).toEqual(['得到大脑/知识库/写作/历史.md']);
+  });
+
+  it('recognizes a dated knowledge-base category when rebuilding ordinary categories', async () => {
+    app.vault.addFile(
+      '得到大脑/2026/07/知识库/写作/科幻/历史.md',
+      'kb',
+      pluginCache({ uid: 'kb-dated', note_type: 'img_text' }),
+    );
+
+    const result = await migrateDatePaths(app, '得到大脑', { enabled: true, format: 'YYYY-MM-DD' }, {
+      source: { enabled: true, format: 'YYYY/MM' },
+      categoryOrigins: {},
+      assetMoveEvidence: {},
+      rebuildCategories: true,
+      beforeExecute: async () => {},
+    });
+
+    expect(result.moved).toBe(1);
+    expect(app.vault.paths()).toEqual(['得到大脑/知识库/写作/科幻/历史.md']);
   });
 
   it('preserves a custom category hierarchy through enable, format change, and disable', async () => {

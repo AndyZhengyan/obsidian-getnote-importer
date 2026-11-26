@@ -1,6 +1,6 @@
 {
   "name": "obsidian-dedao-brain-sync",
-  "version": "1.6.4",
+  "version": "1.6.7",
   "description": "Dedao Brain Sync for Obsidian",
   "main": "main.js",
   "scripts": {
@@ -19,17 +19,18 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "esbuild": "^0.28.2",
-    "eslint": "^10.12.0",
-    "happy-dom": "^20.14.6",
+    "eslint": "^10.14.0",
+    "happy-dom": "^21.0.4",
     "obsidian": "^1.14.4",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.71.1",
-    "vitest": "^5.0.3"
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
   },
   "dependencies": {
+    "marked": "^18.2.1",
     "preact": "^10.29.8",
     "react": "npm:@preact/compat",
     "react-dom": "npm:@preact/compat"

@@ -23,6 +23,29 @@ afterEach(() => {
 });
 
 describe('OAuthButton lifecycle cleanup', () => {
+  it('shows a failed connection check after device authorization', async () => {
+    initI18n('zh-CN');
+    vi.useFakeTimers();
+    vi.mocked(fetchOAuthDeviceCode).mockResolvedValue({
+      verification_uri: 'https://biji.com/verify',
+      user_code: 'ABCD-1234',
+      code: 'dev_abc',
+      interval: 5,
+    });
+    vi.mocked(pollOAuthToken).mockResolvedValue({ api_key: 'key', client_id: 'client' });
+    render(h(OAuthButton, {
+      onAuthorize: vi.fn(),
+      onTestConnection: vi.fn().mockRejectedValue(new Error('凭证无效')),
+    }), document.body);
+
+    await act(async () => {
+      document.querySelector('button')!.click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(document.body.textContent).toContain('凭证无效');
+  });
+
   it('clears the pending success timeout when unmounted', async () => {
     initI18n('zh-CN');
     vi.useFakeTimers();
@@ -43,7 +66,7 @@ describe('OAuthButton lifecycle cleanup', () => {
     render(
       h(OAuthButton, {
         onAuthorize: vi.fn(),
-        onTestConnection: vi.fn().mockResolvedValue({ isMemberError: false, message: '' }),
+        onTestConnection: vi.fn().mockResolvedValue(undefined),
       }),
       container
     );

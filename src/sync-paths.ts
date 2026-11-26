@@ -1,10 +1,16 @@
 import { t } from './i18n';
 import { generateDisplayTitle, formatTimestampPrefix } from './note-parser';
 import type { GetNoteNote, Settings } from './types';
+import { KNOWLEDGE_BASE_CATEGORY } from './date-paths';
 
-export function getKnowledgeBaseDir(name: string): string {
-  const safeName = name.replace(/[\\/:*?"<>|]/g, '_').trim() || t('picker.noTitle');
-  return `知识库/${safeName}`;
+function sanitizeKnowledgeBaseSegment(name: string): string {
+  const sanitized = name.replace(/[\\/:*?"<>|\0]/g, '_').trim().replace(/^\.+|\.+$/g, '_');
+  if (/^(?:asset$|(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$))/i.test(sanitized)) return `_${sanitized}`;
+  return sanitized || t('picker.noTitle');
+}
+
+export function getKnowledgeBaseDir(name: string, directoryPath: readonly string[] = []): string {
+  return [KNOWLEDGE_BASE_CATEGORY, ...[name, ...directoryPath].map(sanitizeKnowledgeBaseSegment)].join('/');
 }
 
 export function buildNoteBaseName(note: GetNoteNote, settings: Pick<Settings, 'filenamePrefix'>): string {

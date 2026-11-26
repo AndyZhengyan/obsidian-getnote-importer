@@ -1,6 +1,7 @@
 import type { GetNoteNote, Attachment, LinkOriginal, RecallSearchResult, SubscribedTopic, ApiQuotaState } from '../types';
 import { t } from '../i18n';
-import { isRecord, normalizeBearerToken, parseJsonObjectOrEmpty, parseJsonPreservingIds, waitForRetryDelay } from './api-client-utils';
+import { isRecord, normalizeBearerToken, normalizeTopicMemberships, parseJsonObjectOrEmpty, parseJsonPreservingIds, waitForRetryDelay } from './api-client-utils';
+import { getImageType, uploadSignedImage, type UploadImageOptions } from './image-upload';
 
 export const GETNOTE_LIST_LIMIT = 20;
 
@@ -30,7 +31,10 @@ function normalizeListData(value: unknown): { notes: GetNoteNote[]; hasMore: boo
   if (data.msg === 'rejected') {
     throw new FatalOpenApiError(t('error.openApiNotMember'));
   }
-  const notes = Array.isArray(data.notes) ? data.notes as GetNoteNote[] : [];
+  const notes = Array.isArray(data.notes) ? (data.notes as GetNoteNote[]).map(note => {
+    const topics = normalizeTopicMemberships(note?.topics);
+    return topics ? { ...note, topics } : note;
+  }) : [];
   const hasMore = Boolean(data.has_more ?? data.hasMore);
   return { notes, hasMore };
 }
@@ -109,35 +113,8 @@ function normalizeNoteDetailData(value: unknown): Partial<GetNoteNote> | null {
   const childrenIds = Array.isArray(source.children_ids)
     ? source.children_ids.map(id => String(id))
     : undefined;
-  return { ...detail, attachments, audio, linkOriginal, children_ids: childrenIds };
-}
-
-function parseErrorBody(text: string): Record<string, unknown> {
-  return parseJsonObjectOrEmpty(text);
-}
-
-async function handleRateLimit<T>(
-  url: string,
-  options: RequestInit,
-  res: Response,
-  retries: number,
-  signal?: AbortSignal
-): Promise<T> {
-  const text = await res.text().catch(() => '');
-  const json = parseErrorBody(text);
-  const errObj = (json.error ?? json) as Record<string, unknown>;
-  const reason = errObj.reason as string | undefined;
-  if (reason === 'quota_day' || reason === 'quota_daily_exceeded' || reason === 'quota_month' || reason === 'quota_monthly_exceeded') {
-    const quotaReason = reason === 'quota_month' || reason === 'quota_monthly_exceeded' ? 'quota_month' : 'quota_day';
-    lastQuota = { exhausted: true, reason: quotaReason, checkedAt: Date.now() };
-    throw new FatalOpenApiError(t('error.quotaExceeded'));
-  }
-  if (retries > 0) {
-    await waitForRetryDelay(signal);
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    return apiRequest(url, options, retries - 1, signal);
-  }
-  throw new Error(t('error.rateLimited'));
+  const topics = normalizeTopicMemberships(source.topics ?? value.topics);
+  return { ...detail, attachments, audio, linkOriginal, children_ids: childrenIds, ...(topics ? { topics } : {}) };
 }
 
 async function apiRequest<T>(url: string, options: RequestInit, retries = 1, signal?: AbortSignal): Promise<T> {
@@ -145,33 +122,67 @@ async function apiRequest<T>(url: string, options: RequestInit, retries = 1, sig
   const res = await fetch(url, { ...options, signal });
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   if (res.status === 401) throw new FatalOpenApiError(t('error.invalidCredentials'));
-  if (res.status === 429) return handleRateLimit<T>(url, options, res, retries, signal);
-  if (res.status < 200 || res.status >= 300) {
-    const text = await res.text();
-    const json = parseJsonPreservingIds(text) as Record<string, unknown>;
-    if (res.status === 403 && json.success === false) {
-      const errObj = (json.error ?? json) as Record<string, unknown>;
-      const code = errObj?.code as number | undefined;
-      if (code === 10201) throw new FatalOpenApiError(t('error.openApiNotMember'));
-    }
-    throw new Error(t('error.apiServerError', { status: res.status }));
-  }
   const text = await res.text();
-  const json = parseJsonPreservingIds(text) as Record<string, unknown>;
-  // Handle HTTP 200 with business-level errors
-  if (json.success === false) {
-    const errObj = (json.error ?? json) as Record<string, unknown>;
-    const code = errObj?.code as number | undefined;
-    if (code === 10201) throw new FatalOpenApiError(t('error.openApiNotMember'));
-    if (code === 10202 && retries > 0) {
+  const json = res.ok
+    ? parseJsonPreservingIds(text) as Record<string, unknown>
+    : parseJsonObjectOrEmpty(text);
+  if (res.ok && json.success !== false) return json as T;
+  const error = isRecord(json.error) ? json.error : json;
+  if (error.code === 10201 || error.reason === 'not_member') {
+    throw new FatalOpenApiError(t('error.openApiNotMember'));
+  }
+  if (error.code === 10001) throw new FatalOpenApiError(t('error.invalidCredentials'));
+  const dailyQuota = error.reason === 'quota_day' || error.reason === 'quota_daily_exceeded';
+  const monthlyQuota = error.reason === 'quota_month' || error.reason === 'quota_monthly_exceeded';
+  if (dailyQuota || monthlyQuota || error.code === 42900) {
+    const reason = dailyQuota ? 'quota_day' : monthlyQuota ? 'quota_month' : undefined;
+    lastQuota = { exhausted: true, reason, checkedAt: Date.now() };
+    throw new FatalOpenApiError(t('error.quotaExceeded'));
+  }
+  if (res.status === 429 || error.code === 10202) {
+    if (retries > 0) {
       await waitForRetryDelay(signal);
-      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       return apiRequest(url, options, retries - 1, signal);
     }
-    const rawMsg = (errObj?.message as string) ?? '';
-    throw new Error(rawMsg ? t('error.apiGenericWithMsg', { msg: rawMsg }) : t('error.apiGeneric'));
+    throw new Error(t('error.rateLimited'));
   }
-  return json as T;
+  if (res.status === 403) throw new Error(t('error.openApiForbidden'));
+  if (!res.ok) throw new Error(t('error.apiServerError', { status: res.status }));
+  const message = typeof error.message === 'string' ? error.message : '';
+  throw new Error(message ? t('error.apiGenericWithMsg', { msg: message }) : t('error.apiGeneric'));
+}
+
+export interface OpenApiQuotaEntry {
+  bucket: 'read' | 'write' | 'write_note' | 'ai_chat';
+  period: 'daily' | 'monthly';
+  limit: number;
+  remaining: number;
+  resetAt?: number;
+}
+
+export async function fetchOpenApiQuota(token: string, clientId: string, signal?: AbortSignal): Promise<OpenApiQuotaEntry[]> {
+  const response = await apiRequest<{ data?: unknown }>(
+    'https://openapi.biji.com/open/api/v1/resource/rate-limit/quota',
+    { method: 'GET', headers: buildHeaders(token, clientId) },
+    1,
+    signal,
+  );
+  const data = response.data ?? response;
+  const entries: OpenApiQuotaEntry[] = [];
+  if (!isRecord(data)) return entries;
+  for (const bucket of ['read', 'write', 'write_note', 'ai_chat'] as const) {
+    const quotas = data[bucket];
+    if (!isRecord(quotas)) continue;
+    for (const period of ['daily', 'monthly'] as const) {
+      const quota = quotas[period];
+      if (!isRecord(quota) || typeof quota.limit !== 'number' || typeof quota.remaining !== 'number') continue;
+      entries.push({
+        bucket, period, limit: quota.limit, remaining: quota.remaining,
+        ...(typeof quota.reset_at === 'number' && quota.reset_at > 0 ? { resetAt: quota.reset_at } : {}),
+      });
+    }
+  }
+  return entries;
 }
 
 export interface FetchNotesOptions {
@@ -193,6 +204,7 @@ export interface CreateNoteOptions {
   content: string;
   noteType: string;
   tags?: string[];
+  topicId?: string;
   signal?: AbortSignal;
 }
 
@@ -312,7 +324,8 @@ function normalizeTopic(value: unknown): SubscribedTopic | null {
 
 function normalizeBlogger(value: unknown): Blogger | null {
   if (!isRecord(value)) return null;
-  const id = value.follow_id ?? value.id ?? value.watch_id;
+  if (value.hook_state === 'FAIL' && value.notes_count === 0) return null;
+  const id = value.follow_id_str || value.follow_id || value.id || value.watch_id;
   if (typeof id !== 'string' && typeof id !== 'number') return null;
   return {
     follow_id: String(id),
@@ -332,8 +345,8 @@ function normalizeContent(value: unknown): BloggerContent | null {
   if (typeof id !== 'string' && typeof id !== 'number') return null;
   return {
     post_id_alias: String(id),
-    title: typeof value.title === 'string' ? value.title : typeof value.post_name === 'string' ? value.post_name : undefined,
-    content: typeof value.content === 'string' ? value.content : typeof value.post_cleaned_summary === 'string' ? value.post_cleaned_summary : undefined,
+    title: stringValue(value.title) || stringValue(value.post_title) || stringValue(value.post_name) || undefined,
+    content: stringValue(value.post_media_text) || stringValue(value.content) || stringValue(value.post_cleaned_summary) || undefined,
     summary: typeof value.summary === 'string' ? value.summary : typeof value.post_summary === 'string' ? value.post_summary : undefined,
     created_at: typeof value.created_at === 'string' ? value.created_at : typeof value.post_create_time === 'string' ? value.post_create_time : undefined,
     updated_at: typeof value.updated_at === 'string' ? value.updated_at : typeof value.edit_time === 'string' ? value.edit_time : undefined,
@@ -352,6 +365,7 @@ function bloggerContentToNote(content: BloggerContent, topic: SubscribedTopic, b
     note_type: 'blogger_post',
     source: 'blogger',
     topic_id: topic.topic_id,
+    topic_name: topic.name,
     tags: [
       ...(topic.name ? [{ name: topic.name }] : []),
       ...(blogger.name ? [{ name: blogger.name }] : []),
@@ -385,42 +399,103 @@ export async function fetchSubscribedTopics(
   return topics;
 }
 
-async function fetchCreatedTopicNotes(topic: SubscribedTopic, token: string, clientId: string, signal?: AbortSignal, selectedNoteIds?: Set<string>): Promise<GetNoteNote[]> {
+function withTopicTag(tags: GetNoteNote['tags'], topicName: string): GetNoteNote['tags'] {
+  return topicName && !tags.some(tag => tag.name === topicName)
+    ? [...tags, { name: topicName }]
+    : tags;
+}
+
+async function fetchTopicNotesPage(
+  topic: SubscribedTopic, page: number, token: string, clientId: string, signal?: AbortSignal,
+): Promise<{ notes: GetNoteNote[]; hasMore: boolean }> {
+  const params = new URLSearchParams({ topic_id: topic.topic_id, page: String(page) });
+  const url = 'https://openapi.biji.com/open/api/v1/resource/knowledge/notes?' + params.toString();
+  const data = await knowledgeApiRequest<Record<string, unknown>>(
+    url, { method: 'GET', headers: buildHeaders(token, clientId) }, 2, signal,
+  );
+  const source = normalizeData(data);
+  const notes = readArray(source, ['notes', 'list', 'items'])
+    .filter(isRecord)
+    .map(value => {
+      const tags = readArray(value, ['tags'])
+        .filter(isRecord)
+        .map(tag => ({ name: stringValue(tag.name) }))
+        .filter(tag => tag.name);
+      return {
+        ...value,
+        id: value.note_id,
+        note_id: stringValue(value.note_id),
+        title: stringValue(value.title),
+        content: stringValue(value.content),
+        note_type: stringValue(value.note_type) || 'plain_text',
+        source: 'knowledge',
+        topic_id: topic.topic_id,
+        topic_name: topic.name,
+        topic_source: topic.source,
+        tags: topic.source === 'subscribed' ? withTopicTag(tags, topic.name) : tags,
+        created_at: stringValue(value.created_at),
+        updated_at: stringValue(value.updated_at) || stringValue(value.edit_time),
+      } as GetNoteNote;
+    })
+    .filter(note => note.note_id);
+  return { notes, hasMore: readHasMore(source) };
+}
+
+async function fetchTopicNotes(
+  topic: SubscribedTopic, token: string, clientId: string, signal?: AbortSignal, selectedNoteIds?: Set<string>,
+): Promise<GetNoteNote[]> {
   const notes: GetNoteNote[] = [];
   let page = 1;
   while (true) {
-    const params = new URLSearchParams({ topic_id: topic.topic_id, page: String(page) });
-    const url = `https://openapi.biji.com/open/api/v1/resource/knowledge/notes?${params.toString()}`;
-    const data = await knowledgeApiRequest<Record<string, unknown>>(url, { method: 'GET', headers: buildHeaders(token, clientId) }, 2, signal);
-    const source = normalizeData(data);
-    const pageNotes = readArray(source, ['notes', 'list', 'items'])
-      .filter(isRecord)
-      .map(value => {
-        const tags = readArray(value, ['tags'])
-          .filter(isRecord)
-          .map(tag => ({ name: typeof tag.name === 'string' ? tag.name : '' }))
-          .filter(tag => tag.name);
-        if (topic.name && !tags.some(tag => tag.name === topic.name)) tags.push({ name: topic.name });
-        return {
-          ...value,
-          id: value.note_id,
-          note_id: String(value.note_id ?? ''),
-          title: typeof value.title === 'string' ? value.title : '',
-          content: typeof value.content === 'string' ? value.content : '',
-          note_type: typeof value.note_type === 'string' ? value.note_type : 'plain_text',
-          source: 'knowledge',
-          tags,
-          created_at: typeof value.created_at === 'string' ? value.created_at : '',
-          updated_at: typeof value.updated_at === 'string' ? value.updated_at : typeof value.edit_time === 'string' ? value.edit_time : '',
-        } as GetNoteNote;
-      })
-      .filter(note => !selectedNoteIds || selectedNoteIds.has(note.note_id));
-    notes.push(...pageNotes);
-    for (const note of pageNotes) selectedNoteIds?.delete(note.note_id);
-    if (selectedNoteIds?.size === 0 || !readHasMore(source)) break;
+    const result = await fetchTopicNotesPage(topic, page, token, clientId, signal);
+    for (const note of result.notes) {
+      if (selectedNoteIds && !selectedNoteIds.delete(note.note_id)) continue;
+      notes.push(note);
+    }
+    if (selectedNoteIds?.size === 0 || !result.hasMore) break;
     page++;
   }
   return notes;
+}
+
+/** The note list carries content, while the directory endpoint carries placement. */
+async function enrichCreatedTopicDirectories(
+  notes: GetNoteNote[], topicId: string, token: string, clientId: string, signal?: AbortSignal,
+): Promise<void> {
+  const unresolved = new Map(notes.map(note => [note.note_id, note]));
+  const pending: Array<{ id?: string; path: string[] }> = [{ path: [] }];
+  const visited = new Set<string>();
+  for (const directory of pending) {
+    if (unresolved.size === 0) break;
+    const params = new URLSearchParams({ topic_id: topicId });
+    if (directory.id) params.set('directory_id', directory.id);
+    let data: Record<string, unknown>;
+    try {
+      data = await knowledgeApiRequest<Record<string, unknown>>(
+        `https://openapi.biji.com/open/api/v1/resource/knowledge/directories?${params.toString()}`,
+        { method: 'GET', headers: buildHeaders(token, clientId) }, 1, signal,
+      );
+    } catch (error) {
+      if (signal?.aborted || error instanceof FatalOpenApiError) throw error;
+      // Some accounts can read notes but lack access to the directory tree.
+      continue;
+    }
+    const source = normalizeData(data);
+    for (const resource of readArray(source, ['resources']).filter(isRecord)) {
+      const id = stringValue(resource.note_id);
+      const note = unresolved.get(id);
+      if (!note) continue;
+      note.topic_directory_path = directory.path;
+      unresolved.delete(id);
+    }
+    for (const child of readArray(source, ['directories']).filter(isRecord)) {
+      const id = stringValue(child.id);
+      const name = stringValue(child.name).trim();
+      if (!id || !name || visited.has(id)) continue;
+      visited.add(id);
+      pending.push({ id, path: [...directory.path, name] });
+    }
+  }
 }
 
 export async function fetchTopicBloggers(topicId: string, token: string, clientId: string, signal?: AbortSignal): Promise<Blogger[]> {
@@ -477,14 +552,16 @@ export async function fetchTopicContentPreviews(
   return items;
 }
 
+type OpenApiPreviewCursor = { bloggerIndex: number; page: number; source?: 'notes' | 'bloggers' };
+
 export async function fetchTopicContentPreviewPage(
   topicId: string,
   _topicName: string | undefined,
   token: string,
   clientId: string,
   signal?: AbortSignal,
-  cursor: { bloggerIndex: number; page: number } = { bloggerIndex: 0, page: 1 },
-  topicSource?: SubscribedTopic['source']
+  cursor: OpenApiPreviewCursor = { bloggerIndex: 0, page: 1 },
+  topicSource?: SubscribedTopic['source'],
 ): Promise<{
   items: {
     note_id: string;
@@ -497,11 +574,11 @@ export async function fetchTopicContentPreviewPage(
     content?: string;
     tags?: { name: string }[];
   }[];
-  nextCursor?: { bloggerIndex: number; page: number };
+  nextCursor?: OpenApiPreviewCursor;
 }> {
-  if (topicSource === 'created') {
-    const topic: SubscribedTopic = { topic_id: topicId, name: _topicName ?? topicId, source: 'created' };
-    const notes = await fetchCreatedTopicNotes(topic, token, clientId, signal);
+  const topic: SubscribedTopic = { topic_id: topicId, name: _topicName ?? topicId, source: topicSource };
+  const previewTopicNotes = async (page: number) => {
+    const { notes, hasMore } = await fetchTopicNotesPage(topic, page, token, clientId, signal);
     const items = notes.map(note => ({
       note_id: note.note_id,
       title: note.title,
@@ -510,13 +587,25 @@ export async function fetchTopicContentPreviewPage(
       topic_id: topicId,
       blogger_id: '',
       content: note.content,
-      tags: note.tags,
+      tags: withTopicTag(note.tags, topic.name),
     }));
-    return { items };
+    const nextCursor: OpenApiPreviewCursor = { bloggerIndex: 0, page: page + 1, source: 'notes' };
+    return hasMore ? { items, nextCursor } : { items };
+  };
+  let bloggers: Blogger[];
+  if (cursor.source === 'notes' || (topicSource === 'created' && cursor.source !== 'bloggers')) {
+    const preview = await previewTopicNotes(cursor.page);
+    if (preview.nextCursor || topicSource !== 'created') return preview;
+    bloggers = await fetchTopicBloggers(topicId, token, clientId, signal);
+    if (bloggers.length === 0) return preview;
+    cursor = { bloggerIndex: 0, page: 1, source: 'bloggers' };
+    if (preview.items.length > 0) return { ...preview, nextCursor: cursor };
+  } else {
+    bloggers = await fetchTopicBloggers(topicId, token, clientId, signal);
   }
-  const bloggers = await fetchTopicBloggers(topicId, token, clientId, signal);
+
   const blogger = bloggers[cursor.bloggerIndex];
-  if (!blogger) return { items: [] };
+  if (!blogger) return topicSource === 'subscribed' ? previewTopicNotes(1) : { items: [] };
 
   const params = new URLSearchParams({
     topic_id: topicId,
@@ -547,11 +636,14 @@ export async function fetchTopicContentPreviewPage(
       ],
     };
   });
-  const nextCursor = readHasMore(source) && contents.length > 0
-    ? { bloggerIndex: cursor.bloggerIndex, page: cursor.page + 1 }
-    : cursor.bloggerIndex + 1 < bloggers.length
-      ? { bloggerIndex: cursor.bloggerIndex + 1, page: 1 }
-      : undefined;
+  let nextCursor: OpenApiPreviewCursor | undefined;
+  if (readHasMore(source)) {
+    nextCursor = { ...cursor, page: cursor.page + 1 };
+  } else if (cursor.bloggerIndex + 1 < bloggers.length) {
+    nextCursor = { ...cursor, bloggerIndex: cursor.bloggerIndex + 1, page: 1 };
+  } else if (topicSource === 'subscribed') {
+    nextCursor = { bloggerIndex: 0, page: 1, source: 'notes' };
+  }
 
   return nextCursor ? { items, nextCursor } : { items };
 }
@@ -602,7 +694,14 @@ async function fetchBloggerContentDetail(
       };
     }
     return {
-      content: { ...content, ...detail, post_id_alias: content.post_id_alias },
+      content: {
+        post_id_alias: content.post_id_alias,
+        title: detail.title ?? content.title,
+        content: detail.content ?? content.content,
+        summary: detail.summary ?? content.summary,
+        created_at: detail.created_at ?? content.created_at,
+        updated_at: detail.updated_at ?? content.updated_at,
+      },
     };
   } catch (error) {
     if (signal?.aborted) throw error;
@@ -630,23 +729,30 @@ export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions):
   if (topicIdSet || sources.length === 0) sources.push('subscribed');
   const topics = await fetchSubscribedTopics(token, clientId, signal, sources);
   for (const topic of topics) {
-    if (topic.source === 'created') {
-      if (!createdTopicIdSet?.has(topic.topic_id)) continue;
-      notes.push(...await fetchCreatedTopicNotes(topic, token, clientId, signal, remainingNoteIds));
-      if (remainingNoteIds?.size === 0) return notes;
-      continue;
-    }
-    if (topicIdSet && !topicIdSet.has(topic.topic_id)) continue;
-    const bloggers = await fetchTopicBloggers(topic.topic_id, token, clientId, signal);
-    for (const blogger of bloggers) {
-      if (bloggerIdSet && !bloggerIdSet.has(blogger.follow_id)) continue;
-      const contents = await fetchBloggerContents(topic.topic_id, blogger, token, clientId, signal, remainingNoteIds);
-      for (const content of contents) {
-        const detailResult = await fetchBloggerContentDetail(topic.topic_id, content, token, clientId, signal);
-        const note = bloggerContentToNote(detailResult.content, topic, blogger);
-        if (detailResult.error) note.fetch_error = detailResult.error;
-        notes.push(note);
+    const created = topic.source === 'created';
+    if (created ? !createdTopicIdSet?.has(topic.topic_id) : topicIdSet && !topicIdSet.has(topic.topic_id)) continue;
+    const remainingIds = remainingNoteIds ? [...remainingNoteIds] : [];
+    const includeBloggers = !remainingNoteIds || remainingIds.some(id => id.startsWith('blogger_'));
+    if (includeBloggers) {
+      const bloggers = await fetchTopicBloggers(topic.topic_id, token, clientId, signal);
+      for (const blogger of bloggers) {
+        if (bloggerIdSet && !bloggerIdSet.has(blogger.follow_id)) continue;
+        const contents = await fetchBloggerContents(topic.topic_id, blogger, token, clientId, signal, remainingNoteIds);
+        for (const content of contents) {
+          const detailResult = await fetchBloggerContentDetail(topic.topic_id, content, token, clientId, signal);
+          const note = bloggerContentToNote(detailResult.content, topic, blogger);
+          if (detailResult.error) note.fetch_error = detailResult.error;
+          notes.push(note);
+        }
+        if (remainingNoteIds?.size === 0) return notes;
       }
+    }
+    if (remainingNoteIds
+      ? remainingIds.some(id => !id.startsWith('blogger_'))
+      : !bloggerIdSet) {
+      const topicNotes = await fetchTopicNotes(topic, token, clientId, signal, remainingNoteIds);
+      if (created) await enrichCreatedTopicDirectories(topicNotes, topic.topic_id, token, clientId, signal);
+      notes.push(...topicNotes);
       if (remainingNoteIds?.size === 0) return notes;
     }
   }
@@ -698,6 +804,7 @@ export async function createNote(options: CreateNoteOptions): Promise<{ noteId: 
         note_type: options.noteType,
         source: 'app',
         tags: options.tags ?? [],
+        ...(options.topicId ? { topic_id: options.topicId } : {}),
       }),
     },
     1,
@@ -715,12 +822,26 @@ export async function addNotesToKnowledgeBase(options: AddNotesToKnowledgeBaseOp
     {
       method: 'POST',
       headers: { ...buildHeaders(options.token, options.clientId), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic_id: options.topicId, note_ids: options.noteIds.map(String) }),
+      body: JSON.stringify({
+        topic_id: options.topicId,
+        note_ids: options.noteIds.map(String),
+      }),
     },
     1,
     options.signal,
   );
   if (data.success === false) throw new Error(t('error.addKnowledgeBaseNoteFailed'));
+}
+
+/** GetNote issues a signed, ordered multipart upload for each image. */
+export async function uploadImage(options: UploadImageOptions): Promise<string> {
+  const imageType = getImageType(options.filename);
+  const params = new URLSearchParams({ mime_type: imageType === 'jpeg' ? 'jpg' : imageType, count: '1' });
+  const data = await apiRequest<Record<string, unknown>>(
+    `https://openapi.biji.com/open/api/v1/resource/image/upload_token?${params.toString()}`,
+    { method: 'GET', headers: buildHeaders(options.token, options.clientId) }, 1, options.signal,
+  );
+  return uploadSignedImage(normalizeData(data), options, imageType, 'openapi');
 }
 
 export interface UpdateNoteOptions {

@@ -40,6 +40,20 @@
   justify-content: flex-end;
 }
 
+.getnote-quota-modal ul {
+  margin: 0;
+  padding-inline-start: 1.4em;
+}
+
+.getnote-quota-modal li + li {
+  margin-top: 0.55em;
+}
+
+.getnote-quota-reset {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
 .getnote-settings-status-bar.is-credentials-open {
   margin-bottom: 0;
   border-radius: var(--radius-m) var(--radius-m) 0 0;
@@ -1217,6 +1231,16 @@ body .getnote-tag-select-option input[type="checkbox"] {
 
 .getnote-local-upload-folder select {
   max-width: 260px;
+}
+
+.getnote-local-upload-destination {
+  padding: 8px 0;
+}
+
+.getnote-local-upload-destination [role="status"] {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
 }
 
 .getnote-picker-search {

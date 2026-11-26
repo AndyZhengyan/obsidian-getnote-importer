@@ -1128,12 +1128,17 @@ export default class GetNoteSyncPlugin extends Plugin {
       const result = files ? await engine.syncFiles(files, destination) : await engine.syncBack();
       await this.recordUploadHistory(result, startedAt, files?.map(file => file.path));
       if (result.failed > 0) {
-        showError(t('notice.syncPartial', {
+        const summary = t('notice.syncPartial', {
           created: result.created,
           updated: 0,
           skipped: result.skipped,
           failed: result.failed,
-        }), 15000);
+        });
+        const failure = result.items.find(item => item.status === 'failed' && item.error?.trim());
+        const lines = [summary];
+        if (failure) lines.push(`${failure.title}${t('reverseSync.failureReasonSeparator')}${failure.error}`);
+        if (!failure || result.failed > 1) lines.push(t('reverseSync.failureLogHint'));
+        showError(lines.join('\n'), 15000);
       } else {
         showSuccess(t('reverseSync.complete', {
           created: result.created,

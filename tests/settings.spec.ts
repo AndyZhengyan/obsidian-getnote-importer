@@ -437,7 +437,7 @@ describe('SettingsComponent information architecture (#257)', () => {
   it('links to the official platform and explains which manual credentials to copy', () => {
     const { container } = renderSettings(makeSettings());
     const credentials = container.querySelector('[data-credential-details]');
-    const link = credentials?.querySelector('a[href="https://www.biji.com/openapi?tab=auth"]');
+    const link = credentials?.querySelector('a[href="https://www.biji.com/openapi?tab=keys"]');
     expect(link?.textContent).toContain('得到大脑开放平台');
     expect(credentials?.textContent).toContain('应用管理');
     expect(credentials?.textContent).toContain('Key ID');

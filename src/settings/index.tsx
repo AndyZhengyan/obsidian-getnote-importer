@@ -873,7 +873,7 @@ export function SettingsComponent({
               <div className="getnote-openapi-guidance">
                 <div>{t('settings.credentials.tip')}</div>
                 <div>
-                  <ExternalLink href="https://www.biji.com/openapi?tab=auth">{t('settings.credentials.openPlatform')}</ExternalLink>
+                  <ExternalLink href="https://www.biji.com/openapi?tab=keys">{t('settings.credentials.openPlatform')}</ExternalLink>
                   {' '}{t('settings.credentials.manualTip')}
                 </div>
               </div>

@@ -14,10 +14,10 @@ import { initI18n, t } from './i18n';
 import { ReverseSyncEngine, type ReverseSyncResult, type UploadDestination } from './reverse-sync';
 import { migrateSyncedNoteTags } from './tag-migration';
 import { getLastQuotaState, resetQuotaState } from './api-clients/openapi-client';
-import { fetchNotes, fetchRecallSearch, fetchWritableTopics, setWebTokenRefreshHandler } from './api';
+import { fetchNoteDetail, fetchNotes, fetchRecallSearch, fetchWritableTopics, setWebTokenRefreshHandler } from './api';
 import { mergeTagCache } from './utils/tag-aggregator';
 import { SearchPanel, findSyncedNoteFile } from './ui/search-view';
-import { filterKeywordSearchPage, type KeywordSearchPage } from './keyword-search';
+import { searchKeywordPage, type KeywordSearchPage } from './keyword-search';
 import {
   migrateDatePaths,
   type DatePathMigrationOptions,
@@ -990,7 +990,8 @@ export default class GetNoteSyncPlugin extends Plugin {
       sinceId: cursor,
       signal,
     });
-    return filterKeywordSearchPage(query, page);
+    return searchKeywordPage(query, page, (id, detailSignal) =>
+      fetchNoteDetail(id, credentials.token, credentials.clientId, detailSignal, credentials.authMode), signal);
   }
 
   findSyncedNoteFile(noteId: string): TFile | null {

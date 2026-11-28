@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { filterKeywordSearchPage } from '../src/keyword-search';
+import { filterKeywordSearchPage, searchKeywordPage } from '../src/keyword-search';
 import type { GetNoteNote } from '../src/types';
 
 function note(noteId: string, overrides: Partial<GetNoteNote> = {}): GetNoteNote {
@@ -68,5 +68,35 @@ describe('filterKeywordSearchPage', () => {
     const page = filterKeywordSearchPage('agent', { notes: [], hasMore: true });
     expect(page.hasMore).toBe(false);
     expect(page.nextCursor).toBeNull();
+  });
+});
+
+describe('searchKeywordPage', () => {
+  it('fills missing text using detail IDs and retains the list cursor', async () => {
+    const refId = '1909193892067130512';
+    const lastId = '1909193892067130515';
+    const signal = new AbortController().signal;
+    const fetchDetail = vi.fn(async (id: string, _signal: AbortSignal): Promise<Partial<GetNoteNote>> =>
+      id === 'ref-prime'
+        ? { note_id: 'different-detail-id', title: '引用', content: 'Agent 引用正文' }
+        : { title: 'Agent 普通笔记' });
+
+    const result = await searchKeywordPage('agent', {
+      notes: [
+        note(refId, { note_type: 'ref', prime_id: 'ref-prime' }),
+        note('1909193892067130513', { title: 'Agent 列表结果', content: '正文' }),
+        note(lastId, { content: '保留列表正文' }),
+      ],
+      hasMore: true,
+    }, fetchDetail, signal);
+
+    expect(fetchDetail.mock.calls).toEqual([['ref-prime', signal], [lastId, signal]]);
+    expect(result.results.map(({ note_id, title, content }) => [note_id, title, content])).toEqual([
+      [refId, '引用', 'Agent 引用正文'],
+      ['1909193892067130513', 'Agent 列表结果', '正文'],
+      [lastId, 'Agent 普通笔记', '保留列表正文'],
+    ]);
+    expect(result.nextCursor).toBe(lastId);
+    expect(result.hasMore).toBe(true);
   });
 });

@@ -4,6 +4,15 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 describe('initI18n', () => {
+  it('translates keyword search mode, empty batch, and pagination in both locales', () => {
+    i18n.initI18n('zh-CN');
+    expect(i18n.t('search.mode.keyword')).toBe('关键词搜索');
+    expect(i18n.t('search.noPageMatches')).toContain('本批次没有匹配');
+    expect(i18n.t('search.page.current', { page: 2 })).toBe('第 2 批');
+    i18n.initI18n('en-US');
+    expect(i18n.t('search.mode.keyword')).toBe('Keyword search');
+    expect(i18n.t('search.page.current', { page: 2 })).toBe('Batch 2');
+  });
   it('sets locale to zh for zh-CN', () => {
     i18n.initI18n('zh-CN');
     expect(i18n.t('settings.title')).toBe('🔄 得到大脑（原Get笔记）Sync');

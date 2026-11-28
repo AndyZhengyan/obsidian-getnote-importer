@@ -14,9 +14,10 @@ import { initI18n, t } from './i18n';
 import { ReverseSyncEngine, type ReverseSyncResult, type UploadDestination } from './reverse-sync';
 import { migrateSyncedNoteTags } from './tag-migration';
 import { getLastQuotaState, resetQuotaState } from './api-clients/openapi-client';
-import { fetchNotes, fetchRecallSearch, fetchWritableTopics, setWebTokenRefreshHandler } from './api';
+import { fetchNoteDetail, fetchNotes, fetchRecallSearch, fetchWritableTopics, setWebTokenRefreshHandler } from './api';
 import { mergeTagCache } from './utils/tag-aggregator';
 import { SearchPanel, findSyncedNoteFile } from './ui/search-view';
+import { searchKeywordPage, type KeywordSearchPage } from './keyword-search';
 import {
   migrateDatePaths,
   type DatePathMigrationOptions,
@@ -977,6 +978,22 @@ export default class GetNoteSyncPlugin extends Plugin {
     });
   }
 
+  async searchKeyword(query: string, cursor: string, signal: AbortSignal): Promise<KeywordSearchPage> {
+    const credentials = getAuthCredentials(this.settings);
+    if (!credentials.token || (credentials.authMode !== 'web' && !credentials.clientId)) {
+      throw new Error(t('notice.fillCredentials'));
+    }
+    const page = await fetchNotes({
+      token: credentials.token,
+      clientId: credentials.clientId,
+      authMode: credentials.authMode,
+      sinceId: cursor,
+      signal,
+    });
+    return searchKeywordPage(query, page, (id, detailSignal) =>
+      fetchNoteDetail(id, credentials.token, credentials.clientId, detailSignal, credentials.authMode), signal);
+  }
+
   findSyncedNoteFile(noteId: string): TFile | null {
     return findSyncedNoteFile(this.app, this.settings.folderName, noteId);
   }
@@ -1249,6 +1266,7 @@ class GetNoteSearchModal extends Modal {
         initialQuery={this.query}
         autoSearchKey={this.autoSearchKey}
         onSearch={(query, signal) => this.plugin.searchRecall(query, signal)}
+        onKeywordSearch={(query, cursor, signal) => this.plugin.searchKeyword(query, cursor, signal)}
         resolveLocalFile={(noteId) => this.plugin.findSyncedNoteFile(noteId)}
         onOpenLocal={(file) => this.plugin.openLocalNote(file)}
         onSyncNote={(noteId) => this.plugin.syncSearchResult(noteId)}

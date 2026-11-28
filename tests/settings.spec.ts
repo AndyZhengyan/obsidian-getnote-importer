@@ -1334,7 +1334,9 @@ describe('SettingsComponent auth credentials', () => {
       await Promise.resolve();
     });
 
-    render(null, container);
+    await act(async () => {
+      render(null, container);
+    });
 
     expect(clearTimeoutSpy).toHaveBeenCalled();
   });

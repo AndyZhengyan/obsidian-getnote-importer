@@ -80,7 +80,9 @@ describe('OAuthButton lifecycle cleanup', () => {
 
     expect(container.textContent).toContain('授权成功');
 
-    render(null, container);
+    await act(async () => {
+      render(null, container);
+    });
 
     expect(clearTimeoutSpy).toHaveBeenCalled();
   });

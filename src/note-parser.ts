@@ -1,5 +1,5 @@
 import type { GetNoteNote } from './types';
-import { createSourceHash, renderSourceBody } from './source-body';
+import { createSourceHash, normalizeHostedImages, renderSourceBody } from './source-body';
 
 /**
  * 解析 ISO 时间字符串为 Obsidian 格式
@@ -45,6 +45,7 @@ const PLUGIN_FRONTMATTER_KEYS = new Set([
   'children_ids',
   'dedao_sync_schema',
   'dedao_source_hash',
+  'dedao_remote_hash',
 ]);
 
 /**
@@ -110,6 +111,7 @@ function buildFrontmatter(note: GetNoteNote, extraLines: string[] = [], sourceBo
   const tagBlock = tags ? `[${tags}]` : '[]';
   const childrenIds = note.children_ids?.map(id => `"${escapeYamlDoubleQuoted(id)}"`).join(', ');
   const title = frontmatterTitle(note);
+  const remoteBody = normalizeHostedImages(sourceBody);
 
   const lines = [
     '---',
@@ -123,6 +125,7 @@ function buildFrontmatter(note: GetNoteNote, extraLines: string[] = [], sourceBo
     `tags: ${tagBlock}`,
     'dedao_sync_schema: 1',
     `dedao_source_hash: "${createSourceHash(title, normalizedTags, sourceBody)}"`,
+    ...(remoteBody === sourceBody ? [] : [`dedao_remote_hash: "${createSourceHash(title, normalizedTags, remoteBody)}"`]),
   ];
 
   if (note.topic_id) {

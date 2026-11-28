@@ -27,13 +27,13 @@ describe('created-date paths', () => {
     )).toBe('得到大脑/2026/07/纯文本');
   });
 
-  it('places the date before the complete knowledge-base hierarchy', () => {
+  it('places knowledge-base notes directly under the complete category hierarchy', () => {
     expect(buildCanonicalCategoryDir(
       '得到大脑',
-      '知识库/我的知识库',
-      '2026-07-03T23:59:00+08:00',
+      '知识库/我的知识库/子目录',
+      '',
       'YYYY/MM',
-    )).toBe('得到大脑/2026/07/知识库/我的知识库');
+    )).toBe('得到大脑/知识库/我的知识库/子目录');
   });
 
   it('uses created time rather than any updated time', () => {

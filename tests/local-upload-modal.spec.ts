@@ -4,7 +4,7 @@ import { act } from 'preact/test-utils';
 import { TFile } from 'obsidian';
 import { LocalUploadModal } from '../src/ui/local-upload-modal';
 
-function renderModal(onConfirm = vi.fn()) {
+function renderModal(onConfirm = vi.fn(), loadTopics = vi.fn().mockResolvedValue([])) {
   const files = [
     new TFile('得到大脑/a.md'),
     new TFile('得到大脑/nested/b.md'),
@@ -17,6 +17,7 @@ function renderModal(onConfirm = vi.fn()) {
     h(LocalUploadModal, {
       files,
       initialFolder: '得到大脑',
+      loadTopics,
       onConfirm,
       onCancel: vi.fn(),
     }),
@@ -65,7 +66,7 @@ describe('LocalUploadModal', () => {
 
     expect(onConfirm).toHaveBeenCalledWith([
       expect.objectContaining({ path: '得到大脑/nested/b.md' }),
-    ]);
+    ], undefined);
   });
 
   it('lets the user switch directory before selecting notes', async () => {
@@ -91,7 +92,50 @@ describe('LocalUploadModal', () => {
 
     expect(onConfirm).toHaveBeenCalledWith([
       expect.objectContaining({ path: 'Inbox/c.md' }),
+    ], undefined);
+  });
+
+  it('offers only writable knowledge bases and confirms the selected destination', async () => {
+    const loadTopics = vi.fn().mockResolvedValue([
+      { topic_id: 'mine', name: '我的知识库', source: 'created' },
+      { topic_id: 'other', name: '订阅知识库', source: 'subscribed' },
     ]);
+    const { container, onConfirm } = renderModal(vi.fn(), loadTopics);
+    const destination = container.querySelectorAll('select')[1];
+    await vi.waitFor(() => {
+      expect(Array.from(destination.options, option => option.value)).toEqual(['', 'mine']);
+      expect(destination.disabled).toBe(false);
+    });
+
+    await act(() => {
+      destination.value = 'mine';
+      destination.dispatchEvent(new Event('change', { bubbles: true }));
+      const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(() => {
+      container.querySelector('.mod-cta')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onConfirm).toHaveBeenCalledWith([expect.objectContaining({ path: '得到大脑/a.md' })], {
+      topicId: 'mine', topicName: '我的知识库',
+    });
+  });
+
+  it('can retry loading destinations after a request fails', async () => {
+    const loadTopics = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([
+      { topic_id: 'mine', name: '我的知识库', source: 'created' },
+    ]);
+    const { container } = renderModal(vi.fn(), loadTopics);
+    await vi.waitFor(() => {
+      expect(container.querySelector('[role="status"]')?.textContent).toContain('offline');
+    });
+    await act(async () => {
+      container.querySelector('[role="status"] button')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await vi.waitFor(() => {
+      expect(container.querySelectorAll('select')[1]?.querySelector('option[value="mine"]')).toBeTruthy();
+    });
   });
 
   it('includes root-level markdown files in the folder picker', async () => {
@@ -106,6 +150,7 @@ describe('LocalUploadModal', () => {
       h(LocalUploadModal, {
         files,
         initialFolder: '',
+        loadTopics: vi.fn().mockResolvedValue([]),
         onConfirm,
         onCancel: vi.fn(),
       }),

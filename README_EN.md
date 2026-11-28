@@ -14,12 +14,10 @@ For the story behind the project, see this Chinese article: [我做的得到大�
 
 * * *
 
-## 🎉 1.6.4 — Latest Update
+## 🎉 1.6.7 — Latest Update
 
-- **🎙️ Recover late recordings**: automatic sync scans the past seven days for notes that appeared after a checkpoint and imports missing notes without replacing existing local content.
-- **📊 See counts in sync history**: history rows show created, updated, skipped, and failed counts; successful runs with no changes say “No changes”.
-
-Recommended for automatic sync users, especially those syncing recordings.
+- Dedao Brain authorization uses the official OpenAPI to sync subscribed knowledge bases and blogger content, including original content and appended notes when available.
+- Free accounts can authorize access. Check quotas in the plugin settings or select **Create API Key** to open the official key page.
 
 The README keeps only the current release highlights. See [GitHub Releases](https://github.com/AndyZhengyan/obsidian-dedao-brain-sync/releases) for the complete version history.
 
@@ -98,17 +96,15 @@ Search Dedao Brain from Obsidian, then open a local hit or sync a remote hit wit
 
 ## 🔑 Authentication
 
-> ⚠️ Dedao Brain OpenAPI currently requires a **Dedao Brain PRO** membership. Free-tier users cannot retrieve full data through OpenAPI and can try Web mode on desktop instead.
+> [Dedao Brain MCP v1.12.3](https://github.com/iswalle/getnote-mcp/releases/tag/v1.12.3) documents OpenAPI access for authorized free accounts and higher default limits for members. Access to individual features depends on your account permissions. Use **View Quota** in the plugin to check your limits.
 
 Credentials are stored only in your local Obsidian plugin data.
 
 ### 🟢 OpenAPI mode — recommended for long-term use
 
-1. Open Dedao Brain.
-2. Go to `Settings → Open Platform`.
-3. Create an application and obtain the `Token` and `Client ID`.
-4. In `Settings → Dedao Brain Sync`, choose OpenAPI authentication and enter both values.
-5. Test the connection.
+In **Settings → Dedao Brain Sync → Change Credentials**, select **Dedao Brain authorization**. Click **Sign in to Dedao Brain**, then authorize the account you want to sync in your browser.
+
+For manual setup, open the [Dedao Brain API Key page](https://www.biji.com/openapi?tab=keys) and select **Create API Key**. Enter the Client ID and the full API Key (starting with `gk_live_`) in the plugin settings, then select **Test Connection**. Save the full key when you create it, as the platform only shows it once.
 
 ### 🟡 Web mode — quick desktop setup
 
@@ -150,6 +146,8 @@ Automatic upload is off by default and requires OpenAPI. Deletions never propaga
 ### ⬆️ Create Dedao Brain notes from Obsidian
 
 Open local upload from the settings page or command palette and select one or more Markdown files.
+Use **Destination knowledge base** to choose a knowledge base you own. The default option follows the existing upload rules.
+Local images are uploaded and embedded in the note body. Common Markdown formatting such as headings, lists, emphasis, quotations, and code blocks is preserved where supported.
 
 Manual upload is **selection-based and create-only**, separate from automatic updates inside the sync folder:
 
@@ -170,11 +168,12 @@ vault/
     │   └── 08/
     │       ├── 纯文本/
     │       │   └── Meeting Notes.md
-    │       ├── 链接笔记/
-    │       │   └── Article.md
-    │       └── 知识库/
-    │           └── My Knowledge Base/
-    │               └── Topic Note.md
+    │       └── 链接笔记/
+    │           └── Article.md
+    ├── 知识库/
+    │   └── My Knowledge Base/
+    │       └── Subfolder/
+    │           └── Topic Note.md
     └── ...
 ```
 
@@ -219,6 +218,8 @@ Enable a rule such as `YYYY/MM` to produce paths like:
 
 The folder date comes from the note's creation time, not its update time. When you change or disable the date-path setting, the plugin runs a preflight before migrating or rolling back historical files and their related attachments.
 
+Knowledge-base notes go directly into their knowledge-base folder and use any subfolder hierarchy supplied by the API. The next knowledge-base sync moves existing notes out of the old date folders. The plugin tries a different filename when the destination name is taken. A note stays in place if the move cannot safely preserve links or attachments.
+
 Migration is safe to re-run. When there is a target conflict, invalid metadata, shared attachment, or a move that could break path-qualified links, the plugin prefers to skip the affected note rather than overwrite files.
 
 ## ⚙️ Main settings
@@ -250,7 +251,7 @@ Migration is safe to re-run. When there is a target conflict, invalid metadata, 
 
 ## ⚠️ Known limitations
 
-- OpenAPI depends on Dedao Brain's Open Platform and requires PRO access.
+- OpenAPI depends on Dedao Brain's Open Platform availability and your account permissions.
 - Web mode depends on Dedao Brain's web APIs and browser session; API changes or expired tokens can break it.
 - Automatic Web login / token refresh is primarily a desktop feature.
 - Manual upload is create-only. Automatic upload can send title, body, and tag edits from linked plain-text notes in the sync folder.

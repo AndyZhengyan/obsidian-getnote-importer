@@ -5,7 +5,7 @@ import GetNoteSyncPlugin from '../src/main';
 import { ReverseSyncEngine } from '../src/reverse-sync';
 import { GetNoteSettingsTab } from '../src/settings-tab';
 import { SyncCancelledError, SyncEngine } from '../src/sync';
-import { DEFAULT_SETTINGS } from '../src/types';
+import { DEFAULT_SETTINGS, type SyncResult } from '../src/types';
 
 describe('SyncCancelledError', () => {
   it('has name SyncCancelledError', () => {
@@ -99,6 +99,27 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     expect(changes).toHaveBeenCalledOnce();
     expect(changes).toHaveBeenCalledWith(undefined, { direction: 'both', changedOnly: true });
     expect(plugin.syncHistory.at(-1)).toMatchObject({ status: 'partial', result: { updated: 1, failed: 1 } });
+  });
+
+  it.each(['skipped', 'updated'] as const)('reconciles a relocated note and counts it once when content is %s', async (status) => {
+    const plugin = makePlugin();
+    const item = { noteId: 'old', title: 'old', noteType: 'plain_text', updatedAt: '' };
+    const result: SyncResult = {
+      created: 0, updated: 1, failed: 0, skipped: 0, total: 1,
+      items: [{ ...item, status: 'updated', relocated: true }],
+    };
+    const changes = vi.spyOn(BidirectionalSyncEngine.prototype, 'sync').mockResolvedValue({
+      created: 0, updated: Number(status === 'updated'), failed: 0, skipped: Number(status === 'skipped'), total: 1,
+      items: [{ ...item, status }],
+    });
+
+    await plugin['reconcileDownloadedNotes'](result, true);
+
+    expect(changes).toHaveBeenCalledWith(['old'], { direction: 'download' });
+    expect(result).toMatchObject({
+      updated: 1, skipped: 0, total: 1,
+      items: [{ ...item, status: 'updated', relocated: true }],
+    });
   });
 
   it('does not upload during a manual download even when two-way mode is enabled', async () => {
@@ -783,10 +804,11 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     plugin.settings.reverseSync = { enabled: false };
     const selectedFiles = [new TFile('Inbox/upload-me.md')];
 
-    plugin.uploadSelectedLocalNotes(selectedFiles);
+    const destination = { topicId: 'selected-knowledge-base' };
+    plugin.uploadSelectedLocalNotes(selectedFiles, destination);
 
     await vi.waitFor(() => {
-      expect(syncFiles).toHaveBeenCalledWith(selectedFiles);
+      expect(syncFiles).toHaveBeenCalledWith(selectedFiles, destination);
     });
     expect(syncBack).not.toHaveBeenCalled();
     await vi.waitFor(() => {
@@ -812,7 +834,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
     });
   });
 
-  it('records partial upload history when a completed local upload has failed items', async () => {
+  it('shows the failed note and reason in the upload notice and records partial history', async () => {
     vi.spyOn(ReverseSyncEngine.prototype, 'syncFiles').mockResolvedValue({
       created: 0,
       skipped: 0,
@@ -849,7 +871,7 @@ describe('GetNoteSyncPlugin runSync cleanup', () => {
       }));
     });
     expect(issuedNotices.at(-1)).toEqual({
-      message: '❌ [得到大脑] 同步部分完成：新增 0 · 更新 0 · 跳过 0 · 失败 1',
+      message: '❌ [得到大脑] 同步部分完成：新增 0 · 更新 0 · 跳过 0 · 失败 1\nfail：API 服务器错误 500',
       timeout: 15000,
     });
     expect(plugin.isSyncing).toBe(false);

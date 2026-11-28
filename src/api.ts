@@ -1,9 +1,13 @@
 // Central API entry point - delegates to client implementations based on authMode
-import { addNotesToKnowledgeBase as openapiAddNotesToKnowledgeBase, createNote as openapiCreateNote, fetchNotes as openapiFetchNotes, fetchNoteDetail as openapiFetchNoteDetail, fetchRecallSearch as openapiFetchRecallSearch, fetchSubscribedKnowledgeNotes as openapiFetchSubscribedKnowledgeNotes, fetchTopicBloggers as openapiFetchTopicBloggers, fetchTopicContentPreviewPage as openapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as openapiFetchTopicContentPreviews, fetchSubscribedTopics as openapiFetchSubscribedTopics } from './api-clients/openapi-client';
-import { createNote as webapiCreateNote, fetchNotes as webapiFetchNotes, fetchNoteChildren as webapiFetchNoteChildren, fetchNoteDetail as webapiFetchNoteDetail, fetchNoteOriginal as webapiFetchNoteOriginal, fetchSubscribedKnowledgeNotes as webapiFetchSubscribedKnowledgeNotes, fetchTopicContentPreviewPage as webapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as webapiFetchTopicContentPreviews, fetchSubscribedTopics as webapiFetchSubscribedTopics, isWebApiAuthenticationError } from './api-clients/webapi-client';
+import { addNotesToKnowledgeBase as openapiAddNotesToKnowledgeBase, createNote as openapiCreateNote, fetchNotes as openapiFetchNotes, fetchNoteDetail as openapiFetchNoteDetail, fetchRecallSearch as openapiFetchRecallSearch, fetchSubscribedKnowledgeNotes as openapiFetchSubscribedKnowledgeNotes, fetchTopicBloggers as openapiFetchTopicBloggers, fetchTopicContentPreviewPage as openapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as openapiFetchTopicContentPreviews, fetchSubscribedTopics as openapiFetchSubscribedTopics, uploadImage as openapiUploadImage } from './api-clients/openapi-client';
+import { createNote as webapiCreateNote, fetchNotes as webapiFetchNotes, fetchNoteChildren as webapiFetchNoteChildren, fetchNoteDetail as webapiFetchNoteDetail, fetchNoteOriginal as webapiFetchNoteOriginal, fetchSubscribedKnowledgeNotes as webapiFetchSubscribedKnowledgeNotes, fetchTopicContentPreviewPage as webapiFetchTopicContentPreviewPage, fetchTopicContentPreviews as webapiFetchTopicContentPreviews, fetchSubscribedTopics as webapiFetchSubscribedTopics, fetchWritableTopics as webapiFetchWritableTopics, isWebApiAuthenticationError, uploadImage as webapiUploadImage } from './api-clients/webapi-client';
+import type { UploadImageOptions } from './api-clients/image-upload';
+import type { WebDirectoryPreviewCursor } from './api-clients/webapi-client';
 import type { GetNoteNote, AuthMode, LinkOriginal, RecallSearchResult, SubscribedTopic } from './types';
 import type { Blogger } from './api-clients/openapi-client';
 import { t } from './i18n';
+
+export { fetchOpenApiQuota, type OpenApiQuotaEntry } from './api-clients/openapi-client';
 
 export const GETNOTE_LIST_LIMIT = 20;
 
@@ -137,6 +141,13 @@ export async function fetchSubscribedTopics(options: { token: string; clientId: 
   return openapiFetchSubscribedTopics(options.token, options.clientId, options.signal);
 }
 
+export async function fetchWritableTopics(options: { token: string; clientId: string; authMode?: AuthMode; signal?: AbortSignal }): Promise<SubscribedTopic[]> {
+  if (options.authMode === 'web') {
+    return requestWithWebTokenRefresh(options, token => webapiFetchWritableTopics(token, options.signal));
+  }
+  return openapiFetchSubscribedTopics(options.token, options.clientId, options.signal, ['created']);
+}
+
 export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions): Promise<GetNoteNote[]> {
   if (options.authMode === 'web') {
     return requestWithWebTokenRefresh(options, refreshedToken => webapiFetchSubscribedKnowledgeNotes({
@@ -145,6 +156,7 @@ export async function fetchSubscribedKnowledgeNotes(options: FetchNotesOptions):
       limit: options.limit,
       signal: options.signal,
       topicIds: options.topicIds,
+      createdTopicIds: options.createdTopicIds,
       selectedNoteIds: options.selectedNoteIds,
     }));
   }
@@ -181,6 +193,8 @@ export interface TopicContentPreviewOptions {
 export interface TopicContentPreviewCursor {
   bloggerIndex: number;
   page: number;
+  webDirectory?: WebDirectoryPreviewCursor;
+  source?: 'notes' | 'bloggers';
 }
 
 export interface TopicContentPreviewPage {
@@ -225,7 +239,7 @@ export async function fetchTopicContentPreviewPage(
   topicSource?: SubscribedTopic['source']
 ): Promise<TopicContentPreviewPage> {
   if (authMode === 'web') {
-    return requestWithWebTokenRefresh({ token, signal }, refreshedToken => webapiFetchTopicContentPreviewPage(topicId, refreshedToken, signal, cursor));
+    return requestWithWebTokenRefresh({ token, signal }, refreshedToken => webapiFetchTopicContentPreviewPage(topicId, refreshedToken, signal, cursor, topicSource));
   }
   return openapiFetchTopicContentPreviewPage(topicId, topicName, token, clientId, signal, cursor, topicSource);
 }
@@ -239,6 +253,7 @@ export interface CreateNoteOptions {
   content: string;
   noteType: string;
   tags?: string[];
+  topicId?: string;
   signal?: AbortSignal;
 }
 
@@ -255,6 +270,7 @@ export async function createNote(options: CreateNoteOptions): Promise<CreateNote
       content: options.content,
       noteType: options.noteType,
       tags: options.tags,
+      topicId: options.topicId,
       signal: options.signal,
     }));
   }
@@ -265,6 +281,7 @@ export async function createNote(options: CreateNoteOptions): Promise<CreateNote
     content: options.content,
     noteType: options.noteType,
     tags: options.tags,
+    topicId: options.topicId,
     signal: options.signal,
   });
 }
@@ -274,6 +291,13 @@ export async function addNotesToKnowledgeBase(options: {
 }): Promise<void> {
   if (options.authMode !== 'openapi') throw new Error(t('bidirectional.openApiOnly'));
   return openapiAddNotesToKnowledgeBase(options);
+}
+
+export async function uploadImage(options: UploadImageOptions & { authMode?: AuthMode }): Promise<string> {
+  if (options.authMode === 'web') {
+    return requestWithWebTokenRefresh(options, token => webapiUploadImage({ ...options, token }));
+  }
+  return openapiUploadImage(options);
 }
 
 export async function* fetchAllNotes(

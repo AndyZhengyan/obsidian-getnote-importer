@@ -16,7 +16,8 @@ import {
   getFilePath,
   getKnowledgeBaseDir,
 } from './sync-paths';
-import { buildCanonicalCategoryDir } from './date-paths';
+import { buildCanonicalCategoryDir, isKnowledgeBaseCategory, KNOWLEDGE_BASE_CATEGORY } from './date-paths';
+import { relocateSyncNote } from './date-path-migration';
 
 const AUDIO_NOTE_TYPES = new Set([
   'recorder_audio',
@@ -181,6 +182,12 @@ interface WriteNoteResult {
   status: WriteStatus;
   file?: TFile;
   error?: string;
+  relocated?: boolean;
+}
+
+interface KnowledgePlacement {
+  note: GetNoteNote;
+  category?: string;
 }
 
 export class SyncEngine {
@@ -191,6 +198,7 @@ export class SyncEngine {
   private onCancel?: () => void;
   private cancelled = false;
   private abortController: AbortController | null = null;
+  private duplicateLocalUids = new Set<string>();
   private currentResult: SyncResult = { created: 0, updated: 0, skipped: 0, failed: 0, total: 0, items: [] };
 
   constructor(app: App, settings: Settings, onProgress?: SyncProgressCallback, scopeOptions?: Partial<SyncScopeOptions>) {
@@ -233,8 +241,8 @@ export class SyncEngine {
     return this.currentResult;
   }
 
-  private async ensureNoteCategoryDir(note: GetNoteNote, categoryDir: string): Promise<string> {
-    const fullPath = this.settings.datePathEnabled
+  private noteCategoryPath(note: GetNoteNote, categoryDir: string): string {
+    return this.settings.datePathEnabled || isKnowledgeBaseCategory(categoryDir)
       ? buildCanonicalCategoryDir(
         this.settings.folderName,
         categoryDir,
@@ -242,6 +250,10 @@ export class SyncEngine {
         this.settings.datePathFormat,
       )
       : `${this.settings.folderName}/${categoryDir}`;
+  }
+
+  private async ensureNoteCategoryDir(note: GetNoteNote, categoryDir: string): Promise<string> {
+    const fullPath = this.noteCategoryPath(note, categoryDir);
     const targetDir = this.app.vault.getAbstractFileByPath(fullPath);
     if (!targetDir) {
       await this.app.vault.createFolder(fullPath);
@@ -249,8 +261,42 @@ export class SyncEngine {
     return fullPath;
   }
 
-  private getKnowledgeBaseDir(name: string): string {
-    return getKnowledgeBaseDir(name);
+  private getKnowledgeBaseCategory(note: GetNoteNote, existing?: TFile, fallbackName?: string): string | undefined {
+    const name = note.topic_name || fallbackName || note.topics?.find(topic => topic.id === note.topic_id)?.name || note.topic_id;
+    const categories = name
+      ? [getKnowledgeBaseDir(name, note.topic_directory_path)]
+      : (note.topics ?? []).map(topic => getKnowledgeBaseDir(topic.name)).sort();
+    const root = `${this.settings.folderName}/`;
+    if (note.topic_directory_path === undefined && existing) {
+      const folders = existing.path.slice(root.length, existing.path.lastIndexOf('/')).split('/');
+      const categoryStart = folders.indexOf(KNOWLEDGE_BASE_CATEGORY);
+      if (categoryStart !== -1) {
+        const existingCategory = folders.slice(categoryStart).join('/');
+        if (categories.some(category => existingCategory === category || existingCategory.startsWith(`${category}/`))) {
+          return existingCategory;
+        }
+      }
+    }
+    return categories[0];
+  }
+
+  private selectKnowledgePlacements(
+    notes: GetNoteNote[],
+    uidIndex: Map<string, TFile>,
+    fallbackName: (note: GetNoteNote) => string | undefined,
+  ): Map<string, KnowledgePlacement> {
+    const placements = new Map<string, KnowledgePlacement>();
+    for (const note of notes) {
+      const existing = uidIndex.get(note.note_id);
+      const category = this.getKnowledgeBaseCategory(note, existing, fallbackName(note));
+      const previous = placements.get(note.note_id);
+      const existingDir = existing?.path.slice(0, existing.path.lastIndexOf('/'));
+      const keepsPath = category && existingDir === `${this.settings.folderName}/${category}`;
+      if (!previous || (!note.fetch_error && (previous.note.fetch_error || keepsPath))) {
+        placements.set(note.note_id, { note, category });
+      }
+    }
+    return placements;
   }
 
   private buildBaseName(note: GetNoteNote): string {
@@ -263,6 +309,12 @@ export class SyncEngine {
 
   private getAudioAssetBaseName(note: GetNoteNote): string {
     return getAudioAssetBaseName(note, this.settings);
+  }
+
+  private getAttachmentAssetBaseName(note: GetNoteNote, category?: string): string {
+    return category && isKnowledgeBaseCategory(category)
+      ? this.getAudioAssetBaseName(note)
+      : this.getFileName(note);
   }
 
   private getFilePath(categoryDir: string, note: GetNoteNote): string {
@@ -345,7 +397,7 @@ export class SyncEngine {
       }
 
       const ext = extractImageExtension(attachment.url);
-      const filename = imageAssetFilename(this.getFileName(note), ext, index);
+      const filename = imageAssetFilename(this.getAttachmentAssetBaseName(note, categoryOverride), ext, index);
       const targetPath = `${assetDir}/${filename}`;
 
       if (this.app.vault.getAbstractFileByPath(targetPath)) return targetPath;
@@ -383,7 +435,7 @@ export class SyncEngine {
         await this.app.vault.createFolder(assetDir);
       }
 
-      const filename = genericAssetFilename(this.getFileName(note), attachment.url, index, kind);
+      const filename = genericAssetFilename(this.getAttachmentAssetBaseName(note, categoryOverride), attachment.url, index, kind);
       const targetPath = `${assetDir}/${filename}`;
 
       if (this.app.vault.getAbstractFileByPath(targetPath)) return targetPath;
@@ -459,16 +511,10 @@ export class SyncEngine {
   /**
    * Check if a note and all its artifacts already exist in the vault and are up to date.
    * Uses UID-based lookup so renamed/moved files are still found.
-   *
-   * `categoryOverride` lets callers route the check at a custom vault path
-   * (e.g. `知识库/<name>/`) instead of the default `getCategoryDir(note_type)`
-   * location. This is required for cross-KB sync where notes live under a
-   * per-knowledge-base directory.
    */
   private preCheckNote(
     note: GetNoteNote,
     uidIndex: Map<string, TFile>,
-    _categoryOverride?: string
   ): { exists: boolean; file?: TFile } {
     const existingFile = uidIndex.get(note.note_id);
     if (!existingFile) return { exists: false };
@@ -503,12 +549,15 @@ export class SyncEngine {
 
   private async buildUidIndex(): Promise<Map<string, TFile>> {
     const index = new Map<string, TFile>();
+    this.duplicateLocalUids.clear();
     const prefix = this.settings.folderName + '/';
     const allFiles = this.app.vault.getMarkdownFiles();
     for (const file of allFiles) {
       if (!file.path.startsWith(prefix)) continue;
       const uid = await this.readCurrentUid(file);
-      if (uid) index.set(uid, file);
+      if (!uid) continue;
+      if (index.has(uid)) this.duplicateLocalUids.add(uid);
+      index.set(uid, file);
     }
     return index;
   }
@@ -562,6 +611,30 @@ export class SyncEngine {
       }
       const existingByUid = uidIndex.get(note.note_id);
       if (existingByUid) {
+        if (note.topic_source !== 'subscribed' && categoryOverride && isKnowledgeBaseCategory(categoryOverride)) {
+          const categoryDir = this.noteCategoryPath(note, categoryOverride);
+          const file = this.app.vault.getAbstractFileByPath(existingByUid.path);
+          const basename = existingByUid.path.slice(existingByUid.path.lastIndexOf('/') + 1);
+          const expectedPath = `${categoryDir}/${basename}`;
+          if (existingByUid.path !== expectedPath) {
+            if (this.duplicateLocalUids.has(note.note_id)) {
+              throw new VaultArtifactConflictError(`Multiple local files use UID: ${note.note_id}`);
+            }
+            if (!(file instanceof TFile) || !await this.isOwnedByNote(file, note.note_id)) {
+              throw new VaultArtifactConflictError(`Local note changed before relocation: ${existingByUid.path}`);
+            }
+            const target = this.app.vault.getAbstractFileByPath(expectedPath);
+            if (target instanceof TFile && await this.isOwnedByNote(target, note.note_id)) {
+              throw new VaultArtifactConflictError(`Multiple local files use UID: ${note.note_id}`);
+            }
+            const targetPath = target
+              ? this.resolveConflict(categoryDir, basename.slice(0, -3))
+              : expectedPath;
+            await relocateSyncNote(this.app, file, note.note_id, targetPath);
+            uidIndex.set(note.note_id, file);
+            return { status: 'updated', file, relocated: true };
+          }
+        }
         return { status: 'skipped', file: existingByUid };
       }
 
@@ -628,6 +701,7 @@ export class SyncEngine {
       updatedAt: note.updated_at,
       status: writeResult.status,
       error: writeResult.error,
+      ...(writeResult.relocated ? { relocated: true } : {}),
     });
   }
 
@@ -659,6 +733,7 @@ export class SyncEngine {
       tags: detail.tags ?? note.tags,
       created_at: detail.created_at ?? note.created_at,
       updated_at: detail.updated_at ?? note.updated_at,
+      topics: detail.topics ?? note.topics,
       parent_id: detail.parent_id ?? note.parent_id,
       children_count: detail.children_count ?? note.children_count,
       // Don't overwrite relation fields that were already populated by list data;
@@ -795,7 +870,7 @@ export class SyncEngine {
         }
       }
 
-      // Image attachments keep their dedicated downloader (legacy naming scheme).
+      // Images keep their dedicated downloader with per-note filenames in knowledge bases.
       // Video / document / unknown attachments go through a generic downloader
       // gated by the per-type settings.
       const imageAttachments = isAttachmentTypeEnabled(this.settings.attachmentImport, 'image')
@@ -842,7 +917,7 @@ export class SyncEngine {
     result: SyncResult,
     categoryOverride?: string,
     uidIndex?: Map<string, TFile>,
-  ): Promise<GetNoteNote[]> {
+  ): Promise<GetNoteNote[] | null> {
     const credentials = getAuthCredentials(this.settings);
     if (credentials.authMode === 'web' && (parent.children_count ?? 0) > 0) {
       const parentDetailId = (parent as { prime_id?: string }).prime_id ?? parent.note_id;
@@ -889,6 +964,25 @@ export class SyncEngine {
       return [];
     }
 
+    // The OpenAPI knowledge-note list can omit both relationship fields.
+    // Read the parent detail even if the parent Markdown already exists.
+    if (credentials.authMode === 'openapi' && parent.topic_source && !parent.is_child_note
+      && parent.children_count === undefined && parent.children_ids === undefined) {
+      try {
+        const detail = await fetchNoteDetail(parent.note_id, credentials.token, credentials.clientId, signal, credentials.authMode);
+        parent = this.mergeNoteDetail(parent, detail);
+      } catch (error) {
+        if (signal.aborted) throw error;
+        result.failed++;
+        result.checkpointBlocked = true;
+        this.recordItem(result, parent, {
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      }
+    }
+
     const childIds = parent.children_ids ?? [];
     if (!childIds.length) return [];
 
@@ -913,6 +1007,7 @@ export class SyncEngine {
           created_at: childDetail.created_at ?? parent.created_at,
           updated_at: childDetail.updated_at ?? parent.updated_at,
           parent_id: childDetail.parent_id ?? parent.note_id,
+          topic_source: parent.topic_source,
           children_count: childDetail.children_count,
           children_ids: childDetail.children_ids,
           is_child_note: childDetail.is_child_note ?? true,
@@ -1060,6 +1155,14 @@ export class SyncEngine {
 
     try {
       const credentials = getAuthCredentials(this.settings);
+      // Resolve selected KB membership before writing personal notes so a
+      // shared UID is created once, directly in its selected knowledge base.
+      const knowledgePlan = (this.scopeOptions.syncKnowledgeBases?.length ?? 0) > 0
+        ? await this.prepareCrossKnowledgeBaseSync(controller.signal, uidIndex).then(
+          placements => ({ placements }),
+          (error: unknown) => ({ error }),
+        )
+        : undefined;
       for await (const notes of fetchAllNotes(credentials.token, credentials.clientId, controller.signal, null, credentials.authMode)) {
         if (this.cancelled || modal?.isCancelled()) throw new SyncCancelledError();
         pageCount++;
@@ -1073,16 +1176,23 @@ export class SyncEngine {
         for (const note of typeFiltered) {
           if (this.cancelled || modal?.isCancelled()) throw new SyncCancelledError();
           if (seenNoteIds.has(note.note_id)) continue;
+          const knowledgePlacement = knowledgePlan && 'placements' in knowledgePlan
+            ? knowledgePlan.placements.get(note.note_id)
+            : undefined;
+          if (knowledgePlacement?.category && !knowledgePlacement.note.fetch_error) continue;
           const parentMatchesTags = this.filterNotesByTags([note]).length > 0;
           const preCheck = this.preCheckNote(note, uidIndex);
+          const categoryOverride = this.getKnowledgeBaseCategory(note, preCheck.file);
           if (preCheck.exists && parentMatchesTags) {
             seenNoteIds.add(note.note_id);
             result.total++;
             for (const tag of note.tags ?? []) {
               if (tag?.name) observedTagNames.add(tag.name);
             }
-            result.skipped++;
-            this.recordItem(result, note, { status: 'skipped', file: preCheck.file });
+            const writeResult = await this.writeNote(note, uidIndex, undefined, undefined, undefined, categoryOverride);
+            this.applyWriteResult(result, writeResult);
+            this.recordItem(result, note, writeResult);
+            if (writeResult.status === 'failed') result.checkpointBlocked = true;
           }
 
           const relationshipNote = preCheck.exists
@@ -1101,9 +1211,9 @@ export class SyncEngine {
 
           const noteToWrite = preCheck.exists
             ? relationshipNote
-            : await this.enrichAudioNote(note, controller.signal);
+            : await this.enrichAudioNote(note, controller.signal, categoryOverride);
           const appendNotes = this.filterNotesByTags(
-            await this.fetchAppendNotes(noteToWrite, controller.signal, result, undefined, uidIndex),
+            await this.fetchAppendNotes(noteToWrite, controller.signal, result, categoryOverride, uidIndex) ?? [],
           );
           if (!parentMatchesTags && appendNotes.length === 0) continue;
           const parentBaseName = this.buildBaseName(noteToWrite);
@@ -1118,7 +1228,7 @@ export class SyncEngine {
             for (const tag of note.tags ?? []) {
               if (tag?.name) observedTagNames.add(tag.name);
             }
-            const writeResult = await this.writeNote(noteToWrite, uidIndex, undefined, undefined, childFileNames);
+            const writeResult = await this.writeNote(noteToWrite, uidIndex, undefined, undefined, childFileNames, categoryOverride);
             this.applyWriteResult(result, writeResult);
             this.recordItem(result, noteToWrite, writeResult);
           }
@@ -1135,7 +1245,9 @@ export class SyncEngine {
               appendNote,
               uidIndex,
               parentMatchesTags ? parentBaseName : undefined,
-              parentMatchesTags ? parentFileName : undefined
+              parentMatchesTags ? parentFileName : undefined,
+              undefined,
+              categoryOverride,
             );
             this.applyWriteResult(result, appendWriteResult);
             this.recordItem(result, appendNote, appendWriteResult);
@@ -1173,11 +1285,9 @@ export class SyncEngine {
       }
 
       this.onProgress?.({ percent: 100 });
-      // Cross-KB path: only run when the user has explicitly selected at least
-      // one knowledge base. Empty array / undefined = cross-KB sync disabled.
-      const selectedKnowledgeBases = this.scopeOptions.syncKnowledgeBases ?? [];
-      if (selectedKnowledgeBases.length > 0) {
-        await this.runCrossKnowledgeBaseSync(result, controller.signal);
+      if (knowledgePlan && 'error' in knowledgePlan) throw knowledgePlan.error;
+      if (knowledgePlan && 'placements' in knowledgePlan) {
+        await this.runCrossKnowledgeBaseSync(result, controller.signal, uidIndex, knowledgePlan.placements);
       }
 
       if (observedTagNames.size > 0) {
@@ -1193,9 +1303,12 @@ export class SyncEngine {
     }
   }
 
-  private async runCrossKnowledgeBaseSync(result: SyncResult, signal: AbortSignal): Promise<void> {
+  private async prepareCrossKnowledgeBaseSync(
+    signal: AbortSignal,
+    uidIndex: Map<string, TFile>,
+  ): Promise<Map<string, KnowledgePlacement>> {
     const selectedKnowledgeBases = this.scopeOptions.syncKnowledgeBases ?? [];
-    if (selectedKnowledgeBases.length === 0) return;
+    if (selectedKnowledgeBases.length === 0) return new Map();
 
     const credentials = getAuthCredentials(this.settings);
     const entries = this.scopeOptions.knowledgeBaseEntries ?? [];
@@ -1214,20 +1327,40 @@ export class SyncEngine {
       bloggerIds,
     });
 
-    const filteredNotes = this.filterNotesByType(
+    const recentNotes = new Set(
       this.filterNotesByDateRange(this.filterRecentNotes(knowledgeNotes), true)
     );
+    const names = this.scopeOptions.knowledgeBaseNames ?? {};
+    const placements = this.selectKnowledgePlacements(this.filterNotesByType(knowledgeNotes), uidIndex,
+      note => note.topic_id ? names[note.topic_id] : undefined);
+    for (const [uid, { note, category }] of placements) {
+      if (recentNotes.has(note)) continue;
+      const existing = uidIndex.get(uid);
+      // Legacy paths need reconciliation even when the remote note has not
+      // changed since the last scheduled run.
+      if (existing && category) {
+        const existingDir = existing.path.slice(0, existing.path.lastIndexOf('/'));
+        const expectedDir = `${this.settings.folderName}/${category}`;
+        if (existingDir !== expectedDir) continue;
+      }
+      placements.delete(uid);
+    }
+    return placements;
+  }
 
-    const uidIndex = await this.buildUidIndex();
-    const seenNoteIds = new Set<string>();
-    const knowledgeBaseNames = this.scopeOptions.knowledgeBaseNames ?? {};
+  private async runCrossKnowledgeBaseSync(
+    result: SyncResult,
+    signal: AbortSignal,
+    uidIndex?: Map<string, TFile>,
+    placements?: Map<string, KnowledgePlacement>,
+  ): Promise<void> {
+    uidIndex ??= await this.buildUidIndex();
+    placements ??= await this.prepareCrossKnowledgeBaseSync(signal, uidIndex);
     let knowledgeProcessed = 0;
 
-    for (const note of filteredNotes) {
+    for (const { note, category: categoryOverride } of placements.values()) {
       if (this.cancelled) throw new SyncCancelledError();
-      if (seenNoteIds.has(note.note_id)) continue;
       const failuresBeforeNote = result.failed;
-      seenNoteIds.add(note.note_id);
       knowledgeProcessed++;
       result.total++;
       if (note.fetch_error) {
@@ -1236,42 +1369,31 @@ export class SyncEngine {
         this.recordItem(result, note, { status: 'failed', error: note.fetch_error });
         this.onProgress?.({
           processed: knowledgeProcessed,
-          total: filteredNotes.length,
+          total: placements.size,
           created: result.created,
           updated: result.updated,
           skipped: result.skipped,
           failed: result.failed,
-          percent: filteredNotes.length ? Math.round((knowledgeProcessed / filteredNotes.length) * 100) : 100,
+          percent: Math.round((knowledgeProcessed / placements.size) * 100),
         });
         continue;
       }
-      const knowledgeBaseName = note.topic_id ? knowledgeBaseNames[note.topic_id] : undefined;
-      const categoryOverride = knowledgeBaseName ? this.getKnowledgeBaseDir(knowledgeBaseName) : undefined;
-
-      // Reuse the preCheckNote logic from the main sync path: if the note is
-      // already up to date in the vault, skip it without re-running
-      // enrichAudioNote. This is the same path used by syncNoteIds to avoid
-      // missing audio/transcript/image attachment re-downloads.
-      const preCheck = this.preCheckNote(note, uidIndex, categoryOverride);
-      if (preCheck.exists) {
-        result.skipped++;
-        this.recordItem(result, note, { status: 'skipped' });
-      }
+      const preCheck = this.preCheckNote(note, uidIndex);
 
       const noteToWrite = preCheck.exists
         ? note
         : await this.enrichAudioNote(note, signal, categoryOverride);
       const appendNotes = await this.fetchAppendNotes(noteToWrite, signal, result, categoryOverride, uidIndex);
-      if (result.failed > failuresBeforeNote) {
+      if (!appendNotes || result.failed > failuresBeforeNote) {
         result.checkpointBlocked = true;
         this.onProgress?.({
           processed: knowledgeProcessed,
-          total: filteredNotes.length,
+          total: placements.size,
           created: result.created,
           updated: result.updated,
           skipped: result.skipped,
           failed: result.failed,
-          percent: filteredNotes.length ? Math.round((knowledgeProcessed / filteredNotes.length) * 100) : 100,
+          percent: Math.round((knowledgeProcessed / placements.size) * 100),
         });
         continue;
       }
@@ -1279,18 +1401,11 @@ export class SyncEngine {
       const parentFileName = this.getFileName(noteToWrite);
       const childFileNames = appendNotes.map(child => this.getFileName(child, parentBaseName));
 
-      if (!preCheck.exists) {
-        const writeResult = await this.writeNote(
-          noteToWrite,
-          uidIndex,
-          undefined,
-          undefined,
-          childFileNames,
-          categoryOverride
-        );
-        this.applyWriteResult(result, writeResult);
-        this.recordItem(result, noteToWrite, writeResult);
-      }
+      const writeResult = await this.writeNote(
+        noteToWrite, uidIndex, undefined, undefined, childFileNames, categoryOverride,
+      );
+      this.applyWriteResult(result, writeResult);
+      this.recordItem(result, noteToWrite, writeResult);
       const updatedTime = parseNoteUpdatedTime(noteToWrite);
       const currentLastTime = result.lastNoteTimestamp ? parseSyncBoundaryTime(result.lastNoteTimestamp) : null;
       if (updatedTime !== null && (currentLastTime === null || updatedTime > currentLastTime)) {
@@ -1316,12 +1431,12 @@ export class SyncEngine {
 
       this.onProgress?.({
         processed: knowledgeProcessed,
-        total: filteredNotes.length,
+        total: placements.size,
         created: result.created,
         updated: result.updated,
         skipped: result.skipped,
         failed: result.failed,
-        percent: filteredNotes.length ? Math.round((knowledgeProcessed / filteredNotes.length) * 100) : 100,
+        percent: Math.round((knowledgeProcessed / placements.size) * 100),
       });
     }
   }
@@ -1404,6 +1519,9 @@ export class SyncEngine {
           prime_id: (detail as { prime_id?: string }).prime_id,
           parent_id: detail.parent_id,
           topic_id: detail.topic_id,
+          topic_name: detail.topic_name,
+          topic_directory_path: detail.topic_directory_path,
+          topics: detail.topics,
           linkOriginal: detail.linkOriginal,
           is_child_note: detail.is_child_note,
         };
@@ -1428,20 +1546,22 @@ export class SyncEngine {
         // Pre-check: skip if the same note already exists locally.
         // Uses UID-based lookup so renamed/moved files are still found.
         const preCheck = this.preCheckNote(typeFiltered[0], uidIndex);
+        const categoryOverride = this.getKnowledgeBaseCategory(note, preCheck.file);
         if (preCheck.exists) {
           if (parentMatchesTags) {
-            result.skipped++;
-            this.recordItem(result, typeFiltered[0], { status: 'skipped' });
+            const writeResult = await this.writeNote(note, uidIndex, undefined, undefined, undefined, categoryOverride);
+            this.applyWriteResult(result, writeResult);
+            this.recordItem(result, note, writeResult);
           }
           const mayHaveAppendNotes = (typeFiltered[0].children_count ?? 0) > 0 || Boolean(typeFiltered[0].children_ids?.length);
           if (!mayHaveAppendNotes) {
             continue;
           }
         }
-        const noteToWrite = await this.enrichAudioNote(typeFiltered[0], controller.signal);
+        const noteToWrite = preCheck.exists ? note : await this.enrichAudioNote(note, controller.signal, categoryOverride);
 
         const appendNotes = this.filterNotesByTags(
-          await this.fetchAppendNotes(noteToWrite, controller.signal, result, undefined, uidIndex),
+          await this.fetchAppendNotes(noteToWrite, controller.signal, result, categoryOverride, uidIndex) ?? [],
         );
         if (!parentMatchesTags && appendNotes.length === 0) continue;
         const parentBaseName = this.buildBaseName(noteToWrite);
@@ -1449,7 +1569,7 @@ export class SyncEngine {
         const childFileNames = appendNotes.map(child => this.getFileName(child, parentBaseName));
 
         if (parentMatchesTags && !preCheck.exists) {
-          const writeResult = await this.writeNote(noteToWrite, uidIndex, undefined, parentFileName, childFileNames);
+          const writeResult = await this.writeNote(noteToWrite, uidIndex, undefined, parentFileName, childFileNames, categoryOverride);
           this.applyWriteResult(result, writeResult);
           this.recordItem(result, noteToWrite, writeResult);
         }
@@ -1466,7 +1586,9 @@ export class SyncEngine {
             appendNote,
             uidIndex,
             parentMatchesTags ? parentBaseName : undefined,
-            parentMatchesTags ? parentFileName : undefined
+            parentMatchesTags ? parentFileName : undefined,
+            undefined,
+            categoryOverride,
           );
           this.applyWriteResult(result, appendWriteResult);
           this.recordItem(result, appendNote, appendWriteResult);
@@ -1534,8 +1656,10 @@ export class SyncEngine {
       const filteredNotes = selectedNoteIds || syncOptions.syncAll
         ? noteIdFiltered
         : this.filterNotesByType(this.filterNotesByDateRange(this.filterRecentNotes(noteIdFiltered)));
+      const placements = this.selectKnowledgePlacements(filteredNotes, uidIndex,
+        note => syncOptions.knowledgeBaseNames?.[note.note_id] ?? syncOptions.knowledgeBaseName);
 
-      for (const note of filteredNotes) {
+      for (const { note, category: categoryOverride } of placements.values()) {
         if (this.cancelled || modal?.isCancelled()) throw new SyncCancelledError();
         if (seenNoteIds.has(note.note_id)) continue;
         if (note.fetch_error) {
@@ -1556,30 +1680,17 @@ export class SyncEngine {
           continue;
         }
         const parentMatchesTags = this.filterNotesByTags([note], syncOptions.syncTags).length > 0;
-        const knowledgeBaseName = syncOptions.knowledgeBaseNames?.[note.note_id] ?? syncOptions.knowledgeBaseName;
-        const categoryOverride = knowledgeBaseName ? this.getKnowledgeBaseDir(knowledgeBaseName) : undefined;
-        const preCheck = this.preCheckNote(note, uidIndex, categoryOverride);
-        if (preCheck.exists) {
+        const preCheck = this.preCheckNote(note, uidIndex);
+        const noteToWrite = preCheck.exists
+          ? note
+          : await this.enrichAudioNote(note, controller.signal, categoryOverride);
+        const fetchedAppendNotes = await this.fetchAppendNotes(noteToWrite, controller.signal, result, categoryOverride, uidIndex);
+        if (!fetchedAppendNotes) {
           seenNoteIds.add(note.note_id);
           result.total++;
-          result.skipped++;
-          this.recordItem(result, note, { status: 'skipped', file: preCheck.file });
-          this.onProgress?.({
-            processed: result.total,
-            total: filteredNotes.length,
-            created: result.created,
-            updated: result.updated,
-            skipped: result.skipped,
-            failed: result.failed,
-            percent: filteredNotes.length ? Math.round((result.total / filteredNotes.length) * 100) : 100,
-          });
           continue;
         }
-        const noteToWrite = await this.enrichAudioNote(note, controller.signal, categoryOverride);
-        const appendNotes = this.filterNotesByTags(
-          await this.fetchAppendNotes(noteToWrite, controller.signal, result, categoryOverride, uidIndex),
-          syncOptions.syncTags
-        );
+        const appendNotes = this.filterNotesByTags(fetchedAppendNotes, syncOptions.syncTags);
         if (!parentMatchesTags && appendNotes.length === 0) continue;
         const parentBaseName = this.buildBaseName(noteToWrite);
         const parentFileName = this.getFileName(noteToWrite);
@@ -1602,6 +1713,7 @@ export class SyncEngine {
           this.recordItem(result, noteToWrite, writeResult);
         }
         for (const appendNote of appendNotes) {
+          if (seenNoteIds.has(appendNote.note_id)) continue;
           seenNoteIds.add(appendNote.note_id);
           result.total++;
           for (const tag of appendNote.tags ?? []) {

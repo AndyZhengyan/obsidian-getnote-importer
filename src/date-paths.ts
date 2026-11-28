@@ -3,6 +3,12 @@ const SAFE_SEPARATOR_PATTERN = /^[\/._ -]*$/;
 const RESERVED_SEGMENT_PATTERN = /[\\:*?"<>|\0]/;
 const WINDOWS_DEVICE_SEGMENT_PATTERN = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i;
 
+export const KNOWLEDGE_BASE_CATEGORY = '知识库';
+
+export function isKnowledgeBaseCategory(categoryDir: string): boolean {
+  return categoryDir.startsWith(`${KNOWLEDGE_BASE_CATEGORY}/`);
+}
+
 function isSafeRelativePath(path: string): boolean {
   if (!path || path.startsWith('/') || path.endsWith('/') || path.includes('\\')) return false;
   return path.split('/').every(segment =>
@@ -81,5 +87,6 @@ export function buildCanonicalCategoryDir(
   if (!isSafeRelativePath(root) || !isSafeRelativePath(category)) {
     throw new Error('Unsafe category path');
   }
+  if (isKnowledgeBaseCategory(category)) return `${root}/${category}`;
   return `${root}/${formatCreatedDatePath(createdAt, format)}/${category}`;
 }

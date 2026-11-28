@@ -7,7 +7,7 @@ Web 模式适合无法使用 得到大脑 OpenAPI 的用户。它复用浏览器
 适合使用 Web 模式的情况：
 
 - 你的账号无法使用 OpenAPI。
-- `测试连接` 提示 OpenAPI 仅对 PRO 会员开放。
+- `测试连接` 提示当前账号无法使用所需的 OpenAPI 功能。
 - 你可以在 `https://www.biji.com/note` 正常登录 得到大脑网页版。
 
 如果你已经有可用的 `gk_...` OpenAPI Token 和 `Client ID`，优先使用 OpenAPI 模式。
